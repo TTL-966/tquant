@@ -22,6 +22,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            color: #ffffff; /* 全局字体白色 */
         }
 
         /* 主窗口 - 桌面程序风格，避免花哨 */
@@ -50,7 +51,7 @@
         .logo-text {
             font-size: 18px;
             font-weight: 600;
-            color: #cbd5f0;
+            color: #ffffff;
         }
         .logo-text span {
             color: #5f8eff;
@@ -77,7 +78,7 @@
         .nav-item {
             padding: 10px 14px;
             border-radius: 12px;
-            color: #9aa5c0;
+            color: #ffffff;
             font-weight: 500;
             font-size: 14px;
             cursor: pointer;
@@ -85,11 +86,11 @@
         }
         .nav-item:hover {
             background: #1a2135;
-            color: #eef2ff;
+            color: #ffffff;
         }
         .nav-item.active {
             background: #2c3e66;
-            color: white;
+            color: #ffffff;
         }
 
         /* 右侧内容区（可滚动） */
@@ -98,6 +99,7 @@
             background: #0f1220;
             overflow-y: auto;
             padding: 20px 24px;
+            color: #ffffff;
         }
 
         /* 卡片 – 干净利落 */
@@ -107,11 +109,12 @@
             padding: 20px;
             margin-bottom: 24px;
             border: 1px solid #242a40;
+            color: #ffffff;
         }
         .card-title {
             font-size: 18px;
             font-weight: 600;
-            color: #eef3ff;
+            color: #ffffff;
             border-left: 4px solid #4f7eff;
             padding-left: 14px;
             margin-bottom: 18px;
@@ -133,6 +136,7 @@
             gap: 12px;
             margin: 12px 0;
             font-size: 13px;
+            color: #ffffff;
         }
         .buy-point {
             display: inline-block;
@@ -162,14 +166,18 @@
             padding: 6px 14px;
             border-radius: 30px;
             font-size: 13px;
-            color: #cbd5f0;
+            color: #ffffff;
         }
+        /* 收益正负色 */
+        .profit-positive { color: #ff4d4f !important; }
+        .profit-negative { color: #52c41a !important; }
+
         button {
             background: #2d3a5e;
             border: none;
             padding: 6px 18px;
             border-radius: 30px;
-            color: white;
+            color: #ffffff;
             font-weight: 500;
             cursor: pointer;
             transition: 0.2s;
@@ -181,15 +189,16 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
-            color: #cbd5f0;
+            color: #ffffff;
         }
         th, td {
             padding: 10px 6px;
             text-align: left;
             border-bottom: 1px solid #2a314a;
+            color: #ffffff;
         }
         th {
-            color: #9aa9cc;
+            color: #ffffff;
             font-weight: 500;
         }
         .code-area {
@@ -199,14 +208,14 @@
             border-radius: 16px;
             white-space: pre-wrap;
             font-size: 13px;
-            color: #cbd5f0;
+            color: #ffffff;
         }
         textarea {
             width: 100%;
             background: #0b0e1a;
             border: 1px solid #2a3145;
             border-radius: 16px;
-            color: #d4e0ff;
+            color: #ffffff;
             font-family: 'Fira Code', monospace;
             padding: 14px;
             font-size: 13px;
@@ -221,6 +230,7 @@
             font-family: monospace;
             font-size: 12px;
             margin-top: 12px;
+            color: #ffffff;
         }
         ::-webkit-scrollbar {
             width: 5px;
@@ -237,7 +247,7 @@
 <div class="app-window">
     <div class="title-bar">
         <div class="logo-text">Tquant <span>量化工作站</span> | 策略回测·K线买卖点</div>
-        <div style="font-size:12px; color:#6a7892;">专业回测引擎</div>
+        <div style="font-size:12px; color:#ffffff;">专业回测引擎</div>
     </div>
     <div class="main-layout">
         <!-- 左侧导航 -->
@@ -385,8 +395,8 @@
                     return res;
                 }
             },
-            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#9aa9cc' } },
-            yAxis: { scale: true, axisLabel: { color: '#b9c7e5' }, name: '价格 (元)' },
+            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
+            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
             series: [
                 {
                     name: 'K线',
@@ -409,25 +419,35 @@
                     tooltip: { formatter: (params) => `${params.value}` }
                 }
             ],
-            legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#e2e8f0' }, left: 'left' },
+            legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#ffffff' }, left: 'left' },
             grid: { containLabel: true, backgroundColor: '#0e1220' }
         };
         chart.setOption(option);
         return chart;
     }
 
+    // 辅助函数: 判断收益正负并返回相应类
+    function profitClass(str) {
+        if (!str) return '';
+        if (str.startsWith('+')) return 'profit-positive';
+        if (str.startsWith('-')) return 'profit-negative';
+        return '';
+    }
+
     // ----------------- 页面渲染模块 (八大功能完整) -----------------
     function renderHistory() {
-        let listHtml = backtestStrategies.map(s => `
+        let listHtml = backtestStrategies.map(s => {
+            let profitCls = profitClass(s.profit);
+            return `
             <div class="backtest-item" data-strategy-id="${s.id}" data-strategy-name="${s.name}" data-strategy-code="${escapeHtml(s.code)}" style="background:#1a2135; border-radius: 16px; padding: 14px; margin-bottom: 12px; cursor:pointer;">
-                <div style="font-weight:600;">${s.name}</div>
-                <div style="font-size:12px; color:#9aa9cc;">收益 ${s.profit} | 点击加载策略代码并跳转</div>
-            </div>
-        `).join('');
+                <div style="font-weight:600; color:#ffffff;">${s.name}</div>
+                <div style="font-size:12px;" class="${profitCls}">收益 ${s.profit} | 点击加载策略代码并跳转</div>
+            </div>`;
+        }).join('');
         return `
             <div class="card">
                 <div class="card-title">📂 历史回测记录</div>
-                <p style="margin-bottom: 16px; color:#a5b3d4;">保存的回测策略，点击任意策略会跳转到【策略代码】模块并自动填充代码。</p>
+                <p style="margin-bottom: 16px; color:#ffffff;">保存的回测策略，点击任意策略会跳转到【策略代码】模块并自动填充代码。</p>
                 <div id="historyList">${listHtml}</div>
                 <div style="margin-top: 16px;"><button id="demoBacktestBtn" style="background:#3a4a70;">📌 回测详情演示（策略详情）</button></div>
             </div>
@@ -460,19 +480,28 @@ def handle_bar(context, bar_dict):
     }
 
     function renderStrategyDetail() {
+        // 收益标签动态颜色
+        const profitTags = [
+            "策略收益 +23.5%",
+            "基准收益 +12.1%",
+            "阿尔法 0.18",
+            "贝塔 0.92",
+            "最大回撤 -8.2%"
+        ];
+        let tagHtml = profitTags.map(t => {
+            let cls = profitClass(t);
+            return `<span class="metric-tag ${cls}">${t}</span>`;
+        }).join('');
+
         let stockRows = tradeStockLibrary.map(t => `<tr><td>${t.time}</td><td>${t.code}</td><td>${t.shares}</td><td>${t.price}</td><td>${t.mktValue}</td></tr>`).join('');
         return `
             <div class="card">
                 <div class="card-title">📊 策略详情 (双均线示例)</div>
                 <div class="metric-row">
-                    <span class="metric-tag">策略收益 +23.5%</span>
-                    <span class="metric-tag">基准收益 +12.1%</span>
-                    <span class="metric-tag">阿尔法 0.18</span>
-                    <span class="metric-tag">贝塔 0.92</span>
-                    <span class="metric-tag">最大回撤 -8.2%</span>
+                    ${tagHtml}
                 </div>
                 <div id="detailCurveContainer" style="height: 240px; width:100%; margin-bottom: 24px;"></div>
-                <div style="margin-top: 20px;"><h4 style="color:#eef3ff;">📋 成交股票库 (成交时间+代码+数量+价格+市值)</h4>
+                <div style="margin-top: 20px;"><h4 style="color:#ffffff;">📋 成交股票库 (成交时间+代码+数量+价格+市值)</h4>
                 <table><thead><th>成交时间</th><th>股票代码</th><th>成交数量</th><th>成交价格</th><th>当前市值(元)</th></thead>
                 <tbody>${stockRows}</tbody></table></div>
                 <button id="gotoKlineBtn" style="margin-top: 16px;">🔍 查看买卖点成交图(K线)</button>
@@ -481,7 +510,11 @@ def handle_bar(context, bar_dict):
     }
 
     function renderDailyHoldings() {
-        let rows = dailyHoldings.map(d => `<tr><td>${d.date}</td><td>${d.cash}</td><td>${d.dailyProfit}</td><td>${d.cumulative}</td></tr>`).join('');
+        let rows = dailyHoldings.map(d => {
+            let dailyCls = profitClass(d.dailyProfit);
+            let cumCls = profitClass(d.cumulative);
+            return `<tr><td>${d.date}</td><td>${d.cash}</td><td class="${dailyCls}">${d.dailyProfit}</td><td class="${cumCls}">${d.cumulative}</td></tr>`;
+        }).join('');
         return `<div class="card"><div class="card-title">💰 每日持仓 & 收益明细</div>
                 <table><thead><th>日期</th><th>现金/资产(元)</th><th>日收益(元)</th><th>累计收益(元)</th></thead>
                 <tbody>${rows}</tbody></table></div>`;
@@ -506,22 +539,22 @@ def handle_bar(context, bar_dict):
                         <option value="300750">300750 宁德时代</option>
                     </select>
                 </div>
-                <p style="margin-top:12px; font-size:13px;">✅ 买卖点由策略历史回测产生，红色B标记买入（价格+股数），绿色S标记卖出，完全模拟实盘成交记录显现在K线图上。</p>
+                <p style="margin-top:12px; font-size:13px; color:#ffffff;">✅ 买卖点由策略历史回测产生，红色B标记买入（价格+股数），绿色S标记卖出，完全模拟实盘成交记录显现在K线图上。</p>
             </div>
         `;
     }
 
     function renderStockDetail() {
         return `<div class="card"><div class="card-title">📉 个股详情 (000001)</div>
-                <input type="text" id="stockInput" placeholder="股票代码 000858" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:white;">
+                <input type="text" id="stockInput" placeholder="股票代码 000858" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff;">
                 <button id="searchStockBtn" style="margin-left:12px;">查询K线</button>
                 <div id="miniKlinePlaceholder" style="height: 280px; margin-top: 20px;"></div>
-                <div class="info-box" style="margin-top:16px;">支持日K/周K/月K切换，均线M5/M10等，点击股票显示K线图预览。</div>
+                <div class="info-box" style="margin-top:16px; color:#ffffff;">支持日K/周K/月K切换，均线M5/M10等，点击股票显示K线图预览。</div>
             </div>`;
     }
 
     function renderApiDoc() { return `<div class="card"><div class="card-title">📘 API文档</div><div class="code-area">GET /api/backtest/list<br>POST /api/strategy/run<br>GET /api/stock/kline?code=000001<br>GET /api/trade/signals</div></div>`; }
-    function renderSettings() { return `<div class="card"><div class="card-title">⚙️ 设置说明</div><p>界面支持所有模块独立滑动，K线图买卖点完全基于回测产生的信号展示。后续可对接实盘数据。</p></div>`; }
+    function renderSettings() { return `<div class="card"><div class="card-title">⚙️ 设置说明</div><p style="color:#ffffff;">界面支持所有模块独立滑动，K线图买卖点完全基于回测产生的信号展示。后续可对接实盘数据。</p></div>`; }
 
     // 辅助函数
     function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
@@ -545,7 +578,7 @@ def handle_bar(context, bar_dict):
         const dom = document.getElementById('detailCurveContainer');
         if(dom && typeof echarts !== 'undefined'){
             let chart = echarts.init(dom);
-            chart.setOption({ tooltip: {trigger:'axis'}, xAxis:{data:['1月','2月','3月'], axisLabel:{color:'#b9c7e5'}}, yAxis:{name:'收益率%'}, series:[{type:'line', data:[0,12.3,23.5], name:'策略收益曲线', lineStyle:{color:'#4f7eff'}}]});
+            chart.setOption({ tooltip: {trigger:'axis'}, xAxis:{data:['1月','2月','3月'], axisLabel:{color:'#ffffff'}}, yAxis:{name:'收益率%', axisLabel:{color:'#ffffff'}}, series:[{type:'line', data:[0,12.3,23.5], name:'策略收益曲线', lineStyle:{color:'#4f7eff'}}]});
         }
     }
     function attachKlineEvents() {
