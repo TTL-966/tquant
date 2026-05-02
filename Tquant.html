@@ -475,10 +475,36 @@
     var currentKlineDates = [];
     var currentKlineValues = [];
 
+    // 安全的ECharts初始化，每次先dispose旧实例
+    function safeInitChart(containerId, chartVarName) {
+        var dom = document.getElementById(containerId);
+        if (!dom) return null;
+        var chart = null;
+        if (chartVarName === 'klineChart') {
+            if (klineChart) { klineChart.dispose(); klineChart = null; }
+            if (typeof echarts !== 'undefined') {
+                klineChart = echarts.init(dom);
+                chart = klineChart;
+            } else {
+                log("ECharts 库未加载");
+            }
+        } else if (chartVarName === 'stockChart') {
+            if (stockChart) { stockChart.dispose(); stockChart = null; }
+            if (typeof echarts !== 'undefined') {
+                stockChart = echarts.init(dom);
+                chart = stockChart;
+            } else {
+                log("ECharts 库未加载");
+            }
+        }
+        return chart;
+    }
+
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         var dom = document.getElementById('klineMainChart');
         if (!dom) return;
-        if (!klineChart) klineChart = echarts.init(dom);
+        var chart = safeInitChart('klineMainChart', 'klineChart');
+        if (!chart) return;
         var scatterData = [];
         buyPts.forEach(function(point) {
             var idx = dates.indexOf(point.date);
@@ -508,14 +534,15 @@
             legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#ffffff' }, left: 'left' },
             grid: { containLabel: true, backgroundColor: '#0e1220' }
         };
-        klineChart.setOption(option, true);
+        chart.setOption(option, true);
     }
 
     // 个股详情页专用：渲染简单K线（不含买卖点）
     function renderStockKline(containerId, dates, values) {
         var dom = document.getElementById(containerId);
         if (!dom) return;
-        if (!stockChart) stockChart = echarts.init(dom);
+        var chart = safeInitChart(containerId, 'stockChart');
+        if (!chart) return;
         var option = {
             backgroundColor: 'transparent',
             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; var d = params[0].data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; return res; } },
@@ -526,7 +553,7 @@
             ],
             grid: { containLabel: true, backgroundColor: '#0e1220' }
         };
-        stockChart.setOption(option, true);
+        chart.setOption(option, true);
     }
 
     // --------------------------------------------------------------
@@ -539,6 +566,7 @@
             buyPoints = mockSignals.filter(s => s.type === 'buy');
             sellPoints = mockSignals.filter(s => s.type === 'sell');
             if (currentKlineDates.length > 0) renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
+            else fetchAndRenderKline(code);
             return;
         }
         log("运行回测: " + code);
@@ -550,6 +578,7 @@
                 sellPoints = res.signals.filter(s => s.type === 'sell');
                 log("回测完成，买入 " + buyPoints.length + " 卖出 " + sellPoints.length);
                 if (currentKlineDates.length > 0) renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
+                else fetchAndRenderKline(code);
             }
         }).catch(function(err) { log("回测请求失败: " + err); });
     }
