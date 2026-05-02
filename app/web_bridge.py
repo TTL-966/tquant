@@ -3,6 +3,7 @@ from PySide6.QtCore import QObject, Slot
 from backend.data_feed import DataFeed
 from backend.strategy_engine import StrategyEngine
 from backend.trade_simulation import TradeSimulation
+from backend.db import Database          # 新增导入
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
@@ -10,6 +11,7 @@ class WebBridge(QObject):
         self.data_feed = DataFeed()
         self.strategy_engine = StrategyEngine()
         self.trade = TradeSimulation()
+        self.db = Database()              # 新增数据库实例，用于测试连接
 
     @Slot(result=str)
     def ping(self):
@@ -54,3 +56,13 @@ class WebBridge(QObject):
             return json.dumps(data)
         except Exception as e:
             return json.dumps({"error": str(e)})
+
+    # ---------- 新增：数据库连接测试 ----------
+    @Slot(result=str)
+    def test_db_connection(self):
+        """返回数据库连接状态（JSON 字符串）"""
+        try:
+            status = self.db.connection_status()
+            return json.dumps(status)
+        except Exception as e:
+            return json.dumps({"connected": False, "message": str(e)})

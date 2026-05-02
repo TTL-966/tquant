@@ -54,3 +54,16 @@ class Database:
             'volume': volumes
         })
         return df
+
+    # ---------- 新增：数据库连接状态测试 ----------
+    def connection_status(self):
+        """返回包含连接状态和消息的字典"""
+        if self.connection is None:
+            return {"connected": False, "message": "无数据库连接（将使用模拟数据）"}
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            return {"connected": True, "message": "数据库连接正常"}
+        except Exception as e:
+            return {"connected": False, "message": f"数据库连接异常: {str(e)}"}
