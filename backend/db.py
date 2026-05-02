@@ -55,9 +55,7 @@ class Database:
         })
         return df
 
-    # ---------- 新增：数据库连接状态测试 ----------
     def connection_status(self):
-        """返回包含连接状态和消息的字典"""
         if self.connection is None:
             return {"connected": False, "message": "无数据库连接（将使用模拟数据）"}
         try:
