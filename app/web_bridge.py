@@ -1,19 +1,19 @@
-from PySide6.QtCore import QObject, Slot
 import json
-from backend.data_feed import fetch_kline
+from PyQt5.QtCore import QObject, pyqtSlot
+from backend.data_feed import DataFeed
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.data_feed = DataFeed()
 
-    @Slot(str, result=str)
-    def echo(self, message):
-        return f"Echo: {message}"
+    @pyqtSlot(result=str)
+    def ping(self):
+        return "pong"
 
-    @Slot(str, result=str)
-    def getKlineData(self, code):
+    @pyqtSlot(str, result=str)
+    def get_kline_data(self, code):
         try:
-            data = fetch_kline(code)
-            return json.dumps(data)
+            return self.data_feed.get_kline_json(code)
         except Exception as e:
             return json.dumps({"error": str(e)})

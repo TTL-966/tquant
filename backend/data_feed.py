@@ -1,28 +1,17 @@
+import json
+import pandas as pd
 from backend.db import Database
 
-def fetch_kline(code, start_date=None, end_date=None):
-    db = Database()
-    try:
-        sql = "SELECT trade_date, open, high, low, close, vol FROM stock_daily WHERE ts_code = %s"
-        params = [code]
-        if start_date:
-            sql += " AND trade_date >= %s"
-            params.append(start_date)
-        if end_date:
-            sql += " AND trade_date <= %s"
-            params.append(end_date)
-        sql += " ORDER BY trade_date ASC"
-        rows = db.query(sql, params)
-        result = []
-        for row in rows:
-            result.append({
-                "date": row['trade_date'].strftime('%Y-%m-%d'),
-                "open": float(row['open']),
-                "high": float(row['high']),
-                "low": float(row['low']),
-                "close": float(row['close']),
-                "vol": float(row['vol'])
-            })
-        return result
-    finally:
-        db.close()
+class DataFeed:
+    def __init__(self):
+        self.db = Database()
+
+    def get_kline_json(self, code, start_date="2026-01-01", end_date="2026-04-01"):
+        df = self.db.get_kline(code, start_date, end_date)
+        dates = [d.strftime('%Y-%m-%d') for d in df['trade_date']]
+        values = [[round(o,2), round(c,2), round(l,2), round(h,2)] for o,c,l,h in zip(df['open'], df['close'], df['low'], df['high'])]
+        result = {
+            "dates": dates,
+            "values": values
+        }
+        return json.dumps(result)
