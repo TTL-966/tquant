@@ -351,32 +351,55 @@
     var currentStockCode = "000001";
     var buyPoints = [];
     var sellPoints = [];
+    var bridgeReady = false;          // 标记 bridge 是否可用
+    var pendingCallbacks = [];        // bridge 就绪前暂存的回调
 
     function log(msg) {
         console.log("[Tquant]", msg);
+    }
+
+    // 当 bridge 可用后执行所有等待的回调
+    function onBridgeReady(callback) {
+        if (bridgeReady && callback) {
+            callback();
+        } else if (callback) {
+            pendingCallbacks.push(callback);
+        }
     }
 
     // --------------------------------------------------------------
     // 建立 QWebChannel
     // --------------------------------------------------------------
     document.addEventListener("DOMContentLoaded", function() {
-        if (typeof QWebChannel !== 'undefined') {
+        // 检查 Qt WebChannel 环境是否可用
+        if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
             new QWebChannel(qt.webChannelTransport, function(channel) {
                 bridge = channel.objects.bridge;
+                bridgeReady = true;
                 log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
 
-                bridge.ping().then(function(reply) {
-                    log("ping 响应: " + reply);
-                }).catch(function(err) {
-                    log("ping 失败: " + err);
-                });
+                // 执行所有等待的回调
+                pendingCallbacks.forEach(function(cb) { cb(); });
+                pendingCallbacks = [];
 
+                // 测试 ping
+                if (typeof bridge.ping === 'function') {
+                    bridge.ping().then(function(reply) {
+                        log("ping 响应: " + reply);
+                    }).catch(function(err) {
+                        log("ping 失败: " + err);
+                    });
+                }
+
+                // 初始加载 K线
                 if (bridge) {
                     fetchAndRenderKline(currentStockCode);
                 }
             });
         } else {
-            log("QWebChannel 未加载");
+            log("QWebChannel 环境不可用（qt.webChannelTransport 未定义），无法连接后端。");
+            // 可选：显示提示给用户
+            // 但业务上也可以降级为模拟数据（此处保持原有模拟数据功能）
         }
     });
 
@@ -385,7 +408,14 @@
     // --------------------------------------------------------------
     function fetchAndRenderKline(code) {
         if (!bridge) {
-            log("bridge 未就绪，无法获取数据");
+            log("bridge 未就绪，无法获取数据（将使用模拟数据）");
+            // 使用已有的模拟数据
+            if (typeof generateMockKline === 'function') {
+                var mock = generateMockKline(code);
+                currentKlineDates = mock.dates;
+                currentKlineValues = mock.values;
+                renderKlineWithSignals(mock.dates, mock.values, buyPoints, sellPoints);
+            }
             return;
         }
         log("请求 K线数据: " + code);
@@ -424,7 +454,7 @@
             var idx = dates.indexOf(point.date);
             if (idx !== -1) {
                 var k = values[idx];
-                var yPos = k[3] + (k[3] - k[2]) * 0.15; // 在K线上方
+                var yPos = k[3] + (k[3] - k[2]) * 0.15;
                 scatterData.push({
                     coord: [idx, yPos],
                     value: 'B ' + point.shares + '股 @' + point.price,
@@ -520,7 +550,18 @@
     // --------------------------------------------------------------
     function runBacktest(code) {
         if (!bridge) {
-            alert("bridge 未连接");
+            log("bridge 未连接，无法回测（使用模拟数据）");
+            // 模拟添加买卖点（保持原有模拟回测行为）
+            var mockSignals = [
+                { date: '2026-01-05', code: code, type: 'buy', price: 12.35, shares: 800 },
+                { date: '2026-01-12', code: code, type: 'sell', price: 13.68, shares: 800 }
+            ];
+            buyPoints = mockSignals.filter(function(s) { return s.type === 'buy'; });
+            sellPoints = mockSignals.filter(function(s) { return s.type === 'sell'; });
+            log("模拟回测完成，买入信号 " + buyPoints.length + " 个，卖出信号 " + sellPoints.length + " 个");
+            if (currentKlineDates.length > 0) {
+                renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
+            }
             return;
         }
         log("运行回测: " + code);
@@ -532,11 +573,9 @@
             }
             if (res.success) {
                 var signals = res.signals;
-                // 按类型分离
                 buyPoints = signals.filter(function(s) { return s.type === 'buy'; });
                 sellPoints = signals.filter(function(s) { return s.type === 'sell'; });
                 log("回测完成，买入信号 " + buyPoints.length + " 个，卖出信号 " + sellPoints.length + " 个");
-                // 重新渲染K线图
                 if (currentKlineDates.length > 0) {
                     renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
                 }
@@ -544,6 +583,33 @@
         }).catch(function(err) {
             log("回测请求失败: " + err);
         });
+    }
+
+    // --------------------------------------------------------------
+    // 模拟K线数据生成（当真实数据不可用时使用）
+    // --------------------------------------------------------------
+    function generateMockKline(code) {
+        var baseDate = new Date(2026, 0, 1);
+        var dates = [];
+        var values = [];
+        var close = 12.0;
+        for (var i = 0; i < 60; i++) {
+            var date = new Date(baseDate);
+            date.setDate(baseDate.getDate() + i);
+            var dateStr = date.toISOString().slice(0,10);
+            var open = close;
+            var change = (Math.random() - 0.5) * 1.2;
+            var newClose = open + change;
+            if (newClose < 8) newClose = 8.5;
+            if (newClose > 28) newClose = 27;
+            var high = Math.max(open, newClose) + Math.random() * 0.8;
+            var low = Math.min(open, newClose) - Math.random() * 0.6;
+            if (low < 7) low = 7.2;
+            close = newClose;
+            dates.push(dateStr);
+            values.push([parseFloat(open.toFixed(2)), parseFloat(close.toFixed(2)), parseFloat(low.toFixed(2)), parseFloat(high.toFixed(2))]);
+        }
+        return { dates: dates, values: values };
     }
 
     // --------------------------------------------------------------
@@ -580,10 +646,10 @@
                 if (sel) {
                     sel.onchange = function() {
                         currentStockCode = sel.value;
-                        fetchAndRenderKline(currentStockCode);
                         // 清除旧买卖点
                         buyPoints = [];
                         sellPoints = [];
+                        fetchAndRenderKline(currentStockCode);
                     };
                 }
                 if (runBtn) {
@@ -596,10 +662,8 @@
                         fetchAndRenderKline(sel ? sel.value : currentStockCode);
                     };
                 }
-                // 初始请求K线
-                if (bridge) {
-                    fetchAndRenderKline(currentStockCode);
-                }
+                // 初始请求K线（如果 bridge 未就绪则走模拟数据）
+                fetchAndRenderKline(currentStockCode);
             }, 50);
         } else {
             container.innerHTML = `<div class="card"><div class="card-title">${pageId}</div><p style="color:#ffffff;">该页面功能后续完善</p></div>`;
