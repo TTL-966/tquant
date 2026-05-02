@@ -65,3 +65,14 @@ class Database:
             return {"connected": True, "message": "数据库连接正常"}
         except Exception as e:
             return {"connected": False, "message": f"数据库连接异常: {str(e)}"}
+
+
+# 测试代码
+if __name__ == "__main__":
+    db = Database()
+    print(db.connection_status())
+
+    # 测试获取数据
+    df = db.get_kline("000001")
+    print(f"获取到 {len(df)} 条数据")
+    print(df.head())
