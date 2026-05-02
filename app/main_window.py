@@ -1,5 +1,6 @@
 import os
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
+os.environ["QT_QPA_PLATFORM"] = "windows:software"
+os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 
 import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QMenu
@@ -22,6 +23,10 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.web_view = QWebEngineView()
+        # 关闭OpenGL相关功能以减少崩溃
+        settings = self.web_view.settings()
+        settings.setAttribute(settings.WebAttribute.Accelerated2dCanvasEnabled, False)
+        settings.setAttribute(settings.WebAttribute.WebGLEnabled, False)
         layout.addWidget(self.web_view)
 
         self.channel = QWebChannel()
