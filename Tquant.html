@@ -312,6 +312,20 @@
             border-radius: 30px;
             cursor: pointer;
         }
+        .trade-input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 12px 0;
+        }
+        .trade-input-row input, .trade-input-row select {
+            background: #1e253b;
+            border: 1px solid #323d5a;
+            padding: 8px 14px;
+            border-radius: 30px;
+            color: #ffffff;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -351,14 +365,13 @@
     var currentStockCode = "000001";
     var buyPoints = [];
     var sellPoints = [];
-    var bridgeReady = false;          // 标记 bridge 是否可用
-    var pendingCallbacks = [];        // bridge 就绪前暂存的回调
+    var bridgeReady = false;
+    var pendingCallbacks = [];
 
     function log(msg) {
         console.log("[Tquant]", msg);
     }
 
-    // 当 bridge 可用后执行所有等待的回调
     function onBridgeReady(callback) {
         if (bridgeReady && callback) {
             callback();
@@ -371,18 +384,14 @@
     // 建立 QWebChannel
     // --------------------------------------------------------------
     document.addEventListener("DOMContentLoaded", function() {
-        // 检查 Qt WebChannel 环境是否可用
         if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
             new QWebChannel(qt.webChannelTransport, function(channel) {
                 bridge = channel.objects.bridge;
                 bridgeReady = true;
                 log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
-
-                // 执行所有等待的回调
                 pendingCallbacks.forEach(function(cb) { cb(); });
                 pendingCallbacks = [];
 
-                // 测试 ping
                 if (typeof bridge.ping === 'function') {
                     bridge.ping().then(function(reply) {
                         log("ping 响应: " + reply);
@@ -391,15 +400,12 @@
                     });
                 }
 
-                // 初始加载 K线
                 if (bridge) {
                     fetchAndRenderKline(currentStockCode);
                 }
             });
         } else {
             log("QWebChannel 环境不可用（qt.webChannelTransport 未定义），无法连接后端。");
-            // 可选：显示提示给用户
-            // 但业务上也可以降级为模拟数据（此处保持原有模拟数据功能）
         }
     });
 
@@ -408,8 +414,7 @@
     // --------------------------------------------------------------
     function fetchAndRenderKline(code) {
         if (!bridge) {
-            log("bridge 未就绪，无法获取数据（将使用模拟数据）");
-            // 使用已有的模拟数据
+            log("bridge 未就绪，将使用模拟数据");
             if (typeof generateMockKline === 'function') {
                 var mock = generateMockKline(code);
                 currentKlineDates = mock.dates;
@@ -421,21 +426,12 @@
         log("请求 K线数据: " + code);
         bridge.get_kline_data(code).then(function(jsonStr) {
             var data = JSON.parse(jsonStr);
-            if (data.error) {
-                log("获取数据出错: " + data.error);
-                return;
-            }
-            if (!data.dates || !data.values) {
-                log("数据格式错误");
-                return;
-            }
-            log("收到 " + data.dates.length + " 条K线");
+            if (data.error) { log("后端错误: " + data.error); return; }
+            if (!data.dates || !data.values) { log("格式错误"); return; }
             currentKlineDates = data.dates;
             currentKlineValues = data.values;
             renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints);
-        }).catch(function(err) {
-            log("请求失败: " + err);
-        });
+        }).catch(function(err) { log("请求失败: " + err); });
     }
 
     var currentKlineDates = [];
@@ -444,33 +440,14 @@
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         var dom = document.getElementById('klineMainChart');
         if (!dom) return;
-        if (!klineChart) {
-            klineChart = echarts.init(dom);
-        }
-
-        // 构造买卖点系列
+        if (!klineChart) klineChart = echarts.init(dom);
         var scatterData = [];
         buyPts.forEach(function(point) {
             var idx = dates.indexOf(point.date);
             if (idx !== -1) {
                 var k = values[idx];
                 var yPos = k[3] + (k[3] - k[2]) * 0.15;
-                scatterData.push({
-                    coord: [idx, yPos],
-                    value: 'B ' + point.shares + '股 @' + point.price,
-                    symbol: 'circle',
-                    symbolSize: 16,
-                    label: {
-                        show: true,
-                        formatter: 'B',
-                        color: '#fff',
-                        backgroundColor: '#ff4d4f',
-                        borderRadius: 12,
-                        padding: [2,6,2,6],
-                        fontSize: 11,
-                        fontWeight: 'bold'
-                    }
-                });
+                scatterData.push({ coord: [idx, yPos], value: 'B ' + point.shares + '股 @' + point.price, symbol: 'circle', symbolSize: 16, label: { show: true, formatter: 'B', color: '#fff', backgroundColor: '#ff4d4f', borderRadius: 12, padding: [2,6,2,6], fontSize: 11, fontWeight: 'bold' } });
             }
         });
         sellPts.forEach(function(point) {
@@ -478,66 +455,17 @@
             if (idx !== -1) {
                 var k = values[idx];
                 var yPos = k[3] + (k[3] - k[2]) * 0.15;
-                scatterData.push({
-                    coord: [idx, yPos],
-                    value: 'S ' + point.shares + '股 @' + point.price,
-                    symbol: 'circle',
-                    symbolSize: 16,
-                    label: {
-                        show: true,
-                        formatter: 'S',
-                        color: '#fff',
-                        backgroundColor: '#52c41a',
-                        borderRadius: 12,
-                        padding: [2,6,2,6],
-                        fontSize: 11,
-                        fontWeight: 'bold'
-                    }
-                });
+                scatterData.push({ coord: [idx, yPos], value: 'S ' + point.shares + '股 @' + point.price, symbol: 'circle', symbolSize: 16, label: { show: true, formatter: 'S', color: '#fff', backgroundColor: '#52c41a', borderRadius: 12, padding: [2,6,2,6], fontSize: 11, fontWeight: 'bold' } });
             }
         });
-
         var option = {
             backgroundColor: 'transparent',
-            tooltip: {
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: function(params) {
-                    var res = params[0].axisValue + '<br/>';
-                    for (var p of params) {
-                        if (p.seriesName === 'K线') {
-                            var d = p.data;
-                            res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3];
-                        } else if (p.seriesName === '买卖点') {
-                            res += '买卖点: ' + p.value;
-                        }
-                    }
-                    return res;
-                }
-            },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; for (var p of params) { if (p.seriesName === 'K线') { var d = p.data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; } else if (p.seriesName === '买卖点') { res += '买卖点: ' + p.value; } } return res; } },
             xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
             yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
             series: [
-                {
-                    name: 'K线',
-                    type: 'candlestick',
-                    data: values,
-                    itemStyle: {
-                        color: '#ef5350',
-                        color0: '#26a69a',
-                        borderColor: '#ef5350',
-                        borderColor0: '#26a69a'
-                    }
-                },
-                {
-                    name: '买卖点',
-                    type: 'scatter',
-                    data: scatterData,
-                    symbol: 'circle',
-                    symbolSize: 16,
-                    label: { show: true, position: 'top', formatter: function(params) { return params.value; } },
-                    tooltip: { formatter: function(params) { return params.value; } }
-                }
+                { name: 'K线', type: 'candlestick', data: values, itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' } },
+                { name: '买卖点', type: 'scatter', data: scatterData, symbol: 'circle', symbolSize: 16, label: { show: true, position: 'top', formatter: function(p) { return p.value; } }, tooltip: { formatter: function(p) { return p.value; } } }
             ],
             legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#ffffff' }, left: 'left' },
             grid: { containLabel: true, backgroundColor: '#0e1220' }
@@ -546,64 +474,46 @@
     }
 
     // --------------------------------------------------------------
-    // 运行回测
+    // 运行回测 (简化版，与之前相同)
     // --------------------------------------------------------------
     function runBacktest(code) {
         if (!bridge) {
-            log("bridge 未连接，无法回测（使用模拟数据）");
-            // 模拟添加买卖点（保持原有模拟回测行为）
-            var mockSignals = [
-                { date: '2026-01-05', code: code, type: 'buy', price: 12.35, shares: 800 },
-                { date: '2026-01-12', code: code, type: 'sell', price: 13.68, shares: 800 }
-            ];
-            buyPoints = mockSignals.filter(function(s) { return s.type === 'buy'; });
-            sellPoints = mockSignals.filter(function(s) { return s.type === 'sell'; });
-            log("模拟回测完成，买入信号 " + buyPoints.length + " 个，卖出信号 " + sellPoints.length + " 个");
-            if (currentKlineDates.length > 0) {
-                renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
-            }
+            log("bridge 未连接，使用模拟信号");
+            var mockSignals = [ { date: '2026-01-05', code: code, type: 'buy', price: 12.35, shares: 800 }, { date: '2026-01-12', code: code, type: 'sell', price: 13.68, shares: 800 } ];
+            buyPoints = mockSignals.filter(s => s.type === 'buy');
+            sellPoints = mockSignals.filter(s => s.type === 'sell');
+            if (currentKlineDates.length > 0) renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
             return;
         }
         log("运行回测: " + code);
         bridge.run_backtest(code).then(function(jsonStr) {
             var res = JSON.parse(jsonStr);
-            if (res.error) {
-                log("回测出错: " + res.error);
-                return;
-            }
+            if (res.error) { log("回测出错: " + res.error); return; }
             if (res.success) {
-                var signals = res.signals;
-                buyPoints = signals.filter(function(s) { return s.type === 'buy'; });
-                sellPoints = signals.filter(function(s) { return s.type === 'sell'; });
-                log("回测完成，买入信号 " + buyPoints.length + " 个，卖出信号 " + sellPoints.length + " 个");
-                if (currentKlineDates.length > 0) {
-                    renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
-                }
+                buyPoints = res.signals.filter(s => s.type === 'buy');
+                sellPoints = res.signals.filter(s => s.type === 'sell');
+                log("回测完成，买入 " + buyPoints.length + " 卖出 " + sellPoints.length);
+                if (currentKlineDates.length > 0) renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
             }
-        }).catch(function(err) {
-            log("回测请求失败: " + err);
-        });
+        }).catch(function(err) { log("回测请求失败: " + err); });
     }
 
     // --------------------------------------------------------------
-    // 模拟K线数据生成（当真实数据不可用时使用）
+    // 模拟K线数据生成
     // --------------------------------------------------------------
     function generateMockKline(code) {
         var baseDate = new Date(2026, 0, 1);
-        var dates = [];
-        var values = [];
-        var close = 12.0;
-        for (var i = 0; i < 60; i++) {
-            var date = new Date(baseDate);
-            date.setDate(baseDate.getDate() + i);
+        var dates = [], values = [], close = 12.0;
+        for (var i=0; i<60; i++) {
+            var date = new Date(baseDate); date.setDate(baseDate.getDate()+i);
             var dateStr = date.toISOString().slice(0,10);
             var open = close;
-            var change = (Math.random() - 0.5) * 1.2;
+            var change = (Math.random() - 0.5)*1.2;
             var newClose = open + change;
             if (newClose < 8) newClose = 8.5;
             if (newClose > 28) newClose = 27;
-            var high = Math.max(open, newClose) + Math.random() * 0.8;
-            var low = Math.min(open, newClose) - Math.random() * 0.6;
+            var high = Math.max(open, newClose) + Math.random()*0.8;
+            var low = Math.min(open, newClose) - Math.random()*0.6;
             if (low < 7) low = 7.2;
             close = newClose;
             dates.push(dateStr);
@@ -613,68 +523,140 @@
     }
 
     // --------------------------------------------------------------
+    // 个人中心页面（使用模拟交易后端）
+    // --------------------------------------------------------------
+    function renderProfile() {
+        // 先尝试从bridge获取真实数据，若失败使用模拟数据
+        if (bridge) {
+            bridge.get_portfolio().then(function(jsonStr) {
+                var data = JSON.parse(jsonStr);
+                if (data.error) { log("获取持仓失败: " + data.error); useMockProfile(); return; }
+                renderProfileWithData(data);
+            }).catch(function(err) { log("获取持仓出错: " + err); useMockProfile(); });
+        } else {
+            useMockProfile();
+        }
+    }
+
+    function useMockProfile() {
+        var mock = {
+            cash: 1000000,
+            total_assets: 1000000,
+            holdings: [
+                { code: '000001', shares: 1000, cost: 12.50, price: 13.68, profit: 1180 },
+                { code: '000858', shares: 200, cost: 158.20, price: 172.30, profit: 2820 },
+                { code: '300750', shares: 100, cost: 185.60, price: 210.80, profit: 2520 }
+            ],
+            history: [
+                { date: '2026-01-05', type: '买入', code: '000001', price: 12.35, shares: 800 },
+                { date: '2026-01-20', type: '买入', code: '000001', price: 13.20, shares: 1000 },
+                { date: '2026-02-14', type: '买入', code: '000858', price: 158.2, shares: 200 }
+            ]
+        };
+        renderProfileWithData(mock);
+    }
+
+    function renderProfileWithData(data) {
+        var container = document.getElementById('dynamicContent');
+        var holdingRows = data.holdings.map(function(h) {
+            var profitCls = h.profit >= 0 ? 'profit-positive' : 'profit-negative';
+            return `<tr><td>${h.code}</td><td>${h.shares}</td><td>${h.cost.toFixed(2)}</td><td>${h.price.toFixed(2)}</td><td class="${profitCls}">${h.profit.toFixed(2)}</td></tr>`;
+        }).join('');
+        var tradeRows = data.history.map(function(t) {
+            var typeCls = t.type === '买入' ? 'profit-positive' : 'profit-negative';
+            return `<tr><td>${t.date}</td><td class="${typeCls}">${t.type}</td><td>${t.code}</td><td>${t.price.toFixed(2)}</td><td>${t.shares}</td></tr>`;
+        }).join('');
+        var totalReturn = (data.total_assets - 1000000) / 1000000 * 100;
+        var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
+        var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
+        container.innerHTML = `
+            <div class="card">
+                <div class="card-title">📋 当前持仓</div>
+                <table><thead><th>股票代码</th><th>持股数</th><th>成本价</th><th>现价</th><th>盈亏</th></thead>
+                <tbody>${holdingRows}</tbody></table>
+            </div>
+            <div class="card">
+                <div class="card-title">📜 交易记录</div>
+                <table><thead><th>日期</th><th>类型</th><th>代码</th><th>价格</th><th>数量</th></thead>
+                <tbody>${tradeRows}</tbody></table>
+            </div>
+            <div class="card">
+                <div class="card-title">💰 账户概况</div>
+                <div class="account-cards">
+                    <div class="account-card"><div class="label">总资产</div><div class="value">${data.total_assets.toLocaleString()}</div></div>
+                    <div class="account-card"><div class="label">可用资金</div><div class="value">${data.cash.toLocaleString()}</div></div>
+                    <div class="account-card"><div class="label">总收益率</div><div class="value ${returnCls}">${returnStr}</div></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🛒 模拟交易(输入)</div>
+                <div class="trade-input-row">
+                    <select id="tradeStockSelect"><option value="000001">000001</option><option value="000858">000858</option><option value="300750">300750</option></select>
+                    <input type="number" id="tradeShares" placeholder="数量" value="100" min="1" step="1">
+                    <input type="number" id="tradePrice" placeholder="价格" value="12.00" step="0.01">
+                    <button id="tradeBuyBtn">买入</button>
+                    <button id="tradeSellBtn">卖出</button>
+                </div>
+                <div id="tradeResult" style="margin-top:8px; font-size:13px;"></div>
+            </div>
+        `;
+        // 绑定交易事件
+        document.getElementById('tradeBuyBtn').onclick = function() { doTrade('buy'); };
+        document.getElementById('tradeSellBtn').onclick = function() { doTrade('sell'); };
+    }
+
+    function doTrade(action) {
+        var code = document.getElementById('tradeStockSelect').value;
+        var shares = parseInt(document.getElementById('tradeShares').value);
+        var price = parseFloat(document.getElementById('tradePrice').value);
+        if (!bridge) { document.getElementById('tradeResult').innerText = 'bridge未连接'; return; }
+        bridge.execute_trade(code, action, shares, price).then(function(jsonStr) {
+            var res = JSON.parse(jsonStr);
+            document.getElementById('tradeResult').innerText = res.message;
+            // 刷新持仓
+            renderProfile();
+        }).catch(function(err) {
+            document.getElementById('tradeResult').innerText = '交易失败: ' + err;
+        });
+    }
+
+    // --------------------------------------------------------------
     // 页面导航
     // --------------------------------------------------------------
     function loadPage(pageId) {
         var container = document.getElementById('dynamicContent');
-        if (pageId === 'kchart') {
+        if (pageId === 'profile') { renderProfile(); }
+        else if (pageId === 'kchart') {
             container.innerHTML = `
                 <div class="card">
                     <div class="card-title">📈 买卖点成交图 (策略回测生成买卖点)</div>
-                    <div class="legend-sign">
-                        <span><i class="buy-point"></i> 买入 (B)</span>
-                        <span><i class="sell-point"></i> 卖出 (S)</span>
-                    </div>
+                    <div class="legend-sign"><span><i class="buy-point"></i> 买入 (B)</span><span><i class="sell-point"></i> 卖出 (S)</span></div>
                     <div class="metric-row">
                         <span>当前股票:</span>
-                        <select id="stockSelectorKline">
-                            <option value="000001">000001 平安银行</option>
-                            <option value="000858">000858 五粮液</option>
-                            <option value="300750">300750 宁德时代</option>
-                        </select>
+                        <select id="stockSelectorKline"><option value="000001">000001 平安银行</option><option value="000858">000858 五粮液</option><option value="300750">300750 宁德时代</option></select>
                         <button id="runBacktestBtn">▶ 运行回测</button>
                         <button id="refreshKlineBtn">刷新K线</button>
                     </div>
                     <div id="klineMainChart" class="kline-container"></div>
                     <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成</p>
                 </div>`;
-
             setTimeout(function() {
                 var sel = document.getElementById('stockSelectorKline');
                 var runBtn = document.getElementById('runBacktestBtn');
                 var refreshBtn = document.getElementById('refreshKlineBtn');
-                if (sel) {
-                    sel.onchange = function() {
-                        currentStockCode = sel.value;
-                        // 清除旧买卖点
-                        buyPoints = [];
-                        sellPoints = [];
-                        fetchAndRenderKline(currentStockCode);
-                    };
-                }
-                if (runBtn) {
-                    runBtn.onclick = function() {
-                        runBacktest(sel ? sel.value : currentStockCode);
-                    };
-                }
-                if (refreshBtn) {
-                    refreshBtn.onclick = function() {
-                        fetchAndRenderKline(sel ? sel.value : currentStockCode);
-                    };
-                }
-                // 初始请求K线（如果 bridge 未就绪则走模拟数据）
+                if (sel) sel.onchange = function() { currentStockCode = sel.value; buyPoints=[]; sellPoints=[]; fetchAndRenderKline(currentStockCode); };
+                if (runBtn) runBtn.onclick = function() { runBacktest(sel ? sel.value : currentStockCode); };
+                if (refreshBtn) refreshBtn.onclick = function() { fetchAndRenderKline(sel ? sel.value : currentStockCode); };
                 fetchAndRenderKline(currentStockCode);
             }, 50);
         } else {
             container.innerHTML = `<div class="card"><div class="card-title">${pageId}</div><p style="color:#ffffff;">该页面功能后续完善</p></div>`;
         }
-        // 高亮导航
         document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
         var target = document.querySelector('.nav-item[data-page="' + pageId + '"]');
         if (target) target.classList.add('active');
     }
 
-    // 初始化导航绑定
     document.querySelectorAll('.nav-item').forEach(function(item) {
         item.addEventListener('click', function(e) {
             var pageId = item.getAttribute('data-page');
@@ -682,7 +664,6 @@
         });
     });
 
-    // 默认页面
     loadPage('kchart');
 </script>
 </body>
