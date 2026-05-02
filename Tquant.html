@@ -6,6 +6,8 @@
     <title>Tquant 量化工作站 | 策略回测 + K线买卖点</title>
     <!-- ECharts 核心库 -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- QWebChannel -->
+    <script src="web/qwebchannel.js"></script>
     <style>
         * {
             margin: 0;
@@ -354,7 +356,47 @@
 
 <script>
     // --------------------------------------------------------------
-    // 模拟数据
+    // 全局变量
+    // --------------------------------------------------------------
+    var bridge = null;
+    var realKlineData = null; // 缓存从后端获取的真实K线数据
+
+    // --------------------------------------------------------------
+    // 建立 QWebChannel 连接
+    // --------------------------------------------------------------
+    document.addEventListener("DOMContentLoaded", function() {
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                bridge = channel.objects.bridge;
+                // 测试通信
+                bridge.echo("Hello from web").then(function(reply) {
+                    console.log("QWebChannel 通信成功:", reply);
+                }).catch(function(err) {
+                    console.error("QWebChannel 通信失败:", err);
+                });
+
+                // 预先获取真实K线数据（股票000001）
+                if (bridge) {
+                    bridge.getKlineData("000001").then(function(jsonStr) {
+                        var data = JSON.parse(jsonStr);
+                        if (data && !data.error && data.length > 0) {
+                            realKlineData = data;
+                            console.log("从MySQL获取到真实K线数据，共" + data.length + "条");
+                        } else {
+                            console.warn("后端返回的数据为空或出错，将使用模拟数据");
+                        }
+                    }).catch(function(err) {
+                        console.error("获取真实K线数据失败:", err);
+                    });
+                }
+            });
+        } else {
+            console.warn("QWebChannel 未加载，无法与后端通信。");
+        }
+    });
+
+    // --------------------------------------------------------------
+    // 模拟数据 (保持原有，作为后备)
     // --------------------------------------------------------------
     const mockTradeSignals = [
         { date: '2026-01-05', code: '000001', type: 'buy', price: 12.35, shares: 800 },
@@ -428,7 +470,21 @@
         { time: "2026-02-14 10:05", code: "000858", shares: 200, price: 158.2, mktValue: 31640 }
     ];
 
+    // --------------------------------------------------------------
+    // K线数据生成（模拟；当真实数据可用时会被替换）
+    // --------------------------------------------------------------
     function generateKlineData(code = "000001") {
+        // 如果已有真实数据，直接返回对应股票的（暂时只缓存了000001）
+        if (realKlineData && code === "000001") {
+            return realKlineData.map(item => ({
+                date: item.date,
+                open: item.open,
+                close: item.close,
+                high: item.high,
+                low: item.low
+            }));
+        }
+        // 否则使用模拟数据
         let baseDate = new Date(2026, 0, 1);
         const data = [];
         let close = 12.0;
@@ -690,8 +746,10 @@ def handle_bar(context, bar_dict):
 
     function renderKlineChartPage() {
         setTimeout(() => {
+            // 如果真实数据尚未加载完成，模拟数据将在generateKlineData中回退
+            currentKlineData = generateKlineData("000001");
             renderKlineWithSignals("klineMainChart", currentKlineData, currentTradeSignals, "000001");
-        }, 50);
+        }, 100);
         return `
             <div class="card">
                 <div class="card-title">📈 买卖点成交图 (基于策略买卖信号)</div>
@@ -776,7 +834,7 @@ def handle_bar(context, bar_dict):
         const refreshBtn = document.getElementById('refreshKlineBtn');
         const selector = document.getElementById('stockSelectorKline');
         if(refreshBtn && selector){
-            refreshBtn.onclick = () => { let stock = selector.value; let newKdata = generateKlineData(stock); renderKlineWithSignals("klineMainChart", newKdata, currentTradeSignals, stock); };
+            refreshBtn.onclick = () => { let stock = selector.value; let newKdata = generateKlineData(stock); currentKlineData = newKdata; renderKlineWithSignals("klineMainChart", newKdata, currentTradeSignals, stock); };
         }
     }
     function attachStockEvent() {
@@ -869,7 +927,6 @@ def handle_bar(context, bar_dict):
         loadPage('history');
         // 加载头像到导航栏
         loadAvatarFromStorage();
-        // 确保 Profile 页面首次加载时正常显示（但不会被自动点击）
     });
 </script>
 </body>
