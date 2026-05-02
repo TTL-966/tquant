@@ -27,7 +27,6 @@
             color: #ffffff;
         }
 
-        /* 主窗口 */
         .app-window {
             width: 1480px;
             max-width: 96vw;
@@ -41,7 +40,6 @@
             border: 1px solid #2a2f42;
         }
 
-        /* 标题栏 */
         .title-bar {
             background: #0c0f18;
             padding: 10px 24px;
@@ -59,14 +57,12 @@
             color: #5f8eff;
         }
 
-        /* 主体布局 */
         .main-layout {
             display: flex;
             flex: 1;
             overflow: hidden;
         }
 
-        /* 左侧导航栏 */
         .nav-sidebar {
             width: 210px;
             background: #0a0d16;
@@ -117,7 +113,6 @@
             object-fit: cover;
         }
 
-        /* 右侧内容区 */
         .content-panel {
             flex: 1;
             background: #0f1220;
@@ -126,7 +121,6 @@
             color: #ffffff;
         }
 
-        /* 卡片 */
         .card {
             background: #151c2c;
             border-radius: 20px;
@@ -144,7 +138,6 @@
             margin-bottom: 18px;
         }
 
-        /* K线图容器 */
         .kline-container {
             width: 100%;
             height: 460px;
@@ -153,7 +146,6 @@
             margin: 10px 0;
         }
 
-        /* 买卖点图例 */
         .legend-sign {
             display: inline-flex;
             align-items: center;
@@ -265,7 +257,6 @@
             background: #3f4a6b;
         }
 
-        /* 个人中心样式 */
         .profile-avatar-upload {
             display: flex;
             align-items: center;
@@ -330,7 +321,6 @@
         <div style="font-size:12px; color:#ffffff;">专业回测引擎</div>
     </div>
     <div class="main-layout">
-        <!-- 左侧导航 -->
         <div class="nav-sidebar">
             <div class="nav-item" data-page="profile">
                 <span class="avatar-icon" id="navAvatarIcon">👤</span>
@@ -358,6 +348,9 @@
     // --------------------------------------------------------------
     var bridge = null;
     var klineChart = null;
+    var currentStockCode = "000001";
+    var buyPoints = [];
+    var sellPoints = [];
 
     function log(msg) {
         console.log("[Tquant]", msg);
@@ -372,16 +365,14 @@
                 bridge = channel.objects.bridge;
                 log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
 
-                // 测试 ping
                 bridge.ping().then(function(reply) {
                     log("ping 响应: " + reply);
                 }).catch(function(err) {
                     log("ping 失败: " + err);
                 });
 
-                // 初始加载 K线
                 if (bridge) {
-                    fetchAndRenderKline("000001");
+                    fetchAndRenderKline(currentStockCode);
                 }
             });
         } else {
@@ -390,7 +381,7 @@
     });
 
     // --------------------------------------------------------------
-    // K线数据获取与渲染
+    // K线数据获取与渲染（含买卖点）
     // --------------------------------------------------------------
     function fetchAndRenderKline(code) {
         if (!bridge) {
@@ -409,18 +400,73 @@
                 return;
             }
             log("收到 " + data.dates.length + " 条K线");
-            renderKlineChart(data.dates, data.values);
+            currentKlineDates = data.dates;
+            currentKlineValues = data.values;
+            renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints);
         }).catch(function(err) {
             log("请求失败: " + err);
         });
     }
 
-    function renderKlineChart(dates, values) {
+    var currentKlineDates = [];
+    var currentKlineValues = [];
+
+    function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         var dom = document.getElementById('klineMainChart');
         if (!dom) return;
         if (!klineChart) {
             klineChart = echarts.init(dom);
         }
+
+        // 构造买卖点系列
+        var scatterData = [];
+        buyPts.forEach(function(point) {
+            var idx = dates.indexOf(point.date);
+            if (idx !== -1) {
+                var k = values[idx];
+                var yPos = k[3] + (k[3] - k[2]) * 0.15; // 在K线上方
+                scatterData.push({
+                    coord: [idx, yPos],
+                    value: 'B ' + point.shares + '股 @' + point.price,
+                    symbol: 'circle',
+                    symbolSize: 16,
+                    label: {
+                        show: true,
+                        formatter: 'B',
+                        color: '#fff',
+                        backgroundColor: '#ff4d4f',
+                        borderRadius: 12,
+                        padding: [2,6,2,6],
+                        fontSize: 11,
+                        fontWeight: 'bold'
+                    }
+                });
+            }
+        });
+        sellPts.forEach(function(point) {
+            var idx = dates.indexOf(point.date);
+            if (idx !== -1) {
+                var k = values[idx];
+                var yPos = k[3] + (k[3] - k[2]) * 0.15;
+                scatterData.push({
+                    coord: [idx, yPos],
+                    value: 'S ' + point.shares + '股 @' + point.price,
+                    symbol: 'circle',
+                    symbolSize: 16,
+                    label: {
+                        show: true,
+                        formatter: 'S',
+                        color: '#fff',
+                        backgroundColor: '#52c41a',
+                        borderRadius: 12,
+                        padding: [2,6,2,6],
+                        fontSize: 11,
+                        fontWeight: 'bold'
+                    }
+                });
+            }
+        });
+
         var option = {
             backgroundColor: 'transparent',
             tooltip: {
@@ -432,6 +478,8 @@
                         if (p.seriesName === 'K线') {
                             var d = p.data;
                             res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3];
+                        } else if (p.seriesName === '买卖点') {
+                            res += '买卖点: ' + p.value;
                         }
                     }
                     return res;
@@ -439,39 +487,78 @@
             },
             xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
             yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-            series: [{
-                name: 'K线',
-                type: 'candlestick',
-                data: values,
-                itemStyle: {
-                    color: '#ef5350',
-                    color0: '#26a69a',
-                    borderColor: '#ef5350',
-                    borderColor0: '#26a69a'
+            series: [
+                {
+                    name: 'K线',
+                    type: 'candlestick',
+                    data: values,
+                    itemStyle: {
+                        color: '#ef5350',
+                        color0: '#26a69a',
+                        borderColor: '#ef5350',
+                        borderColor0: '#26a69a'
+                    }
+                },
+                {
+                    name: '买卖点',
+                    type: 'scatter',
+                    data: scatterData,
+                    symbol: 'circle',
+                    symbolSize: 16,
+                    label: { show: true, position: 'top', formatter: function(params) { return params.value; } },
+                    tooltip: { formatter: function(params) { return params.value; } }
                 }
-            }],
-            legend: { data: ['K线'], textStyle: { color: '#ffffff' }, left: 'left' },
+            ],
+            legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#ffffff' }, left: 'left' },
             grid: { containLabel: true, backgroundColor: '#0e1220' }
         };
         klineChart.setOption(option, true);
     }
 
     // --------------------------------------------------------------
-    // 以下为原个人中心、头像、买卖点等功能（保留不变）
-    // 为节省篇幅只保留必要结构，实际可展开
+    // 运行回测
     // --------------------------------------------------------------
-    // 保持原有所有渲染和事件代码……
-    // 此部分因篇幅省略，实际使用时请粘贴完整版本
-    // 为确保测试通过，这里仅保留核心K线页面
-    // --------------------------------------------------------------
+    function runBacktest(code) {
+        if (!bridge) {
+            alert("bridge 未连接");
+            return;
+        }
+        log("运行回测: " + code);
+        bridge.run_backtest(code).then(function(jsonStr) {
+            var res = JSON.parse(jsonStr);
+            if (res.error) {
+                log("回测出错: " + res.error);
+                return;
+            }
+            if (res.success) {
+                var signals = res.signals;
+                // 按类型分离
+                buyPoints = signals.filter(function(s) { return s.type === 'buy'; });
+                sellPoints = signals.filter(function(s) { return s.type === 'sell'; });
+                log("回测完成，买入信号 " + buyPoints.length + " 个，卖出信号 " + sellPoints.length + " 个");
+                // 重新渲染K线图
+                if (currentKlineDates.length > 0) {
+                    renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
+                }
+            }
+        }).catch(function(err) {
+            log("回测请求失败: " + err);
+        });
+    }
 
-    // 导航切换
+    // --------------------------------------------------------------
+    // 页面导航
+    // --------------------------------------------------------------
     function loadPage(pageId) {
         var container = document.getElementById('dynamicContent');
         if (pageId === 'kchart') {
             container.innerHTML = `
                 <div class="card">
-                    <div class="card-title">📈 买卖点成交图 (后端K线)</div>
+                    <div class="card-title">📈 买卖点成交图 (策略回测生成买卖点)</div>
+                    <div class="legend-sign">
+                        <span><i class="buy-point"></i> 买入 (B)</span>
+                        <span><i class="sell-point"></i> 卖出 (S)</span>
+                    </div>
                     <div class="metric-row">
                         <span>当前股票:</span>
                         <select id="stockSelectorKline">
@@ -479,25 +566,42 @@
                             <option value="000858">000858 五粮液</option>
                             <option value="300750">300750 宁德时代</option>
                         </select>
-                        <button id="refreshKlineBtn">刷新</button>
+                        <button id="runBacktestBtn">▶ 运行回测</button>
+                        <button id="refreshKlineBtn">刷新K线</button>
                     </div>
                     <div id="klineMainChart" class="kline-container"></div>
-                    <p style="margin-top:12px; color:#ffffff;">数据来源：后端数据库 / 模拟数据</p>
+                    <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成</p>
                 </div>`;
+
             setTimeout(function() {
                 var sel = document.getElementById('stockSelectorKline');
-                var btn = document.getElementById('refreshKlineBtn');
+                var runBtn = document.getElementById('runBacktestBtn');
+                var refreshBtn = document.getElementById('refreshKlineBtn');
                 if (sel) {
-                    sel.onchange = function() { fetchAndRenderKline(sel.value); };
+                    sel.onchange = function() {
+                        currentStockCode = sel.value;
+                        fetchAndRenderKline(currentStockCode);
+                        // 清除旧买卖点
+                        buyPoints = [];
+                        sellPoints = [];
+                    };
                 }
-                if (btn) {
-                    btn.onclick = function() { fetchAndRenderKline(sel.value); };
+                if (runBtn) {
+                    runBtn.onclick = function() {
+                        runBacktest(sel ? sel.value : currentStockCode);
+                    };
                 }
-                // 如果桥已经就绪，重新获取
-                if (bridge) fetchAndRenderKline(sel ? sel.value : '000001');
+                if (refreshBtn) {
+                    refreshBtn.onclick = function() {
+                        fetchAndRenderKline(sel ? sel.value : currentStockCode);
+                    };
+                }
+                // 初始请求K线
+                if (bridge) {
+                    fetchAndRenderKline(currentStockCode);
+                }
             }, 50);
         } else {
-            // 其他页面保留简单占位
             container.innerHTML = `<div class="card"><div class="card-title">${pageId}</div><p style="color:#ffffff;">该页面功能后续完善</p></div>`;
         }
         // 高亮导航
