@@ -158,8 +158,16 @@ class WebBridge(QObject):
         """返回持仓中的股票代码列表"""
         try:
             portfolio = self.trade.get_portfolio()
-            holdings = portfolio.get("holdings", {})
-            codes = list(holdings.keys())
+            holdings = portfolio.get("holdings", [])
+
+            codes = []
+            if isinstance(holdings, dict):
+                codes = list(holdings.keys())
+            elif isinstance(holdings, list):
+                for item in holdings:
+                    if isinstance(item, dict) and 'code' in item:
+                        codes.append(item['code'])
+
             return json.dumps({"stocks": codes})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
