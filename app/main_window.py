@@ -27,7 +27,7 @@ class MainWindow(QMainWindow):
         self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
-        # 加载 web/index.html
+        # 加载项目根目录下的 Tquant.html（而不是 web/index.html）
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        html_path = os.path.join(base_dir, "..", "web", "index.html")
+        html_path = os.path.join(base_dir, "..", "Tquant.html")
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
