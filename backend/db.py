@@ -19,54 +19,36 @@ class Database:
     def get_kline(self, code, start_date="2026-01-01", end_date="2026-04-01"):
         if self.engine:
             try:
-                # 处理代码格式
+                # 转换日期格式：YYYY-MM-DD -> YYYYMMDD
+                start = start_date.replace('-', '')
+                end = end_date.replace('-', '')
+
+                # 处理股票代码格式：如果没有后缀，默认添加 .SZ
                 if '.' not in code:
-                    code_sz = f"{code}.SZ"
-                    code_sh = f"{code}.SH"
-                    sql = text("""
-                        SELECT trade_date, open, high, low, close, vol AS volume
-                        FROM stock_daily
-                        WHERE (ts_code = :code_sz OR ts_code = :code_sh)
-                          AND trade_date >= :start_date
-                          AND trade_date <= :end_date
-                        ORDER BY trade_date ASC
-                        LIMIT 60
-                    """)
-                    with self.engine.connect() as conn:
-                        df = pd.read_sql(
-                            sql,
-                            conn,
-                            params={
-                                "code_sz": code_sz,
-                                "code_sh": code_sh,
-                                "start_date": start_date,
-                                "end_date": end_date
-                            }
-                        )
-                else:
-                    sql = text("""
-                        SELECT trade_date, open, high, low, close, vol AS volume
-                        FROM stock_daily
-                        WHERE ts_code = :code
-                          AND trade_date >= :start_date
-                          AND trade_date <= :end_date
-                        ORDER BY trade_date ASC
-                        LIMIT 60
-                    """)
-                    with self.engine.connect() as conn:
-                        df = pd.read_sql(
-                            sql,
-                            conn,
-                            params={
-                                "code": code,
-                                "start_date": start_date,
-                                "end_date": end_date
-                            }
-                        )
+                    code = f"{code}.SZ"
+
+                sql = text("""
+                    SELECT trade_date, open, high, low, close
+                    FROM stock_daily
+                    WHERE ts_code = :code
+                      AND trade_date >= :start
+                      AND trade_date <= :end
+                    ORDER BY trade_date ASC
+                    LIMIT 60
+                """)
+                with self.engine.connect() as conn:
+                    df = pd.read_sql(
+                        sql,
+                        conn,
+                        params={
+                            "code": code,
+                            "start": start,
+                            "end": end
+                        }
+                    )
 
                 if df.empty:
                     return self._generate_mock_data()
-                # trade_date 是字符串，不再转换
                 return df
             except Exception as e:
                 print("查询失败，使用模拟数据:", e)
