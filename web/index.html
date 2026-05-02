@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Tquant 量化工作站 | 策略回测 + K线买卖点</title>
+    <!-- ECharts 核心库 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- QWebChannel -->
+    <script src="qwebchannel.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, '微软雅黑', sans-serif;
+            background: #0e1118;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 主窗口 - 桌面程序风格，避免花哨 */
+        .app-window {
+            width: 1480px;
+            max-width: 96vw;
+            height: 92vh;
+            background: #11141f;
+            border-radius: 20px;
+            box-shadow: 0 20px 35px -8px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #2a2f42;
+        }
+
+        /* 标题栏极简 */
+        .title-bar {
+            background: #0c0f18;
+            padding: 10px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-bottom: 1px solid #202436;
+        }
+        .logo-text {
+            font-size: 18px;
+            font-weight: 600;
+            color: #cbd5f0;
+        }
+        .logo-text span {
+            color: #5f8eff;
+        }
+
+        /* 主体布局 */
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* 左侧导航栏 */
+        .nav-sidebar {
+            width: 210px;
+            background: #0a0d16;
+            border-right: 1px solid #202436;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 10px;
+            gap: 6px;
+            overflow-y: auto;
+        }
+        .nav-item {
+            padding: 10px 14px;
+            border-radius: 12px;
+            color: #9aa5c0;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .nav-item:hover {
+            background: #1a2135;
+            color: #eef2ff;
+        }
+        .nav-item.active {
+            background: #2c3e66;
+            color: white;
+        }
+
+        /* 右侧内容区（可滚动） */
+        .content-panel {
+            flex: 1;
+            background: #0f1220;
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+
+        /* 卡片 – 干净利落 */
+        .card {
+            background: #151c2c;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border: 1px solid #242a40;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #eef3ff;
+            border-left: 4px solid #4f7eff;
+            padding-left: 14px;
+            margin-bottom: 18px;
+        }
+
+        /* K线图容器 */
+        .kline-container {
+            width: 100%;
+            height: 460px;
+            background: #0e1220;
+            border-radius: 20px;
+            margin: 10px 0;
+        }
+
+        /* 买卖点图例 */
+        .legend-sign {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+        .buy-point {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            background: #ff4d4f;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .sell-point {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            background: #52c41a;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+
+        .metric-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin: 16px 0;
+        }
+        .metric-tag {
+            background: #1f273f;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+            color: #cbd5f0;
+        }
+        button {
+            background: #2d3a5e;
+            border: none;
+            padding: 6px 18px;
+            border-radius: 30px;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #3f5080;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            color: #cbd5f0;
+        }
+        th, td {
+            padding: 10px 6px;
+            text-align: left;
+            border-bottom: 1px solid #2a314a;
+        }
+        th {
+            color: #9aa9cc;
+            font-weight: 500;
+        }
+        .code-area {
+            background: #0b0e1a;
+            font-family: 'Fira Code', monospace;
+            padding: 16px;
+            border-radius: 16px;
+            white-space: pre-wrap;
+            font-size: 13px;
+            color: #cbd5f0;
+        }
+        textarea {
+            width: 100%;
+            background: #0b0e1a;
+            border: 1px solid #2a3145;
+            border-radius: 16px;
+            color: #d4e0ff;
+            font-family: 'Fira Code', monospace;
+            padding: 14px;
+            font-size: 13px;
+            resize: vertical;
+        }
+        .log-box {
+            background: #0c0f18;
+            border-radius: 16px;
+            padding: 12px;
+            height: 130px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 12px;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1a2130;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3f4a6b;
+        }
+    </style>
+</head>
+<body>
+<div class="app-window">
+    <div class="title-bar">
+        <div class="logo-text">Tquant <span>量化工作站</span> | 策略回测·K线买卖点</div>
+        <div style="font-size:12px; color:#6a7892;">专业回测引擎</div>
+    </div>
+    <div class="main-layout">
+        <!-- 左侧导航 -->
+        <div class="nav-sidebar">
+            <div class="nav-item active" data-page="history">📁 历史回测</div>
+            <div class="nav-item" data-page="strategy">💻 策略代码</div>
+            <div class="nav-item" data-page="detail">📊 策略详情</div>
+            <div class="nav-item" data-page="daily">💰 每日持仓&收益</div>
+            <div class="nav-item" data-page="kchart">📈 买卖点成交图(K线)</div>
+            <div class="nav-item" data-page="stock">📉 个股详情</div>
+            <div class="nav-item" data-page="api">📘 API文档</div>
+            <div class="nav-item" data-page="settings">⚙️ 设置说明</div>
+        </div>
+
+        <div class="content-panel" id="dynamicContent">
+            <!-- 动态渲染 -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // 建立 QWebChannel 连接
+    var bridge = null;
+    document.addEventListener("DOMContentLoaded", function() {
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                bridge = channel.objects.bridge;
+                // 测试通信
+                bridge.echo("Hello from web").then(function(reply) {
+                    console.log("QWebChannel 通信成功:", reply);
+                }).catch(function(err) {
+                    console.error("QWebChannel 通信失败:", err);
+                });
+            });
+        } else {
+            console.warn("QWebChannel 未加载，无法与后端通信。");
+        }
+    });
+
+    // --------------------------------------------------------------
+    // 1. 模拟策略回测产生的买卖点数据 (基于某个策略的历史信号)
+    //    买卖点: 日期 + 股票代码 + 类型(buy/sell) + 价格 + 数量
+    // --------------------------------------------------------------
+    const mockTradeSignals = [
+        { date: '2026-01-05', code: '000001', type: 'buy', price: 12.35, shares: 800 },
+        { date: '2026-01-12', code: '000001', type: 'sell', price: 13.68, shares: 800 },
+        { date: '2026-01-20', code: '000001', type: 'buy', price: 13.20, shares: 1000 },
+        { date: '2026-02-01', code: '000001', type: 'sell', price: 14.55, shares: 1000 },
+        { date: '2026-02-14', code: '000858', type: 'buy', price: 158.2, shares: 200 },
+        { date: '2026-02-28', code: '000858', type: 'sell', price: 172.3, shares: 200 },
+        { date: '2026-03-10', code: '300750', type: 'buy', price: 185.6, shares: 100 },
+        { date: '2026-03-25', code: '300750', type: 'sell', price: 210.8, shares: 100 }
+    ];
+
+    // 历史回测策略列表 (点击后跳转到策略代码区并加载对应示例代码)
+    const backtestStrategies = [
+        { id: 1, name: "双均线策略 (5,20)", profit: "+23.5%", code: "def initialize(context):\n    context.stock = '000001.SZ'\n    context.short_win = 5\n    context.long_win = 20\n\ndef handle_bar(context, bar_dict):\n    short_ma = history_bars(context.stock, context.short_win, '1d', 'close').mean()\n    long_ma = history_bars(context.stock, context.long_win, '1d', 'close').mean()\n    if short_ma > long_ma:\n        order_target_percent(context.stock, 1.0)\n        log.info('买入信号 at 价格:'+ str(bar_dict[context.stock].close))\n    elif short_ma < long_ma:\n        order_target_percent(context.stock, 0)\n        log.info('卖出信号')" },
+        { id: 2, name: "RSI 超买超卖", profit: "+15.2%", code: "def initialize(context):\n    context.stock = '000858.SZ'\n    context.rsi_period = 14\n\ndef handle_bar(context, bar_dict):\n    rsi = RSI(context.stock, context.rsi_period)\n    if rsi < 30:\n        order_target_percent(context.stock, 0.8)\n        log.info('RSI 低吸买入')\n    elif rsi > 70:\n        order_target_percent(context.stock, 0)\n        log.info('RSI 超买卖出')" },
+        { id: 3, name: "动量突破策略", profit: "+31.8%", code: "def initialize(context):\n    context.stock = '300750.SZ'\n    context.window = 20\n\ndef handle_bar(context, bar_dict):\n    prices = history_bars(context.stock, context.window, '1d', 'close')\n    if prices[-1] > max(prices[:-1]):\n        order_target_percent(context.stock, 1.0)\n        log.info('动量突破买入')\n    elif prices[-1] < min(prices[:-1]):\n        order_target_percent(context.stock, 0)" }
+    ];
+
+    // 每日持仓收益模拟
+    const dailyHoldings = [
+        { date: "2026-01-05", cash: "100,000", dailyProfit: "0.00", cumulative: "0.00" },
+        { date: "2026-01-12", cash: "100,980", dailyProfit: "+980", cumulative: "+980" },
+        { date: "2026-01-20", cash: "102,300", dailyProfit: "+1,320", cumulative: "+2,300" },
+        { date: "2026-02-01", cash: "104,150", dailyProfit: "+1,850", cumulative: "+4,150" }
+    ];
+
+    // 策略详情-股票成交库
+    const tradeStockLibrary = [
+        { time: "2026-01-05 09:35", code: "000001", shares: 800, price: 12.35, mktValue: 9880 },
+        { time: "2026-01-12 14:20", code: "000001", shares: 800, price: 13.68, mktValue: 10944 },
+        { time: "2026-02-14 10:05", code: "000858", shares: 200, price: 158.2, mktValue: 31640 }
+    ];
+
+    // 辅助函数: 生成K线图的蜡烛数据 (2026-01-01 到 2026-04-01) 60根K线
+    function generateKlineData(code = "000001") {
+        let baseDate = new Date(2026, 0, 1);
+        const data = [];
+        let close = 12.0;
+        for (let i = 0; i < 60; i++) {
+            let date = new Date(baseDate);
+            date.setDate(baseDate.getDate() + i);
+            let dateStr = date.toISOString().slice(0,10);
+            let open = close;
+            let change = (Math.random() - 0.5) * 1.2;
+            let newClose = open + change;
+            if (newClose < 8) newClose = 8.5;
+            if (newClose > 28) newClose = 27;
+            let high = Math.max(open, newClose) + Math.random() * 0.8;
+            let low = Math.min(open, newClose) - Math.random() * 0.6;
+            if (low < 7) low = 7.2;
+            close = newClose;
+            data.push({
+                date: dateStr,
+                open: parseFloat(open.toFixed(2)),
+                close: parseFloat(close.toFixed(2)),
+                high: parseFloat(high.toFixed(2)),
+                low: parseFloat(low.toFixed(2))
+            });
+        }
+        return data;
+    }
+
+    let currentKlineData = generateKlineData("000001");
+    let currentTradeSignals = [...mockTradeSignals]; // 可扩展
+
+    // 渲染K线图 + 买卖点标识 (小红点+B/S & 标注股数和价格)
+    function renderKlineWithSignals(containerId, klineData, signals, stockCode = "000001") {
+        const dom = document.getElementById(containerId);
+        if (!dom) return;
+        let chart = echarts.init(dom);
+        let dates = klineData.map(item => item.date);
+        let values = klineData.map(item => [item.open, item.close, item.low, item.high]);
+
+        // 构造买卖点标注系列 (散点图: 在K线上方标记B或S)
+        let buyPoints = [];
+        let sellPoints = [];
+        signals.forEach(sig => {
+            if (sig.code !== stockCode) return;
+            const idx = dates.findIndex(d => d === sig.date);
+            if (idx !== -1) {
+                const k = klineData[idx];
+                const yPos = k.high + (k.high - k.low) * 0.15; // 在K线上方显示
+                const markData = {
+                    coord: [idx, yPos],
+                    value: sig.type === 'buy' ? `B ${sig.shares}股 @${sig.price}` : `S ${sig.shares}股 @${sig.price}`,
+                    symbol: 'circle',
+                    symbolSize: 16,
+                    label: {
+                        show: true,
+                        formatter: sig.type === 'buy' ? `B` : `S`,
+                        color: '#fff',
+                        backgroundColor: sig.type === 'buy' ? '#ff4d4f' : '#52c41a',
+                        borderRadius: 12,
+                        padding: [2, 6, 2, 6],
+                        fontSize: 11,
+                        fontWeight: 'bold'
+                    },
+                    itemStyle: { color: sig.type === 'buy' ? '#ff4d4f' : '#52c41a' }
+                };
+                if (sig.type === 'buy') buyPoints.push(markData);
+                else sellPoints.push(markData);
+            }
+        });
+
+        const option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    let res = params[0].axisValue + '<br/>';
+                    for (let p of params) {
+                        if (p.seriesName === 'K线') {
+                            let data = p.data;
+                            res += `开盘: ${data[1]}<br/>收盘: ${data[2]}<br/>最低: ${data[3]}<br/>最高: ${data[0]}<br/>`;
+                        } else if (p.seriesName === '买卖点') {
+                            res += `买卖点: ${p.value}<br/>`;
+                        }
+                    }
+                    return res;
+                }
+            },
+            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#9aa9cc' } },
+            yAxis: { scale: true, axisLabel: { color: '#b9c7e5' }, name: '价格 (元)' },
+            series: [
+                {
+                    name: 'K线',
+                    type: 'candlestick',
+                    data: values,
+                    itemStyle: {
+                        color: '#ef5350',
+                        color0: '#26a69a',
+                        borderColor: '#ef5350',
+                        borderColor0: '#26a69a'
+                    }
+                },
+                {
+                    name: '买卖点',
+                    type: 'scatter',
+                    data: [...buyPoints, ...sellPoints],
+                    symbol: 'circle',
+                    symbolSize: 16,
+                    label: { show: true, position: 'top', formatter: (params) => params.value },
+                    tooltip: { formatter: (params) => `${params.value}` }
+                }
+            ],
+            legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#e2e8f0' }, left: 'left' },
+            grid: { containLabel: true, backgroundColor: '#0e1220' }
+        };
+        chart.setOption(option);
+        return chart;
+    }
+
+    // ----------------- 页面渲染模块 (八大功能完整) -----------------
+    function renderHistory() {
+        let listHtml = backtestStrategies.map(s => `
+            <div class="backtest-item" data-strategy-id="${s.id}" data-strategy-name="${s.name}" data-strategy-code="${escapeHtml(s.code)}" style="background:#1a2135; border-radius: 16px; padding: 14px; margin-bottom: 12px; cursor:pointer;">
+                <div style="font-weight:600;">${s.name}</div>
+                <div style="font-size:12px; color:#9aa9cc;">收益 ${s.profit} | 点击加载策略代码并跳转</div>
+            </div>
+        `).join('');
+        return `
+            <div class="card">
+                <div class="card-title">📂 历史回测记录</div>
+                <p style="margin-bottom: 16px; color:#a5b3d4;">保存的回测策略，点击任意策略会跳转到【策略代码】模块并自动填充代码。</p>
+                <div id="historyList">${listHtml}</div>
+                <div style="margin-top: 16px;"><button id="demoBacktestBtn" style="background:#3a4a70;">📌 回测详情演示（策略详情）</button></div>
+            </div>
+        `;
+    }
+
+    function renderStrategyCode() {
+        return `
+            <div class="card">
+                <div class="card-title">✍️ 策略代码编写区</div>
+                <div style="margin-bottom: 12px;"><button id="runCodeBtn">▶ 运行回测 (模拟)</button></div>
+                <textarea id="strategyTextArea" rows="9">def initialize(context):
+    context.stock = "000001.SZ"
+    context.short_win = 5
+    context.long_win = 20
+
+def handle_bar(context, bar_dict):
+    short_ma = history_bars(context.stock, context.short_win, '1d', 'close').mean()
+    long_ma = history_bars(context.stock, context.long_win, '1d', 'close').mean()
+    if short_ma > long_ma:
+        order_target_percent(context.stock, 1.0)
+        log.info("买入信号")
+    elif short_ma < long_ma:
+        order_target_percent(context.stock, 0)</textarea>
+                <div class="log-box" id="runLogConsole">
+                    [系统] 就绪，点击运行回测或从左侧历史回测加载策略代码。<br>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderStrategyDetail() {
+        let stockRows = tradeStockLibrary.map(t => `<tr><td>${t.time}</td><td>${t.code}</td><td>${t.shares}</td><td>${t.price}</td><td>${t.mktValue}</td></tr>`).join('');
+        return `
+            <div class="card">
+                <div class="card-title">📊 策略详情 (双均线示例)</div>
+                <div class="metric-row">
+                    <span class="metric-tag">策略收益 +23.5%</span>
+                    <span class="metric-tag">基准收益 +12.1%</span>
+                    <span class="metric-tag">阿尔法 0.18</span>
+                    <span class="metric-tag">贝塔 0.92</span>
+                    <span class="metric-tag">最大回撤 -8.2%</span>
+                </div>
+                <div id="detailCurveContainer" style="height: 240px; width:100%; margin-bottom: 24px;"></div>
+                <div style="margin-top: 20px;"><h4 style="color:#eef3ff;">📋 成交股票库 (成交时间+代码+数量+价格+市值)</h4>
+                <table><thead><th>成交时间</th><th>股票代码</th><th>成交数量</th><th>成交价格</th><th>当前市值(元)</th></thead>
+                <tbody>${stockRows}</tbody></table></div>
+                <button id="gotoKlineBtn" style="margin-top: 16px;">🔍 查看买卖点成交图(K线)</button>
+            </div>
+        `;
+    }
+
+    function renderDailyHoldings() {
+        let rows = dailyHoldings.map(d => `<tr><td>${d.date}</td><td>${d.cash}</td><td>${d.dailyProfit}</td><td>${d.cumulative}</td></tr>`).join('');
+        return `<div class="card"><div class="card-title">💰 每日持仓 & 收益明细</div>
+                <table><thead><th>日期</th><th>现金/资产(元)</th><th>日收益(元)</th><th>累计收益(元)</th></thead>
+                <tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderKlineChartPage() {
+        // 专门展示K线图 + 买卖点
+        setTimeout(() => {
+            renderKlineWithSignals("klineMainChart", currentKlineData, currentTradeSignals, "000001");
+        }, 50);
+        return `
+            <div class="card">
+                <div class="card-title">📈 买卖点成交图 (基于策略买卖信号)</div>
+                <div class="legend-sign"><span><i class="buy-point"></i> 小红点 + B 买入 (标注股数/价格)</span> <span><i class="sell-point"></i> 绿点 + S 卖出 (标注股数/价格)</span></div>
+                <div id="klineMainChart" class="kline-container"></div>
+                <div class="metric-row">
+                    <span>当前股票: 000001 (平安银行)</span>
+                    <button id="refreshKlineBtn">刷新K线 & 买卖点</button>
+                    <select id="stockSelectorKline">
+                        <option value="000001">000001 平安银行</option>
+                        <option value="000858">000858 五粮液</option>
+                        <option value="300750">300750 宁德时代</option>
+                    </select>
+                </div>
+                <p style="margin-top:12px; font-size:13px;">✅ 买卖点由策略历史回测产生，红色B标记买入（价格+股数），绿色S标记卖出，完全模拟实盘成交记录显现在K线图上。</p>
+            </div>
+        `;
+    }
+
+    function renderStockDetail() {
+        return `<div class="card"><div class="card-title">📉 个股详情 (000001)</div>
+                <input type="text" id="stockInput" placeholder="股票代码 000858" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:white;">
+                <button id="searchStockBtn" style="margin-left:12px;">查询K线</button>
+                <div id="miniKlinePlaceholder" style="height: 280px; margin-top: 20px;"></div>
+                <div class="info-box" style="margin-top:16px;">支持日K/周K/月K切换，均线M5/M10等，点击股票显示K线图预览。</div>
+            </div>`;
+    }
+
+    function renderApiDoc() { return `<div class="card"><div class="card-title">📘 API文档</div><div class="code-area">GET /api/backtest/list<br>POST /api/strategy/run<br>GET /api/stock/kline?code=000001<br>GET /api/trade/signals</div></div>`; }
+    function renderSettings() { return `<div class="card"><div class="card-title">⚙️ 设置说明</div><p>界面支持所有模块独立滑动，K线图买卖点完全基于回测产生的信号展示。后续可对接实盘数据。</p></div>`; }
+
+    // 辅助函数
+    function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+    // 全局渲染导航及绑定事件
+    let currentPage = "history";
+    function loadPage(pageId) {
+        const container = document.getElementById('dynamicContent');
+        if (pageId === 'history') container.innerHTML = renderHistory();
+        else if (pageId === 'strategy') container.innerHTML = renderStrategyCode();
+        else if (pageId === 'detail') { container.innerHTML = renderStrategyDetail(); setTimeout(() => drawDetailCurve(), 100); }
+        else if (pageId === 'daily') container.innerHTML = renderDailyHoldings();
+        else if (pageId === 'kchart') { container.innerHTML = renderKlineChartPage(); setTimeout(() => { renderKlineWithSignals("klineMainChart", currentKlineData, currentTradeSignals, "000001"); attachKlineEvents(); }, 100); }
+        else if (pageId === 'stock') { container.innerHTML = renderStockDetail(); setTimeout(() => attachStockEvent(), 100); }
+        else if (pageId === 'api') container.innerHTML = renderApiDoc();
+        else if (pageId === 'settings') container.innerHTML = renderSettings();
+        attachGlobalEvents(pageId);
+    }
+
+    function drawDetailCurve() {
+        const dom = document.getElementById('detailCurveContainer');
+        if(dom && typeof echarts !== 'undefined'){
+            let chart = echarts.init(dom);
+            chart.setOption({ tooltip: {trigger:'axis'}, xAxis:{data:['1月','2月','3月'], axisLabel:{color:'#b9c7e5'}}, yAxis:{name:'收益率%'}, series:[{type:'line', data:[0,12.3,23.5], name:'策略收益曲线', lineStyle:{color:'#4f7eff'}}]});
+        }
+    }
+    function attachKlineEvents() {
+        const refreshBtn = document.getElementById('refreshKlineBtn');
+        const selector = document.getElementById('stockSelectorKline');
+        if(refreshBtn && selector){
+            refreshBtn.onclick = () => { let stock = selector.value; let newKdata = generateKlineData(stock); renderKlineWithSignals("klineMainChart", newKdata, currentTradeSignals, stock); };
+        }
+    }
+    function attachStockEvent() {
+        const searchBtn = document.getElementById('searchStockBtn');
+        const input = document.getElementById('stockInput');
+        if(searchBtn && input){
+            searchBtn.onclick = () => { alert(`模拟跳转个股${input.value} K线预览`); };
+        }
+    }
+    function attachGlobalEvents(page) {
+        // 历史回测点击跳转到策略代码区 + 自动填充代码
+        if(page === 'history'){
+            document.querySelectorAll('.backtest-item').forEach(el => {
+                el.onclick = (e) => {
+                    const name = el.getAttribute('data-strategy-name');
+                    const code = el.getAttribute('data-strategy-code');
+                    // 切换到策略代码页面
+                    document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+                    document.querySelector('.nav-item[data-page="strategy"]').classList.add('active');
+                    loadPage('strategy');
+                    setTimeout(() => {
+                        const textarea = document.getElementById('strategyTextArea');
+                        if(textarea && code) { textarea.value = decodeURIComponent(code); }
+                        const logDiv = document.getElementById('runLogConsole');
+                        if(logDiv) logDiv.innerHTML += `<div>✅ 已加载策略: ${name}，点击运行回测模拟产生买卖点。</div>`;
+                    }, 50);
+                };
+            });
+            const demoBtn = document.getElementById('demoBacktestBtn');
+            if(demoBtn) demoBtn.onclick = () => { document.querySelector('.nav-item[data-page="detail"]').click(); };
+        }
+        if(page === 'strategy'){
+            const runBtn = document.getElementById('runCodeBtn');
+            const logDiv = document.getElementById('runLogConsole');
+            if(runBtn && logDiv){
+                runBtn.onclick = () => {
+                    logDiv.innerHTML += `<div>🚀 回测运行中... 基于当前策略产生买卖信号: 2026-01-05 买入 000001 800股@12.35, 2026-01-12 卖出 @13.68</div>`;
+                    logDiv.scrollTop = logDiv.scrollHeight;
+                    // 同步更新K线买卖点标记（全局）
+                    currentTradeSignals.push({ date:'2026-01-20', code:'000001', type:'buy', price:13.20, shares:1000 });
+                    alert("回测模拟完成，买卖点已记录，可前往买卖点成交图查看最新K线标识。");
+                };
+            }
+        }
+        if(page === 'detail'){
+            const gotoBtn = document.getElementById('gotoKlineBtn');
+            if(gotoBtn) gotoBtn.onclick = () => { document.querySelector('.nav-item[data-page="kchart"]').click(); };
+        }
+    }
+
+    // 导航事件绑定
+    function bindNavigation() {
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const pageId = item.getAttribute('data-page');
+                document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+                item.classList.add('active');
+                loadPage(pageId);
+            });
+        });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        bindNavigation();
+        loadPage('history');
+    });
+</script>
+</body>
+</html>
