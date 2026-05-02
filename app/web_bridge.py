@@ -1,5 +1,5 @@
 import json
-from PyQt5.QtCore import QObject, pyqtSlot
+from PySide6.QtCore import QObject, Slot
 from backend.data_feed import DataFeed
 
 class WebBridge(QObject):
@@ -7,11 +7,11 @@ class WebBridge(QObject):
         super().__init__(parent)
         self.data_feed = DataFeed()
 
-    @pyqtSlot(result=str)
+    @Slot(result=str)
     def ping(self):
         return "pong"
 
-    @pyqtSlot(str, result=str)
+    @Slot(str, result=str)
     def get_kline_data(self, code):
         try:
             return self.data_feed.get_kline_json(code)
