@@ -17,18 +17,24 @@ class Database:
             self.engine = None
 
     def get_kline(self, code, start_date="2026-01-01", end_date="2026-04-01"):
+        """
+        获取K线数据
+        code: 股票代码，如 '000001' 或 '000001.SZ'
+        start_date: 开始日期，格式 YYYY-MM-DD
+        end_date: 结束日期，格式 YYYY-MM-DD
+        """
         if self.engine:
             try:
-                # 转换日期格式：YYYY-MM-DD -> YYYYMMDD
+                # 1. 转换日期格式：2026-01-05 -> 20260105
                 start = start_date.replace('-', '')
                 end = end_date.replace('-', '')
 
-                # 处理股票代码格式：如果没有后缀，默认添加 .SZ
+                # 2. 处理股票代码格式：000001 -> 000001.SZ
                 if '.' not in code:
                     code = f"{code}.SZ"
 
                 sql = text("""
-                    SELECT trade_date, open, high, low, close
+                    SELECT trade_date, open, high, low, close, vol AS volume
                     FROM stock_daily
                     WHERE ts_code = :code
                       AND trade_date >= :start
@@ -48,7 +54,9 @@ class Database:
                     )
 
                 if df.empty:
+                    print(f"未找到 {code} 在 {start_date} 到 {end_date} 的数据")
                     return self._generate_mock_data()
+
                 return df
             except Exception as e:
                 print("查询失败，使用模拟数据:", e)
@@ -65,7 +73,7 @@ class Database:
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
         volumes = np.random.randint(100000, 500000, n)
         df = pd.DataFrame({
-            'trade_date': [d.strftime('%Y-%m-%d') for d in dates],  # 字符串格式
+            'trade_date': [d.strftime('%Y%m%d') for d in dates],  # YYYYMMDD 格式
             'open': opens,
             'high': highs,
             'low': lows,
