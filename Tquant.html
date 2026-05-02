@@ -474,7 +474,13 @@
         bridge.get_kline_data(code).then(function(jsonStr) {
             var data = JSON.parse(jsonStr);
             if (data.error) { log("后端错误: " + data.error); return; }
-            if (!data.dates || !data.values) { log("格式错误"); return; }
+            // 【修正】兼容处理：如果后端没有直接提供 values，则从 opens/closes/lows/highs 构造
+            if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
+                data.values = data.dates.map(function(_, i) {
+                    return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
+                });
+            }
+            if (!data.dates || !data.values) { log("数据格式错误"); return; }
             currentKlineDates = data.dates;
             currentKlineValues = data.values;
             renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints);
@@ -519,6 +525,7 @@
             var idx = dates.indexOf(point.date);
             if (idx !== -1) {
                 var k = values[idx];
+                // values[idx] = [open, close, low, high]
                 var yPos = k[3] + (k[3] - k[2]) * 0.15;
                 scatterData.push({ coord: [idx, yPos], value: 'B ' + point.shares + '股 @' + point.price, symbol: 'circle', symbolSize: 16, label: { show: true, formatter: 'B', color: '#fff', backgroundColor: '#ff4d4f', borderRadius: 12, padding: [2,6,2,6], fontSize: 11, fontWeight: 'bold' } });
             }
@@ -625,7 +632,14 @@
         }
         bridge.get_kline_data(code).then(function(jsonStr) {
             var data = JSON.parse(jsonStr);
-            if (data.error || !data.dates) {
+            if (data.error) { var mock = generateMockKline(code); callback(mock.dates, mock.values); return; }
+            // 兼容处理：如果后端没有 values，从 opens/closes/lows/highs 构造
+            if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
+                data.values = data.dates.map(function(_, i) {
+                    return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
+                });
+            }
+            if (!data.dates || !data.values) {
                 var mock = generateMockKline(code);
                 callback(mock.dates, mock.values);
                 return;
