@@ -75,15 +75,15 @@ class Database:
     def _generate_mock_data(self):
         n = 60
         np.random.seed(42)
-        base = 12.0
         dates = pd.date_range("2026-01-01", periods=n, freq='B')
+        base = 12.0
         opens = base + np.cumsum(np.random.randn(n) * 0.5)
         closes = opens + np.random.randn(n) * 0.6
         highs = np.maximum(opens, closes) + np.random.rand(n) * 0.5
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
         volumes = np.random.randint(100000, 500000, n)
         df = pd.DataFrame({
-            'trade_date': dates.strftime('%Y-%m-%d'),
+            'trade_date': [d.strftime('%Y-%m-%d') for d in dates],  # 字符串格式
             'open': opens,
             'high': highs,
             'low': lows,
