@@ -350,6 +350,15 @@
             font-size: 13px;
             flex: 1;
         }
+        /* ----------  新增通用 select 宽度限制 ---------- */
+        select {
+            max-width: 240px;
+        }
+        /* ----------  可滚动表格容器 ---------- */
+        .scrollable-table {
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -723,6 +732,31 @@
         });
     }
 
+    // ----------  新增：填充买卖点成交图下拉框 ----------
+    function populateStockSelector(selectorId, stocks) {
+        var sel = document.getElementById(selectorId);
+        if (!sel) return;
+        sel.innerHTML = '';
+        // 去重并保留顺序
+        var seen = {};
+        stocks.forEach(function(c) {
+            if (!seen[c]) {
+                seen[c] = true;
+                var opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                sel.appendChild(opt);
+            }
+        });
+        // 如果没有股票，添加一个默认占位
+        if (sel.options.length === 0) {
+            var opt = document.createElement('option');
+            opt.value = '000001';
+            opt.textContent = '000001 (默认)';
+            sel.appendChild(opt);
+        }
+    }
+
     // --------------------------------------------------------------
     // 页面导航
     // --------------------------------------------------------------
@@ -736,7 +770,7 @@
                     <div class="legend-sign"><span><i class="buy-point"></i> 买入 (B)</span><span><i class="sell-point"></i> 卖出 (S)</span></div>
                     <div class="metric-row">
                         <span>当前股票:</span>
-                        <select id="stockSelectorKline"><option value="000001">000001 平安银行</option><option value="000858">000858 五粮液</option><option value="300750">300750 宁德时代</option></select>
+                        <select id="stockSelectorKline"></select>
                         <button id="runBacktestBtn">▶ 运行回测</button>
                         <button id="refreshKlineBtn">刷新K线</button>
                     </div>
@@ -744,18 +778,43 @@
                     <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成</p>
                 </div>`;
             setTimeout(function() {
-                var sel = document.getElementById('stockSelectorKline');
+                // 动态加载股票列表（优先从后端获取，否则用静态成交股票库）
+                var loadStockList = function(callback) {
+                    if (bridge) {
+                        bridge.get_traded_stocks().then(function(jsonStr) {
+                            var data = JSON.parse(jsonStr);
+                            var list = data.stocks || [];
+                            if (list.length > 0) {
+                                callback(list);
+                            } else {
+                                callback(tradeStockLibrary.map(function(t) { return t.code; }));
+                            }
+                        }).catch(function() {
+                            callback(tradeStockLibrary.map(function(t) { return t.code; }));
+                        });
+                    } else {
+                        callback(tradeStockLibrary.map(function(t) { return t.code; }));
+                    }
+                };
+                loadStockList(function(stocks) {
+                    populateStockSelector('stockSelectorKline', stocks);
+                    // 选中 currentStockCode
+                    var sel = document.getElementById('stockSelectorKline');
+                    if (sel) {
+                        for (var i = 0; i < sel.options.length; i++) {
+                            if (sel.options[i].value === currentStockCode) {
+                                sel.selectedIndex = i;
+                                break;
+                            }
+                        }
+                        sel.onchange = function() { currentStockCode = sel.value; buyPoints = []; sellPoints = []; fetchAndRenderKline(currentStockCode); };
+                    }
+                });
                 var runBtn = document.getElementById('runBacktestBtn');
                 var refreshBtn = document.getElementById('refreshKlineBtn');
-                if (sel) {
-                    for (var i = 0; i < sel.options.length; i++) {
-                        if (sel.options[i].value === currentStockCode) { sel.selectedIndex = i; break; }
-                    }
-                    sel.onchange = function() { currentStockCode = sel.value; buyPoints = []; sellPoints = []; fetchAndRenderKline(currentStockCode); };
-                }
-                if (runBtn) runBtn.onclick = function() { runBacktest(sel ? sel.value : currentStockCode); };
-                if (refreshBtn) refreshBtn.onclick = function() { fetchAndRenderKline(sel ? sel.value : currentStockCode); };
-                fetchAndRenderKline(sel ? sel.value : currentStockCode);
+                if (runBtn) runBtn.onclick = function() { runBacktest(currentStockCode); };
+                if (refreshBtn) refreshBtn.onclick = function() { fetchAndRenderKline(currentStockCode); };
+                fetchAndRenderKline(currentStockCode);
                 if (autoRunBacktest) { autoRunBacktest = false; runBacktest(currentStockCode); }
             }, 50);
         } else if (pageId === 'stock') {
@@ -868,8 +927,10 @@ def handle_bar(context, bar_dict):
                     <div class="metric-row">${tagHtml}</div>
                     <div id="detailCurveContainer" style="height: 240px; width:100%; margin-bottom: 24px;"></div>
                     <div style="margin-top: 20px;"><h4 style="color:#ffffff;">📋 成交股票库 (成交时间+代码+数量+价格+市值)</h4>
+                    <div class="scrollable-table">
                     <table><thead><th>成交时间</th><th>股票代码</th><th>成交数量</th><th>成交价格</th><th>当前市值(元)</th></thead>
-                    <tbody>${stockRows}</tbody></table></div>
+                    <tbody>${stockRows}</tbody></table>
+                    </div></div>
                     <button id="gotoKlineBtn" style="margin-top: 16px;">🔍 查看买卖点成交图(K线)</button>
                 </div>`;
             setTimeout(function() {
