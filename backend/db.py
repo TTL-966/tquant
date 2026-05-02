@@ -19,37 +19,54 @@ class Database:
     def get_kline(self, code, start_date="2026-01-01", end_date="2026-04-01"):
         if self.engine:
             try:
-                # 处理后缀：如果已包含 .SZ 或 .SH，则仅使用该精确代码；
-                # 否则同时查询 .SZ 和 .SH
-                if '.' in code:
-                    code_sz = code
-                    code_sh = code
+                # 处理代码格式
+                if '.' not in code:
+                    code_sz = f"{code}.SZ"
+                    code_sh = f"{code}.SH"
+                    sql = text("""
+                        SELECT trade_date, open, high, low, close, vol AS volume
+                        FROM stock_daily
+                        WHERE (ts_code = :code_sz OR ts_code = :code_sh)
+                          AND trade_date >= :start_date
+                          AND trade_date <= :end_date
+                        ORDER BY trade_date ASC
+                        LIMIT 60
+                    """)
+                    with self.engine.connect() as conn:
+                        df = pd.read_sql(
+                            sql,
+                            conn,
+                            params={
+                                "code_sz": code_sz,
+                                "code_sh": code_sh,
+                                "start_date": start_date,
+                                "end_date": end_date
+                            }
+                        )
                 else:
-                    code_sz = code + '.SZ'
-                    code_sh = code + '.SH'
+                    sql = text("""
+                        SELECT trade_date, open, high, low, close, vol AS volume
+                        FROM stock_daily
+                        WHERE ts_code = :code
+                          AND trade_date >= :start_date
+                          AND trade_date <= :end_date
+                        ORDER BY trade_date ASC
+                        LIMIT 60
+                    """)
+                    with self.engine.connect() as conn:
+                        df = pd.read_sql(
+                            sql,
+                            conn,
+                            params={
+                                "code": code,
+                                "start_date": start_date,
+                                "end_date": end_date
+                            }
+                        )
 
-                sql = text("""
-                    SELECT trade_date, open, high, low, close, vol AS volume
-                    FROM stock_daily
-                    WHERE (ts_code = :code_sz OR ts_code = :code_sh)
-                      AND trade_date BETWEEN :start_date AND :end_date
-                    ORDER BY trade_date ASC
-                """)
-                with self.engine.connect() as conn:
-                    df = pd.read_sql(
-                        sql,
-                        conn,
-                        params={
-                            "code_sz": code_sz,
-                            "code_sh": code_sh,
-                            "start_date": start_date,
-                            "end_date": end_date
-                        }
-                    )
-                    if df.empty:
-                        # 无数据时使用模拟数据
-                        return self._generate_mock_data()
-                    df['trade_date'] = pd.to_datetime(df['trade_date'])
+                if df.empty:
+                    return self._generate_mock_data()
+                # trade_date 是字符串，不再转换
                 return df
             except Exception as e:
                 print("查询失败，使用模拟数据:", e)
@@ -66,7 +83,7 @@ class Database:
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
         volumes = np.random.randint(100000, 500000, n)
         df = pd.DataFrame({
-            'trade_date': dates,
+            'trade_date': dates.strftime('%Y-%m-%d'),
             'open': opens,
             'high': highs,
             'low': lows,
