@@ -394,6 +394,16 @@
     </div>
 </div>
 
+<!-- K线调试面板 -->
+<div id="klineDebug" style="position:fixed; bottom:10px; left:10px; background:#1a1a2e; padding:8px 12px; border-radius:8px; z-index:9999; font-size:11px; font-family:monospace; border:1px solid #4f7eff; max-width:350px; backdrop-filter:blur(5px);">
+    <div style="font-weight:bold; margin-bottom:5px;">📊 K线调试</div>
+    <div id="debugStatus">状态: 等待页面加载...</div>
+    <div id="debugData">数据: 无</div>
+    <div id="debugRender">渲染: 未执行</div>
+    <button id="forceRenderBtn" style="margin-top:8px; background:#2d3a5e; border:none; padding:4px 12px; border-radius:4px; color:white; cursor:pointer;">强制渲染测试</button>
+    <button id="testFetchBtn" style="margin-top:8px; margin-left:8px; background:#2d3a5e; border:none; padding:4px 12px; border-radius:4px; color:white; cursor:pointer;">手动获取数据</button>
+</div>
+
 <script>
     // Bridge 状态更新
     setTimeout(function() {
@@ -507,86 +517,62 @@
     var currentKlineDates = [];
     var currentKlineValues = [];
 
-    // 安全的ECharts初始化，每次先dispose旧实例
-    function safeInitChart(containerId, chartVarName) {
-        var dom = document.getElementById(containerId);
-        if (!dom) return null;
-        var chart = null;
-        if (chartVarName === 'klineChart') {
-            if (klineChart) { klineChart.dispose(); klineChart = null; }
-            if (typeof echarts !== 'undefined') {
-                klineChart = echarts.init(dom);
-                chart = klineChart;
-            } else {
-                log("ECharts 库未加载");
-            }
-        } else if (chartVarName === 'stockChart') {
-            if (stockChart) { stockChart.dispose(); stockChart = null; }
-            if (typeof echarts !== 'undefined') {
-                stockChart = echarts.init(dom);
-                chart = stockChart;
-            } else {
-                log("ECharts 库未加载");
-            }
-        }
-        return chart;
-    }
-
+    // --------------------------------------------------------------
+    // 修复后的 renderKlineWithSignals
+    // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         var dom = document.getElementById('klineMainChart');
-        if (!dom) return;
-        var chart = safeInitChart('klineMainChart', 'klineChart');
-        if (!chart) return;
-        var scatterData = [];
-        buyPts.forEach(function(point) {
-            var idx = dates.indexOf(point.date);
-            if (idx !== -1) {
-                var k = values[idx];
-                // values[idx] = [open, close, low, high]
-                var yPos = k[3] + (k[3] - k[2]) * 0.15;
-                scatterData.push({ coord: [idx, yPos], value: 'B ' + point.shares + '股 @' + point.price, symbol: 'circle', symbolSize: 16, label: { show: true, formatter: 'B', color: '#fff', backgroundColor: '#ff4d4f', borderRadius: 12, padding: [2,6,2,6], fontSize: 11, fontWeight: 'bold' } });
-            }
-        });
-        sellPts.forEach(function(point) {
-            var idx = dates.indexOf(point.date);
-            if (idx !== -1) {
-                var k = values[idx];
-                var yPos = k[3] + (k[3] - k[2]) * 0.15;
-                scatterData.push({ coord: [idx, yPos], value: 'S ' + point.shares + '股 @' + point.price, symbol: 'circle', symbolSize: 16, label: { show: true, formatter: 'S', color: '#fff', backgroundColor: '#52c41a', borderRadius: 12, padding: [2,6,2,6], fontSize: 11, fontWeight: 'bold' } });
-            }
-        });
+        if (!dom) {
+            console.error('渲染失败: 找不到 klineMainChart 容器');
+            return;
+        }
+        if (typeof echarts === 'undefined') {
+            console.error('渲染失败: ECharts 未加载');
+            return;
+        }
+        // 销毁旧实例以避免重复
+        if (klineChart) {
+            klineChart.dispose();
+            klineChart = null;
+        }
+        klineChart = echarts.init(dom);
         var option = {
             backgroundColor: 'transparent',
-            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; for (var p of params) { if (p.seriesName === 'K线') { var d = p.data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; } else if (p.seriesName === '买卖点') { res += '买卖点: ' + p.value; } } return res; } },
-            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
+            title: { text: 'K线图', left: 'center', textStyle: { color: '#fff' } },
+            tooltip: { trigger: 'axis' },
+            xAxis: { data: dates, type: 'category', axisLabel: { rotate: 45, color: '#ffffff' } },
             yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-            series: [
-                { name: 'K线', type: 'candlestick', data: values, itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' } },
-                { name: '买卖点', type: 'scatter', data: scatterData, symbol: 'circle', symbolSize: 16, label: { show: true, position: 'top', formatter: function(p) { return p.value; } }, tooltip: { formatter: function(p) { return p.value; } } }
-            ],
-            legend: { data: ['K线', '买卖点(B/S)'], textStyle: { color: '#ffffff' }, left: 'left' },
+            series: [{
+                type: 'candlestick',
+                data: values,
+                name: 'K线',
+                itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' }
+            }],
             grid: { containLabel: true, backgroundColor: '#0e1220' }
         };
-        chart.setOption(option, true);
+        klineChart.setOption(option, true);
+        log("K线渲染完成，共 " + dates.length + " 个交易日");
     }
 
     // 个股详情页专用：渲染简单K线（不含买卖点）
     function renderStockKline(containerId, dates, values) {
         var dom = document.getElementById(containerId);
         if (!dom) return;
-        var chart = safeInitChart(containerId, 'stockChart');
-        if (!chart) return;
-        var option = {
-            backgroundColor: 'transparent',
-            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; var d = params[0].data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; return res; } },
-            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
-            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-            series: [
-                { name: 'K线', type: 'candlestick', data: values, itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' } }
-            ],
-            grid: { containLabel: true, backgroundColor: '#0e1220' }
-        };
-        chart.setOption(option, true);
+        if (stockChart) { stockChart.dispose(); stockChart = null; }
+        if (typeof echarts !== 'undefined') {
+            stockChart = echarts.init(dom);
+            var option = {
+                backgroundColor: 'transparent',
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; var d = params[0].data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; return res; } },
+                xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
+                yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
+                series: [
+                    { name: 'K线', type: 'candlestick', data: values, itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' } }
+                ],
+                grid: { containLabel: true, backgroundColor: '#0e1220' }
+            };
+            stockChart.setOption(option, true);
+        }
     }
 
     // --------------------------------------------------------------
@@ -768,7 +754,6 @@
         var sel = document.getElementById(selectorId);
         if (!sel) return;
         sel.innerHTML = '';
-        // 去重并保留顺序
         var seen = {};
         stocks.forEach(function(c) {
             if (!seen[c]) {
@@ -779,7 +764,6 @@
                 sel.appendChild(opt);
             }
         });
-        // 如果没有股票，添加一个默认占位
         if (sel.options.length === 0) {
             var opt = document.createElement('option');
             opt.value = '000001';
@@ -809,7 +793,6 @@
                     <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成</p>
                 </div>`;
             setTimeout(function() {
-                // 动态加载股票列表（优先从后端获取，否则用静态成交股票库）
                 var loadStockList = function(callback) {
                     if (bridge) {
                         bridge.get_traded_stocks().then(function(jsonStr) {
@@ -829,7 +812,6 @@
                 };
                 loadStockList(function(stocks) {
                     populateStockSelector('stockSelectorKline', stocks);
-                    // 选中 currentStockCode
                     var sel = document.getElementById('stockSelectorKline');
                     if (sel) {
                         for (var i = 0; i < sel.options.length; i++) {
@@ -849,7 +831,6 @@
                 if (autoRunBacktest) { autoRunBacktest = false; runBacktest(currentStockCode); }
             }, 50);
         } else if (pageId === 'stock') {
-            // 个股详情页默认显示000001的K线
             container.innerHTML = `
                 <div class="card">
                     <div class="card-title">📉 个股详情</div>
@@ -873,11 +854,9 @@
                     });
                 };
                 if (searchBtn) searchBtn.onclick = loadStock;
-                // 默认加载
                 loadStock();
             }, 50);
         } else if (pageId === 'history') {
-            // 历史回测页面
             var listHtml = backtestStrategies.map(function(s) {
                 var profitCls = profitClass(s.profit);
                 return `
@@ -968,7 +947,6 @@ def handle_bar(context, bar_dict):
                 drawDetailCurve();
                 var gotoBtn = document.getElementById('gotoKlineBtn');
                 if (gotoBtn) gotoBtn.onclick = function() { document.querySelector('.nav-item[data-page="kchart"]').click(); };
-                // 股票代码点击委托
                 var contentPanel = document.getElementById('dynamicContent');
                 contentPanel.addEventListener('click', function(e) {
                     var target = e.target;
@@ -1032,14 +1010,13 @@ def handle_bar(context, bar_dict):
                 }
             }, 50);
         }
-        // 高亮导航
         document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
         var target = document.querySelector('.nav-item[data-page="' + pageId + '"]');
         if (target) target.classList.add('active');
     }
 
     // --------------------------------------------------------------
-    // 辅助函数（部分须在全局作用域定义）
+    // 辅助函数
     // --------------------------------------------------------------
     var backtestStrategies = [
         { id: 1, name: "双均线策略 (5,20)", profit: "+23.5%", code: "def initialize(context):\n    context.stock = '000001.SZ'\n    context.short_win = 5\n    context.long_win = 20\n\ndef handle_bar(context, bar_dict):\n    short_ma = history_bars(context.stock, context.short_win, '1d', 'close').mean()\n    long_ma = history_bars(context.stock, context.long_win, '1d', 'close').mean()\n    if short_ma > long_ma:\n        order_target_percent(context.stock, 1.0)\n        log.info('买入信号 at 价格:'+ str(bar_dict[context.stock].close))\n    elif short_ma < long_ma:\n        order_target_percent(context.stock, 0)\n        log.info('卖出信号')" },
@@ -1102,7 +1079,6 @@ def handle_bar(context, bar_dict):
         if (icon) icon.innerHTML = '<img src="' + dataUrl + '" alt="头像">';
     }
 
-    // 头像上传事件
     document.addEventListener('DOMContentLoaded', function() {
         var saved = localStorage.getItem('user_avatar');
         if (saved) {
@@ -1111,9 +1087,6 @@ def handle_bar(context, bar_dict):
         }
     });
 
-    // --------------------------------------------------------------
-    // 导航绑定
-    // --------------------------------------------------------------
     document.querySelectorAll('.nav-item').forEach(function(item) {
         item.addEventListener('click', function(e) {
             var pageId = item.getAttribute('data-page');
@@ -1122,8 +1095,119 @@ def handle_bar(context, bar_dict):
         });
     });
 
-    // 初始加载首页（默认历史回测）
     loadPage('history');
+
+    // ---------- 调试面板脚本 ----------
+    (function() {
+        var debugStatus = document.getElementById('debugStatus');
+        var debugData = document.getElementById('debugData');
+        var debugRender = document.getElementById('debugRender');
+
+        function updateStatus(msg) { if (debugStatus) debugStatus.textContent = msg; }
+        function updateData(msg) { if (debugData) debugData.textContent = msg; }
+        function updateRender(msg) { if (debugRender) debugRender.textContent = msg; }
+
+        updateStatus('状态: 脚本已加载，等待 bridge...');
+
+        var checkBridge = setInterval(function() {
+            if (typeof bridge !== 'undefined' && bridge !== null) {
+                updateStatus('状态: ✅ bridge 已连接');
+                clearInterval(checkBridge);
+            } else if (window.bridge !== undefined && window.bridge !== null) {
+                bridge = window.bridge;
+                updateStatus('状态: ✅ bridge 已连接');
+                clearInterval(checkBridge);
+            }
+        }, 500);
+
+        window.fetchAndRenderKline = function(code) {
+            updateStatus('状态: 🔄 正在获取 ' + code + '...');
+            updateData('数据: 请求中...');
+            updateRender('渲染: 等待数据');
+
+            var b = bridge || window.bridge;
+            if (!b) {
+                updateStatus('状态: ❌ bridge 未连接');
+                return;
+            }
+
+            b.get_kline_data(code).then(function(jsonStr) {
+                updateStatus('状态: ✅ 收到数据');
+                updateData('原始数据长度: ' + jsonStr.length);
+
+                var data = JSON.parse(jsonStr);
+                if (data.error) {
+                    updateStatus('状态: ❌ ' + data.error);
+                    return;
+                }
+
+                var datesLen = data.dates ? data.dates.length : 0;
+                var valuesLen = data.values ? data.values.length : 0;
+                updateData('数据: dates=' + datesLen + ', values=' + valuesLen);
+
+                if (datesLen > 0 && valuesLen > 0) {
+                    updateData('数据: 示例日期 ' + data.dates[0] + ', 值 [' + data.values[0].join(',') + ']');
+
+                    if (typeof renderKlineWithSignals === 'function') {
+                        renderKlineWithSignals(data.dates, data.values, [], []);
+                        updateRender('渲染: ✅ 已调用 renderKlineWithSignals');
+                    } else {
+                        updateRender('渲染: ❌ renderKlineWithSignals 函数不存在');
+                    }
+                } else {
+                    updateData('数据: ❌ 无效数据格式');
+                }
+            }).catch(function(err) {
+                updateStatus('状态: ❌ 请求失败: ' + err.message);
+                updateData('错误: ' + err);
+            });
+        };
+
+        // 强制渲染测试
+        document.getElementById('forceRenderBtn')?.addEventListener('click', function() {
+            var testDates = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'];
+            var testValues = [
+                [12.00, 12.50, 11.80, 12.60],
+                [12.50, 13.00, 12.30, 13.20],
+                [13.00, 12.80, 12.60, 13.10],
+                [12.80, 13.50, 12.70, 13.60],
+                [13.50, 14.00, 13.20, 14.10]
+            ];
+            if (typeof renderKlineWithSignals === 'function') {
+                renderKlineWithSignals(testDates, testValues, [], []);
+                updateRender('渲染: ✅ 强制渲染完成（测试数据）');
+                updateStatus('状态: 强制渲染完成');
+            } else {
+                updateRender('渲染: ❌ renderKlineWithSignals 不存在');
+            }
+        });
+
+        // 手动获取数据
+        document.getElementById('testFetchBtn')?.addEventListener('click', function() {
+            var code = '000001';
+            var b = bridge || window.bridge;
+            if (!b) {
+                updateStatus('状态: ❌ bridge 未连接');
+                return;
+            }
+            updateStatus('状态: 手动获取 ' + code + '...');
+            b.get_kline_data(code).then(function(jsonStr) {
+                updateStatus('状态: ✅ 收到数据，长度 ' + jsonStr.length);
+                try {
+                    var data = JSON.parse(jsonStr);
+                    updateData('解析: dates=' + (data.dates ? data.dates.length : 0) + ', values=' + (data.values ? data.values.length : 0));
+                    if (data.dates && data.dates.length > 0) {
+                        updateData('示例: ' + data.dates[0] + ' ' + JSON.stringify(data.values[0]));
+                    }
+                } catch(e) {
+                    updateData('解析错误: ' + e.message);
+                }
+            }).catch(function(err) {
+                updateStatus('状态: ❌ 失败');
+                updateData('错误: ' + err);
+            });
+        });
+    })();
 </script>
 </body>
 </html>
