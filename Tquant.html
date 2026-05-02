@@ -140,7 +140,8 @@
 
         .kline-container {
             width: 100%;
-            height: 460px;
+            height: 460px !important;
+            min-height: 460px;
             background: #0e1220;
             border-radius: 20px;
             margin: 10px 0;
@@ -518,49 +519,115 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
-    // 修复后的 renderKlineWithSignals
+    // 修复后的 renderKlineWithSignals —— 增强调试输出
     // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
+        console.log("=== renderKlineWithSignals 被调用 ===");
+        console.log("dates 数量:", dates ? dates.length : 0);
+        console.log("values 数量:", values ? values.length : 0);
+        
         var dom = document.getElementById('klineMainChart');
+        console.log("klineMainChart 容器:", dom);
+        
         if (!dom) {
-            console.error('渲染失败: 找不到 klineMainChart 容器');
+            console.error('❌ 找不到 klineMainChart 容器');
+            var debugRender = document.getElementById('debugRender');
+            if (debugRender) debugRender.innerHTML = '渲染: ❌ 找不到容器';
             return;
         }
+        
+        // 检查容器尺寸
+        var rect = dom.getBoundingClientRect();
+        console.log("容器尺寸:", rect.width, "x", rect.height);
+        if (rect.width === 0 || rect.height === 0) {
+            console.warn("容器尺寸为 0，可能被隐藏");
+            // 设置一个默认高度
+            dom.style.height = "460px";
+            dom.style.width = "100%";
+        }
+        
         if (typeof echarts === 'undefined') {
-            console.error('渲染失败: ECharts 未加载');
+            console.error('❌ ECharts 未加载');
+            var debugRender = document.getElementById('debugRender');
+            if (debugRender) debugRender.innerHTML = '渲染: ❌ ECharts 未加载';
             return;
         }
-        // 销毁旧实例以避免重复
-        if (klineChart) {
-            klineChart.dispose();
-            klineChart = null;
+        
+        // 先销毁旧实例
+        var existingChart = echarts.getInstanceByDom(dom);
+        if (existingChart) {
+            existingChart.dispose();
+            console.log("已销毁旧图表实例");
         }
-        klineChart = echarts.init(dom);
+        
+        // 创建新图表
+        var chart = echarts.init(dom);
+        console.log("ECharts 实例创建成功");
+        
         var option = {
             backgroundColor: 'transparent',
-            title: { text: 'K线图', left: 'center', textStyle: { color: '#fff' } },
-            tooltip: { trigger: 'axis' },
-            xAxis: { data: dates, type: 'category', axisLabel: { rotate: 45, color: '#ffffff' } },
-            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
+            title: { 
+                text: 'K线图', 
+                left: 'center', 
+                textStyle: { color: '#ffffff' } 
+            },
+            tooltip: { 
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' }
+            },
+            xAxis: { 
+                data: dates, 
+                type: 'category',
+                axisLabel: { rotate: 45, color: '#ffffff' }
+            },
+            yAxis: { 
+                scale: true, 
+                axisLabel: { color: '#ffffff' },
+                name: '价格 (元)'
+            },
             series: [{
+                name: 'K线',
                 type: 'candlestick',
                 data: values,
-                name: 'K线',
-                itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' }
+                itemStyle: {
+                    color: '#ef5350',
+                    color0: '#26a69a',
+                    borderColor: '#ef5350',
+                    borderColor0: '#26a69a'
+                }
             }],
-            grid: { containLabel: true, backgroundColor: '#0e1220' }
+            legend: { 
+                data: ['K线'], 
+                textStyle: { color: '#ffffff' }, 
+                left: 'left' 
+            },
+            grid: { 
+                containLabel: true, 
+                backgroundColor: '#0e1220' 
+            }
         };
-        klineChart.setOption(option, true);
-        log("K线渲染完成，共 " + dates.length + " 个交易日");
+        
+        chart.setOption(option);
+        console.log("图表设置完成");
+        
+        // 强制调整大小
+        setTimeout(function() {
+            chart.resize();
+            console.log("图表已调整大小");
+        }, 100);
+        
+        var debugRender = document.getElementById('debugRender');
+        if (debugRender) debugRender.innerHTML = '渲染: ✅ 已完成，图表实例已创建';
     }
 
     // 个股详情页专用：渲染简单K线（不含买卖点）
     function renderStockKline(containerId, dates, values) {
         var dom = document.getElementById(containerId);
         if (!dom) return;
-        if (stockChart) { stockChart.dispose(); stockChart = null; }
+        var existingChart = echarts.getInstanceByDom(dom);
+        if (existingChart) existingChart.dispose();
         if (typeof echarts !== 'undefined') {
-            stockChart = echarts.init(dom);
+            var chart = echarts.init(dom);
             var option = {
                 backgroundColor: 'transparent',
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; var d = params[0].data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; return res; } },
@@ -571,7 +638,7 @@
                 ],
                 grid: { containLabel: true, backgroundColor: '#0e1220' }
             };
-            stockChart.setOption(option, true);
+            chart.setOption(option);
         }
     }
 
