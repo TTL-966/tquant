@@ -6,12 +6,10 @@ class Database:
     def __init__(self):
         self.engine = None
         try:
-            # 使用SQLAlchemy连接MySQL，底层使用pymysql驱动
             self.engine = create_engine(
                 'mysql+pymysql://root:998867@localhost:3306/studb?charset=utf8mb4',
                 echo=False
             )
-            # 测试连接是否可用
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
         except Exception as e:
@@ -21,10 +19,19 @@ class Database:
     def get_kline(self, code, start_date="2026-01-01", end_date="2026-04-01"):
         if self.engine:
             try:
+                # 处理后缀：如果已包含 .SZ 或 .SH，则仅使用该精确代码；
+                # 否则同时查询 .SZ 和 .SH
+                if '.' in code:
+                    code_sz = code
+                    code_sh = code
+                else:
+                    code_sz = code + '.SZ'
+                    code_sh = code + '.SH'
+
                 sql = text("""
-                    SELECT trade_date, open, high, low, close
+                    SELECT trade_date, open, high, low, close, vol AS volume
                     FROM stock_daily
-                    WHERE code = :code
+                    WHERE (ts_code = :code_sz OR ts_code = :code_sh)
                       AND trade_date BETWEEN :start_date AND :end_date
                     ORDER BY trade_date ASC
                 """)
@@ -33,11 +40,15 @@ class Database:
                         sql,
                         conn,
                         params={
-                            "code": code,
+                            "code_sz": code_sz,
+                            "code_sh": code_sh,
                             "start_date": start_date,
                             "end_date": end_date
                         }
                     )
+                    if df.empty:
+                        # 无数据时使用模拟数据
+                        return self._generate_mock_data()
                     df['trade_date'] = pd.to_datetime(df['trade_date'])
                 return df
             except Exception as e:
@@ -53,18 +64,18 @@ class Database:
         closes = opens + np.random.randn(n) * 0.6
         highs = np.maximum(opens, closes) + np.random.rand(n) * 0.5
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
-        # 移除volume列
+        volumes = np.random.randint(100000, 500000, n)
         df = pd.DataFrame({
             'trade_date': dates,
             'open': opens,
             'high': highs,
             'low': lows,
-            'close': closes
+            'close': closes,
+            'volume': volumes
         })
         return df
 
     def connection_status(self):
-        """返回包含连接状态和消息的字典"""
         if self.engine is None:
             return {"connected": False, "message": "无数据库连接（将使用模拟数据）"}
         try:
@@ -73,14 +84,3 @@ class Database:
             return {"connected": True, "message": "数据库连接正常"}
         except Exception as e:
             return {"connected": False, "message": f"数据库连接异常: {str(e)}"}
-
-
-# 测试代码
-if __name__ == "__main__":
-    db = Database()
-    print(db.connection_status())
-
-    # 测试获取数据
-    df = db.get_kline("000001")
-    print(f"获取到 {len(df)} 条数据")
-    print(df.head())
