@@ -681,21 +681,25 @@
         bridge.get_kline_data(code).then(function(jsonStr) {
             var data = JSON.parse(jsonStr);
             
+            console.log("fetchStockKline 原始数据:", data);
+            
             if (data.error) {
                 var mock = generateMockKline(code);
                 callback(mock.dates, mock.values);
                 return;
             }
             
-            var dates = data.dates;
-            var values = [];
+            // 方式1：直接使用 data.values
+            if (data.dates && data.values && data.values.length > 0) {
+                console.log("使用 data.values，第一条:", data.values[0]);
+                callback(data.dates, data.values);
+                return;
+            }
             
-            if (data.values && data.values.length > 0) {
-                // 直接使用 values，顺序应为 [open, close, low, high]
-                values = data.values;
-            } else if (data.opens && data.closes && data.lows && data.highs) {
-                // 构造 values，顺序必须是 [open, close, low, high]
-                for (var i = 0; i < dates.length; i++) {
+            // 方式2：从 opens/closes/lows/highs 构造
+            if (data.dates && data.opens && data.closes && data.lows && data.highs) {
+                var values = [];
+                for (var i = 0; i < data.dates.length; i++) {
                     values.push([
                         parseFloat(data.opens[i]),
                         parseFloat(data.closes[i]),
@@ -703,16 +707,15 @@
                         parseFloat(data.highs[i])
                     ]);
                 }
+                console.log("从 opens 构造 values，第一条:", values[0]);
+                callback(data.dates, values);
+                return;
             }
             
-            if (dates && dates.length > 0 && values && values.length > 0) {
-                console.log("个股详情数据:", dates.length, values.length);
-                console.log("第一条数据:", dates[0], values[0]);
-                callback(dates, values);
-            } else {
-                var mock = generateMockKline(code);
-                callback(mock.dates, mock.values);
-            }
+            // 方式3：模拟数据
+            console.warn("无有效数据，使用模拟数据");
+            var mock = generateMockKline(code);
+            callback(mock.dates, mock.values);
         }).catch(function(err) {
             console.error("获取个股K线失败:", err);
             var mock = generateMockKline(code);
