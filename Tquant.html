@@ -510,6 +510,7 @@
 
     // --------------------------------------------------------------
     // renderKlineWithSignals —— 同花顺风格交互：滚轮缩放 + 按住左键拖拽平移，底部滑块
+    // 增加买卖点标记（买入B 卖出S）
     // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         console.log("=== renderKlineWithSignals 被调用 ===");
@@ -549,6 +550,33 @@
         var chart = echarts.init(dom);
         console.log("ECharts 实例创建成功");
         
+        // ----------  构造买入/卖出散点数据 ----------
+        var buySeriesData = [];
+        var sellSeriesData = [];
+        
+        if (buyPts && buyPts.length > 0) {
+            for (var i = 0; i < buyPts.length; i++) {
+                var pt = buyPts[i];
+                var idx = dates.indexOf(pt.date);
+                if (idx >= 0 && idx < values.length) {
+                    var high = values[idx][3]; // 最高价
+                    var price = high + 0.05;
+                    buySeriesData.push([idx, price]);
+                }
+            }
+        }
+        if (sellPts && sellPts.length > 0) {
+            for (var i = 0; i < sellPts.length; i++) {
+                var pt = sellPts[i];
+                var idx = dates.indexOf(pt.date);
+                if (idx >= 0 && idx < values.length) {
+                    var low = values[idx][2]; // 最低价
+                    var price = low - 0.05;
+                    sellSeriesData.push([idx, price]);
+                }
+            }
+        }
+        
         var option = {
             backgroundColor: 'transparent',
             title: { 
@@ -578,19 +606,58 @@
                 axisLabel: { color: '#ffffff' },
                 name: '价格 (元)'
             },
-            series: [{
-                name: 'K线',
-                type: 'candlestick',
-                data: values,
-                itemStyle: {
-                    color: '#ef5350',
-                    color0: '#26a69a',
-                    borderColor: '#ef5350',
-                    borderColor0: '#26a69a'
+            series: [
+                // K线主图
+                {
+                    name: 'K线',
+                    type: 'candlestick',
+                    data: values,
+                    itemStyle: {
+                        color: '#ef5350',
+                        color0: '#26a69a',
+                        borderColor: '#ef5350',
+                        borderColor0: '#26a69a'
+                    }
+                },
+                // 买入点：红色向上三角形 + 标签 B
+                {
+                    name: '买入点',
+                    type: 'scatter',
+                    data: buySeriesData,
+                    symbol: 'triangle',
+                    symbolSize: 14,
+                    symbolRotate: 0,
+                    itemStyle: { color: '#ff0000' },
+                    label: {
+                        show: true,
+                        formatter: 'B',
+                        color: '#ffffff',
+                        fontSize: 10,
+                        position: 'top'
+                    },
+                    tooltip: { formatter: function(params) { return '买入: ' + dates[params.data[0]]; } }
+                },
+                // 卖出点：绿色向下三角形 + 标签 S
+                {
+                    name: '卖出点',
+                    type: 'scatter',
+                    data: sellSeriesData,
+                    symbol: 'triangle',
+                    symbolSize: 14,
+                    symbolRotate: 180,
+                    itemStyle: { color: '#00ff00' },
+                    label: {
+                        show: true,
+                        formatter: 'S',
+                        color: '#ffffff',
+                        fontSize: 10,
+                        position: 'bottom'
+                    },
+                    tooltip: { formatter: function(params) { return '卖出: ' + dates[params.data[0]]; } }
                 }
-            }],
+            ],
             legend: { 
-                data: ['K线'], 
+                data: ['K线', '买入点', '卖出点'], 
                 textStyle: { color: '#ffffff' }, 
                 left: 'left' 
             },
@@ -612,7 +679,7 @@
                     start: 80,
                     end: 100,
                     zoomOnMouseWheel: true,   // 启用滚轮缩放
-                    moveOnMouseMove: false,    // 【关键】禁止鼠标移动时平移（必须按住左键才能拖拽）
+                    moveOnMouseMove: true,     // 【关键】启用鼠标移动即可拖拽平移（按住左键拖拽）
                     moveOnMouseWheel: false   // 禁用滚轮平移
                 }
             ]
@@ -714,7 +781,7 @@
                     start: 80,
                     end: 100,
                     zoomOnMouseWheel: true,   // 启用滚轮缩放
-                    moveOnMouseMove: false,    // 【关键】禁止鼠标移动时平移（必须按住左键才能拖拽）
+                    moveOnMouseMove: true,     // 【关键】启用鼠标移动即可拖拽平移（按住左键拖拽）
                     moveOnMouseWheel: false   // 禁用滚轮平移
                 }
             ]
