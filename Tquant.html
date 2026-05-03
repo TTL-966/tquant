@@ -637,10 +637,10 @@
                 formatter: function(params) {
                     var res = params[0].axisValue + '<br/>';
                     var d = params[0].data;
-                    res += '开盘: ' + d[2] + '<br/>' +
+                    res += '开盘: ' + d[0] + '<br/>' +
                            '收盘: ' + d[1] + '<br/>' +
-                           '最低: ' + d[3] + '<br/>' +
-                           '最高: ' + d[0];
+                           '最低: ' + d[2] + '<br/>' +
+                           '最高: ' + d[3];
                     return res;
                 }
             },
@@ -670,57 +670,58 @@
     }
 
     // --------------------------------------------------------------
-    // 个股详情页 K线数据获取 —— 修复顺序
-    // --------------------------------------------------------------
-    function fetchStockKline(code, callback) {
-        if (!bridge) {
+// 个股详情页 K线数据获取 —— 优先使用 data.values
+// --------------------------------------------------------------
+	function fetchStockKline(code, callback) {
+    	if (!bridge) {
+        	var mock = generateMockKline(code);
+        	callback(mock.dates, mock.values);
+        	return;
+    }
+    
+    bridge.get_kline_data(code).then(function(jsonStr) {
+        var data = JSON.parse(jsonStr);
+        
+        if (data.error) {
             var mock = generateMockKline(code);
             callback(mock.dates, mock.values);
             return;
         }
         
-        bridge.get_kline_data(code).then(function(jsonStr) {
-            var data = JSON.parse(jsonStr);
-            
-            if (data.error) {
-                var mock = generateMockKline(code);
-                callback(mock.dates, mock.values);
-                return;
+        var dates = data.dates;
+        var values = [];
+        
+        // 优先使用 data.values（调试面板就是这么做的）
+        if (data.values && data.values.length > 0) {
+            values = data.values;
+            console.log("✅ 使用 data.values，第一条:", values[0]);
+        } 
+        // 备用：使用 opens/closes/lows/highs
+        else if (data.opens && data.closes && data.lows && data.highs) {
+            for (var i = 0; i < dates.length; i++) {
+                values.push([
+                    parseFloat(data.opens[i]),
+                    parseFloat(data.closes[i]),
+                    parseFloat(data.lows[i]),
+                    parseFloat(data.highs[i])
+                ]);
             }
-            
-            var dates = data.dates;
-            var values = [];
-            
-            // 优先使用 opens/closes/lows/highs（保证顺序正确）
-            if (data.opens && data.closes && data.lows && data.highs) {
-                for (var i = 0; i < dates.length; i++) {
-                    values.push([
-                        parseFloat(data.opens[i]),
-                        parseFloat(data.closes[i]),
-                        parseFloat(data.lows[i]),
-                        parseFloat(data.highs[i])
-                    ]);
-                }
-                console.log("使用 opens/closes/lows/highs 构造，第一条:", values[0]);
-            } 
-            else if (data.values && data.values.length > 0) {
-                values = data.values;
-                console.log("使用 values，第一条:", values[0]);
-            }
-            
-            if (dates.length > 0 && values.length > 0) {
-                callback(dates, values);
-            } else {
-                var mock = generateMockKline(code);
-                callback(mock.dates, mock.values);
-            }
-        }).catch(function(err) {
-            console.error("获取个股K线失败:", err);
+            console.log("使用 opens/closes/lows/highs 构造，第一条:", values[0]);
+        }
+        
+        if (dates.length > 0 && values.length > 0) {
+            callback(dates, values);
+        } else {
+            console.warn("无有效数据，使用模拟数据");
             var mock = generateMockKline(code);
             callback(mock.dates, mock.values);
-        });
-    }
-
+        }
+    }).catch(function(err) {
+        console.error("获取个股K线失败:", err);
+        var mock = generateMockKline(code);
+        callback(mock.dates, mock.values);
+    });
+}
     // --------------------------------------------------------------
     // 运行回测
     // --------------------------------------------------------------
