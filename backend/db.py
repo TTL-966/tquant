@@ -16,6 +16,41 @@ class Database:
             print("数据库连接失败，将使用模拟数据:", e)
             self.engine = None
 
+    def _get_stock_suffix(self, code):
+        code = str(code).zfill(6)
+        if code.startswith(('000', '001', '002', '003', '300', '301')):
+            return '.SZ'
+        if code.startswith(('600', '601', '603', '605', '688', '689')):
+            return '.SH'
+        if code.startswith('8'):
+            return '.BJ'
+        return '.SZ'
+
+    def _query_kline(self, code, start_date, end_date):
+        """内部查询方法，返回DataFrame；若失败则抛出异常"""
+        start = start_date.replace('-', '')
+        end = end_date.replace('-', '')
+        sql = text("""
+            SELECT trade_date, open, high, low, close, vol AS volume
+            FROM stock_daily
+            WHERE ts_code = :code
+              AND trade_date >= :start
+              AND trade_date <= :end
+            ORDER BY trade_date ASC
+            LIMIT 60
+        """)
+        with self.engine.connect() as conn:
+            df = pd.read_sql(
+                sql,
+                conn,
+                params={
+                    "code": code,
+                    "start": start,
+                    "end": end
+                }
+            )
+        return df
+
     def get_kline(self, code, start_date="2026-01-01", end_date="2026-04-01"):
         """
         获取K线数据
@@ -23,43 +58,43 @@ class Database:
         start_date: 开始日期，格式 YYYY-MM-DD
         end_date: 结束日期，格式 YYYY-MM-DD
         """
-        if self.engine:
-            try:
-                # 1. 转换日期格式：2026-01-05 -> 20260105
-                start = start_date.replace('-', '')
-                end = end_date.replace('-', '')
+        # 没有数据库连接，直接返回模拟数据
+        if self.engine is None:
+            return self._generate_mock_data()
 
-                # 2. 处理股票代码格式：000001 -> 000001.SZ
-                if '.' not in code:
-                    code = f"{code}.SZ"
+        original_code = code
+        if '.' not in code:
+            suffix = self._get_stock_suffix(code)
+            code_for_query = f"{code}{suffix}"
+        else:
+            code_for_query = code
+            suffix = '.' + code.split('.')[1]
 
-                sql = text("""
-                    SELECT trade_date, open, high, low, close, vol AS volume
-                    FROM stock_daily
-                    WHERE ts_code = :code
-                      AND trade_date >= :start
-                      AND trade_date <= :end
-                    ORDER BY trade_date ASC
-                    LIMIT 60
-                """)
-                with self.engine.connect() as conn:
-                    df = pd.read_sql(
-                        sql,
-                        conn,
-                        params={
-                            "code": code,
-                            "start": start,
-                            "end": end
-                        }
-                    )
-
-                if df.empty:
-                    print(f"未找到 {code} 在 {start_date} 到 {end_date} 的数据")
-                    return self._generate_mock_data()
-
+        # 第一次查询
+        try:
+            df = self._query_kline(code_for_query, start_date, end_date)
+            if not df.empty:
                 return df
-            except Exception as e:
-                print("查询失败，使用模拟数据:", e)
+        except Exception as e:
+            print("查询失败:", e)
+
+        # 如果第一次查询未找到数据且传入的是无后缀代码，尝试另一个市场
+        if '.' not in original_code:
+            alt_suffix = None
+            if suffix == '.SZ':
+                alt_suffix = '.SH'
+            elif suffix == '.SH':
+                alt_suffix = '.SZ'
+            if alt_suffix:
+                alt_code = f"{original_code}{alt_suffix}"
+                try:
+                    df = self._query_kline(alt_code, start_date, end_date)
+                    if not df.empty:
+                        return df
+                except Exception as e:
+                    print("备用查询失败:", e)
+
+        # 最终返回模拟数据
         return self._generate_mock_data()
 
     def _generate_mock_data(self):
