@@ -509,7 +509,7 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
-    // renderKlineWithSignals —— 添加 dataZoom 优化，同花顺风格
+    // renderKlineWithSignals —— 同花顺风格交互：滚轮缩放 + 拖拽平移，底部滑块
     // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         console.log("=== renderKlineWithSignals 被调用 ===");
@@ -598,7 +598,7 @@
                 containLabel: true, 
                 backgroundColor: '#0e1220' 
             },
-            // ----------  优化后的 dataZoom 配置 ----------
+            // ----------  优化后的 dataZoom 配置（同花顺风格） ----------
             dataZoom: [
                 {
                     type: 'slider',
@@ -609,9 +609,12 @@
                 },
                 {
                     type: 'inside',
-                    zoomOnMouseWheel: false,   // 禁用滚轮缩放
-                    moveOnMouseMove: true,     // 启用鼠标拖拽平移
-                    moveOnMouseWheel: false
+                    start: 80,
+                    end: 100,
+                    zoomOnMouseWheel: true,   // 启用滚轮缩放
+                    moveOnMouseMove: true,    // 启用鼠标拖拽平移
+                    moveOnMouseWheel: false,  // 禁用滚轮平移
+                    preventDefaultMouseMove: false
                 }
             ]
         };
@@ -698,7 +701,7 @@
                 }
             }],
             grid: { containLabel: true, backgroundColor: '#0e1220' },
-            // ----------  优化后的 dataZoom 配置 ----------
+            // ----------  优化后的 dataZoom 配置（同花顺风格） ----------
             dataZoom: [
                 {
                     type: 'slider',
@@ -709,9 +712,12 @@
                 },
                 {
                     type: 'inside',
-                    zoomOnMouseWheel: false,   // 禁用滚轮缩放
-                    moveOnMouseMove: true,     // 启用鼠标拖拽平移
-                    moveOnMouseWheel: false
+                    start: 80,
+                    end: 100,
+                    zoomOnMouseWheel: true,   // 启用滚轮缩放
+                    moveOnMouseMove: true,    // 启用鼠标拖拽平移
+                    moveOnMouseWheel: false,  // 禁用滚轮平移
+                    preventDefaultMouseMove: false
                 }
             ]
         };
