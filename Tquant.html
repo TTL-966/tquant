@@ -625,91 +625,72 @@
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点）
     // --------------------------------------------------------------
-	function renderStockKline(containerId, dates, values) {
-    // 构造正确顺序的数据 [open, close, low, high]
-	    var fixedValues = [];
-	    for (var i = 0; i < values.length; i++) {
-	        var v = values[i];
-	        var open = parseFloat(v[0]);
-	        var close = parseFloat(v[1]);
-	        var low = parseFloat(v[2]);
-	        var high = parseFloat(v[3]);
-	        low = Math.min(low, open, close);
-	        high = Math.max(high, open, close);
-	        fixedValues.push([open, close, low, high]);
-	    }
+    function renderStockKline(containerId, dates, values) {
+        var fixedValues = [];
+        for (var i = 0; i < values.length; i++) {
+            var v = values[i];
+            var open = parseFloat(v[0]);
+            var close = parseFloat(v[1]);
+            var low = parseFloat(v[2]);
+            var high = parseFloat(v[3]);
+            low = Math.min(low, open, close);
+            high = Math.max(high, open, close);
+            fixedValues.push([open, close, low, high]);
+        }
 
-	    // 获取容器并彻底清理
-	    var container = document.getElementById(containerId);
-	    if (!container) return;
-	    
-	    // 销毁旧图表实例
-	    var oldChart = echarts.getInstanceByDom(container);
-	    if (oldChart) oldChart.dispose();
-	    
-	    // 清空容器内容
-	    container.innerHTML = '';
-	    
-	    // 创建全新容器（改变 id 避免残留）
-	    var newId = containerId + '_' + Date.now();
-	    var newContainer = document.createElement('div');
-	    newContainer.id = newId;
-	    newContainer.style.width = '100%';
-	    newContainer.style.height = '460px';
-	    newContainer.style.backgroundColor = '#0e1220';
-	    container.parentNode.replaceChild(newContainer, container);
-	    
-	    // 初始化 ECharts
-	    var chart = echarts.init(newContainer);
-	    
-	    var option = {
-	        backgroundColor: 'transparent',
-	        tooltip: {
-	            trigger: 'axis',
-	            axisPointer: { type: 'shadow' },
-	            formatter: function(params) {
-	                // 使用 chart 内部数据，确保正确
-	                if (!params || !params.length) return '';
-	                var idx = params[0].dataIndex;
-	                var seriesData = chart.getOption().series[0].data;
-	                if (!seriesData || idx >= seriesData.length) return '';
-	                var d = seriesData[idx];
-	                return params[0].axisValue + '<br/>' +
-	                       '开盘: ' + d[0] + '<br/>' +
-	                       '收盘: ' + d[1] + '<br/>' +
-	                       '最低: ' + d[2] + '<br/>' +
-	                       '最高: ' + d[3];
-	            }
-	        },
-	        xAxis: {
-	            type: 'category',
-	            data: dates,
-	            axisLabel: { rotate: 45, color: '#ffffff' }
-	        },
-	        yAxis: {
-	            scale: true,
-	            axisLabel: { color: '#ffffff' },
-	            name: '价格 (元)'
-	        },
-	        series: [{
-	            name: 'K线',
-	            type: 'candlestick',
-	            data: fixedValues,
-	            itemStyle: {
-	                color: '#ef5350',
-	                color0: '#26a69a',
-	                borderColor: '#ef5350',
-	                borderColor0: '#26a69a'
-	            }
-	        }],
-	        grid: { containLabel: true, backgroundColor: '#0e1220' }
-	    };
-	    
-	    chart.setOption(option, true);
-	    
-	    // 可选：清除以前的调试 alert，保留一个成功的提示
-	    // alert("K线图渲染完成，数据第一条: " + JSON.stringify(fixedValues[0]));
-}
+        var container = document.getElementById(containerId);
+        if (!container) return;
+
+        // 销毁旧图表
+        var oldChart = echarts.getInstanceByDom(container);
+        if (oldChart) oldChart.dispose();
+        container.innerHTML = '';
+
+        var chart = echarts.init(container);
+        var option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    if (!params || !params.length) return '';
+                    var idx = params[0].dataIndex;
+                    var seriesData = chart.getOption().series[0].data;
+                    if (!seriesData || idx >= seriesData.length) return '';
+                    var d = seriesData[idx];
+                    return params[0].axisValue + '<br/>' +
+                           '开盘: ' + d[0] + '<br/>' +
+                           '收盘: ' + d[1] + '<br/>' +
+                           '最低: ' + d[2] + '<br/>' +
+                           '最高: ' + d[3];
+                }
+            },
+            xAxis: {
+                type: 'category',
+                data: dates,
+                axisLabel: { rotate: 45, color: '#ffffff' }
+            },
+            yAxis: {
+                scale: true,
+                axisLabel: { color: '#ffffff' },
+                name: '价格 (元)'
+            },
+            series: [{
+                name: 'K线',
+                type: 'candlestick',
+                data: fixedValues,
+                itemStyle: {
+                    color: '#ef5350',
+                    color0: '#26a69a',
+                    borderColor: '#ef5350',
+                    borderColor0: '#26a69a'
+                }
+            }],
+            grid: { containLabel: true, backgroundColor: '#0e1220' }
+        };
+        chart.setOption(option, true);
+    }
+
     // --------------------------------------------------------------
     // 个股详情页 K线数据获取 —— 循环构建 ensures 一一对应（添加调试 alert）
     // --------------------------------------------------------------
@@ -1024,10 +1005,10 @@
                 var searchBtn = document.getElementById('stockSearchBtn');
                 var codeInput = document.getElementById('stockCodeInput');
                 var loadStock = function() {
-                    alert("loadStock 被调用，code=" + code);
-                    var code = codeInput.value.trim();
-                    if (code === '') code = '000001';
-                    fetchStockKline(code, function(dates, values) {
+                    var stockCode = codeInput.value.trim();
+                    if (stockCode === '') stockCode = '000001';
+                    alert("查询股票代码: " + stockCode);
+                    fetchStockKline(stockCode, function(dates, values) {
                         renderStockKline('stockKlineChart', dates, values);
                     });
                 };
