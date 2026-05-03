@@ -37,7 +37,6 @@ class Database:
               AND trade_date >= :start
               AND trade_date <= :end
             ORDER BY trade_date ASC
-            LIMIT 60
         """)
         with self.engine.connect() as conn:
             df = pd.read_sql(
@@ -51,7 +50,7 @@ class Database:
             )
         return df
 
-    def get_kline(self, code, start_date="2026-01-01", end_date="2026-04-01"):
+    def get_kline(self, code, start_date="2010-01-01", end_date="2026-12-31"):
         """
         获取K线数据
         code: 股票代码，如 '000001' 或 '000001.SZ'

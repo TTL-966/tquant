@@ -509,7 +509,7 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
-    // 修复后的 renderKlineWithSignals —— 增强调试输出
+    // 修复后的 renderKlineWithSignals —— 增强调试输出，添加 dataZoom
     // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         console.log("=== renderKlineWithSignals 被调用 ===");
@@ -589,7 +589,22 @@
             grid: { 
                 containLabel: true, 
                 backgroundColor: '#0e1220' 
-            }
+            },
+            // ----------  新增 dataZoom 支持滑动缩放 ----------
+            dataZoom: [
+                {   // 鼠标滚轮缩放
+                    type: 'inside',
+                    start: 80,
+                    end: 100
+                },
+                {   // 底部滑块
+                    type: 'slider',
+                    start: 80,
+                    end: 100,
+                    bottom: 10,
+                    height: 20
+                }
+            ]
         };
         
         chart.setOption(option);
@@ -603,7 +618,7 @@
     }
 
     // --------------------------------------------------------------
-    // 个股详情页专用：渲染简单K线（不含买卖点）
+    // 个股详情页专用：渲染简单K线（不含买卖点），添加 dataZoom
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
         var fixedValues = [];
@@ -666,7 +681,12 @@
                     borderColor0: '#26a69a'
                 }
             }],
-            grid: { containLabel: true, backgroundColor: '#0e1220' }
+            grid: { containLabel: true, backgroundColor: '#0e1220' },
+            // ----------  新增 dataZoom 支持滑动缩放 ----------
+            dataZoom: [
+                {   type: 'inside', start: 80, end: 100 },
+                {   type: 'slider', start: 80, end: 100, bottom: 10, height: 20 }
+            ]
         };
         chart.setOption(option, true);
     }
