@@ -1,4 +1,5 @@
 import json
+import datetime
 import pandas as pd
 from backend.db import Database
 
@@ -6,15 +7,45 @@ class DataFeed:
     def __init__(self):
         self.db = Database()
 
-    def get_kline_json(self, code, start_date="2026-01-01", end_date="2026-04-01"):
-        df = self.db.get_kline(code, start_date, end_date)
+    def _format_date(self, d):
+        """统一日期格式为 'YYYY-MM-DD' 字符串"""
+        if isinstance(d, (pd.Timestamp, datetime.datetime)):
+            return d.strftime('%Y-%m-%d')
+        s = str(d).strip()
+        # 8 位数字格式: 20260101 → 2026-01-01
+        if len(s) == 8 and s.isdigit():
+            return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+        # 已经是 YYYY-MM-DD 格式
+        if len(s) == 10 and s[4] == '-' and s[7] == '-':
+            return s
+        # 处理 '2026-01-05 00:00:00' 之类的格式
+        if ' ' in s:
+            return s[:10]
+        # 兜底
+        return s
+
+    def get_kline_json(self, code, start_date=None, end_date=None):
+        """获取K线数据 JSON，日期范围使用 db 模块的默认值（2010-01-01 ~ 2026-12-31）
+           若传入非 None 的 start_date / end_date 则覆盖对应默认值。
+        """
+        # 利用 db.get_kline 自身的默认参数：只有当参数为 None 时不传入，
+        # 从而让 db.get_kline 使用其内部默认值。
+        if start_date is None and end_date is None:
+            df = self.db.get_kline(code)
+        elif start_date is None:
+            df = self.db.get_kline(code, end_date=end_date)
+        elif end_date is None:
+            df = self.db.get_kline(code, start_date=start_date)
+        else:
+            df = self.db.get_kline(code, start_date, end_date)
+
         if df is None or df.empty:
             return self._mock_kline_json(code)
 
-        # trade_date 已经是字符串，直接使用
-        dates = [str(d) for d in df['trade_date']]
-        values = [[round(o,2), round(c,2), round(l,2), round(h,2)]
-                  for o,c,l,h in zip(df['open'], df['close'], df['low'], df['high'])]
+        # 统一日期格式
+        dates = [self._format_date(d) for d in df['trade_date']]
+        values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2)]
+                  for o, c, l, h in zip(df['open'], df['close'], df['low'], df['high'])]
         result = {
             "dates": dates,
             "values": values
@@ -33,6 +64,6 @@ class DataFeed:
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
 
         date_strs = [d.strftime('%Y-%m-%d') for d in dates]
-        values = [[round(opens[i],2), round(closes[i],2), round(lows[i],2), round(highs[i],2)]
+        values = [[round(opens[i], 2), round(closes[i], 2), round(lows[i], 2), round(highs[i], 2)]
                   for i in range(n)]
         return json.dumps({"dates": date_strs, "values": values})
