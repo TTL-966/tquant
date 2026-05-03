@@ -620,26 +620,104 @@
         if (debugRender) debugRender.innerHTML = '渲染: ✅ 已完成，图表实例已创建';
     }
 
+    // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点）
+    // 顺序必须是 [open, close, low, high]
+    // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
         var dom = document.getElementById(containerId);
         if (!dom) return;
-        var existingChart = echarts.getInstanceByDom(dom);
-        if (existingChart) existingChart.dispose();
-        if (typeof echarts !== 'undefined') {
-            var chart = echarts.init(dom);
-            var option = {
-                backgroundColor: 'transparent',
-                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { var res = params[0].axisValue + '<br/>'; var d = params[0].data; res += '开盘: ' + d[0] + '<br/>收盘: ' + d[1] + '<br/>最低: ' + d[2] + '<br/>最高: ' + d[3]; return res; } },
-                xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
-                yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-                series: [
-                    { name: 'K线', type: 'candlestick', data: values, itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' } }
-                ],
-                grid: { containLabel: true, backgroundColor: '#0e1220' }
-            };
-            chart.setOption(option);
+        var chart = echarts.init(dom);
+        var option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    var res = params[0].axisValue + '<br/>';
+                    var d = params[0].data;
+                    res += '开盘: ' + d[0] + '<br/>' +
+                           '收盘: ' + d[1] + '<br/>' +
+                           '最低: ' + d[2] + '<br/>' +
+                           '最高: ' + d[3];
+                    return res;
+                }
+            },
+            xAxis: {
+                type: 'category',
+                data: dates,
+                axisLabel: { rotate: 45, color: '#ffffff' }
+            },
+            yAxis: {
+                scale: true,
+                axisLabel: { color: '#ffffff' },
+                name: '价格 (元)'
+            },
+            series: [{
+                type: 'candlestick',
+                data: values,
+                itemStyle: {
+                    color: '#ef5350',
+                    color0: '#26a69a',
+                    borderColor: '#ef5350',
+                    borderColor0: '#26a69a'
+                }
+            }],
+            grid: { containLabel: true, backgroundColor: '#0e1220' }
+        };
+        chart.setOption(option);
+    }
+
+    // --------------------------------------------------------------
+    // 个股详情页 K线数据获取 —— 修复顺序
+    // --------------------------------------------------------------
+    function fetchStockKline(code, callback) {
+        if (!bridge) {
+            var mock = generateMockKline(code);
+            callback(mock.dates, mock.values);
+            return;
         }
+        
+        bridge.get_kline_data(code).then(function(jsonStr) {
+            var data = JSON.parse(jsonStr);
+            
+            if (data.error) {
+                var mock = generateMockKline(code);
+                callback(mock.dates, mock.values);
+                return;
+            }
+            
+            var dates = data.dates;
+            var values = [];
+            
+            if (data.values && data.values.length > 0) {
+                // 直接使用 values，顺序应为 [open, close, low, high]
+                values = data.values;
+            } else if (data.opens && data.closes && data.lows && data.highs) {
+                // 构造 values，顺序必须是 [open, close, low, high]
+                for (var i = 0; i < dates.length; i++) {
+                    values.push([
+                        parseFloat(data.opens[i]),
+                        parseFloat(data.closes[i]),
+                        parseFloat(data.lows[i]),
+                        parseFloat(data.highs[i])
+                    ]);
+                }
+            }
+            
+            if (dates && dates.length > 0 && values && values.length > 0) {
+                console.log("个股详情数据:", dates.length, values.length);
+                console.log("第一条数据:", dates[0], values[0]);
+                callback(dates, values);
+            } else {
+                var mock = generateMockKline(code);
+                callback(mock.dates, mock.values);
+            }
+        }).catch(function(err) {
+            console.error("获取个股K线失败:", err);
+            var mock = generateMockKline(code);
+            callback(mock.dates, mock.values);
+        });
     }
 
     // --------------------------------------------------------------
@@ -691,34 +769,6 @@
             values.push([parseFloat(open.toFixed(2)), parseFloat(close.toFixed(2)), parseFloat(low.toFixed(2)), parseFloat(high.toFixed(2))]);
         }
         return { dates: dates, values: values };
-    }
-
-    // 辅助函数：获取K线数据（用于个股详情页）
-    function fetchStockKline(code, callback) {
-        if (!bridge) {
-            var mock = generateMockKline(code);
-            callback(mock.dates, mock.values);
-            return;
-        }
-        bridge.get_kline_data(code).then(function(jsonStr) {
-            var data = JSON.parse(jsonStr);
-            if (data.error) { var mock = generateMockKline(code); callback(mock.dates, mock.values); return; }
-            // 兼容处理：如果后端没有 values，从 opens/closes/lows/highs 构造
-            if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
-                data.values = data.dates.map(function(_, i) {
-                    return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
-                });
-            }
-            if (!data.dates || !data.values) {
-                var mock = generateMockKline(code);
-                callback(mock.dates, mock.values);
-                return;
-            }
-            callback(data.dates, data.values);
-        }).catch(function() {
-            var mock = generateMockKline(code);
-            callback(mock.dates, mock.values);
-        });
     }
 
     // --------------------------------------------------------------
