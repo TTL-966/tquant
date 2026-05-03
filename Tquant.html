@@ -672,7 +672,7 @@
     }
 
     // --------------------------------------------------------------
-// 个股详情页 K线数据获取 —— 强制重排 values 顺序为 [open, close, low, high]
+// 个股详情页 K线数据获取 —— 循环构建 ensures 一一对应
 // --------------------------------------------------------------
 	function fetchStockKline(code, callback) {
     	if (!bridge) {
@@ -690,12 +690,13 @@
             return;
         }
         
-        var dates = data.dates;
+        var dates = [];
         var values = [];
         
-        // 优先使用 data.values，强制重排顺序为 [open, close, low, high]
-        if (data.values && data.values.length > 0) {
-            for (var i = 0; i < data.values.length; i++) {
+        // 优先使用 data.values，循环构建 dates 和 values，确保一一对应
+        if (data.dates && data.values && data.values.length > 0) {
+            for (var i = 0; i < data.dates.length; i++) {
+                dates.push(data.dates[i]);
                 var v = data.values[i];
                 values.push([
                     parseFloat(v[0]),  // open
@@ -704,11 +705,12 @@
                     parseFloat(v[3])   // high
                 ]);
             }
-            console.log("✅ 使用 data.values 重排，第一条:", values[0]);
+            console.log("✅ 使用 data.values 循环构建，第一条:", values[0]);
         } 
         // 备用：使用 opens/closes/lows/highs
-        else if (data.opens && data.closes && data.lows && data.highs) {
-            for (var i = 0; i < dates.length; i++) {
+        else if (data.dates && data.opens && data.closes && data.lows && data.highs) {
+            for (var i = 0; i < data.dates.length; i++) {
+                dates.push(data.dates[i]);
                 values.push([
                     parseFloat(data.opens[i]),
                     parseFloat(data.closes[i]),
