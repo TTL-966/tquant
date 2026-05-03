@@ -624,10 +624,28 @@
 
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点）
-    // 顺序必须是 [open, close, low, high]
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
-        console.log("renderStockKline 收到的第一条数据:", values[0]);
+        // 强制重排数据
+        var fixedValues = [];
+        for (var i = 0; i < values.length; i++) {
+            var v = values[i];
+            var open = parseFloat(v[0]);
+            var close = parseFloat(v[1]);
+            var low = parseFloat(v[2]);
+            var high = parseFloat(v[3]);
+            // 确保 low 是最小值，high 是最大值
+            low = Math.min(low, open, close);
+            high = Math.max(high, open, close);
+            fixedValues.push([open, close, low, high]);
+        }
+        
+        // 在调试面板显示接收到的数据
+        var debugDiv = document.getElementById('stockDebugResult');
+        if (debugDiv && fixedValues.length > 0) {
+            debugDiv.innerHTML += '<br>📊 renderStockKline 第一条: [' + fixedValues[0].join(', ') + ']';
+        }
+        
         var dom = document.getElementById(containerId);
         if (!dom) return;
         var chart = echarts.init(dom);
@@ -646,25 +664,12 @@
                     return res;
                 }
             },
-            xAxis: {
-                type: 'category',
-                data: dates,
-                axisLabel: { rotate: 45, color: '#ffffff' }
-            },
-            yAxis: {
-                scale: true,
-                axisLabel: { color: '#ffffff' },
-                name: '价格 (元)'
-            },
+            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
+            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
             series: [{
                 type: 'candlestick',
-                data: values,
-                itemStyle: {
-                    color: '#ef5350',
-                    color0: '#26a69a',
-                    borderColor: '#ef5350',
-                    borderColor0: '#26a69a'
-                }
+                data: fixedValues,
+                itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' }
             }],
             grid: { containLabel: true, backgroundColor: '#0e1220' }
         };
