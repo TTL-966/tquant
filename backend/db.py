@@ -97,9 +97,10 @@ class Database:
         return self._generate_mock_data()
 
     def _generate_mock_data(self):
-        n = 60
+        """生成足够多的模拟K线数据（约2000个交易日，从2010年开始）"""
+        n = 2000
         np.random.seed(42)
-        dates = pd.date_range("2026-01-01", periods=n, freq='B')
+        dates = pd.date_range("2010-01-01", periods=n, freq='B')
         base = 12.0
         opens = base + np.cumsum(np.random.randn(n) * 0.5)
         closes = opens + np.random.randn(n) * 0.6
@@ -107,7 +108,7 @@ class Database:
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
         volumes = np.random.randint(100000, 500000, n)
         df = pd.DataFrame({
-            'trade_date': [d.strftime('%Y%m%d') for d in dates],  # YYYYMMDD 格式
+            'trade_date': [d.strftime('%Y%m%d') for d in dates],
             'open': opens,
             'high': highs,
             'low': lows,

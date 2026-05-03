@@ -612,9 +612,9 @@
                     start: 80,
                     end: 100,
                     zoomOnMouseWheel: true,   // 启用滚轮缩放
-                    moveOnMouseMove: true,    // 启用鼠标拖拽平移
+                    moveOnMouseMove: false,    // 【关键】禁止鼠标移动时平移（必须按住左键才能拖拽）
                     moveOnMouseWheel: false,  // 禁用滚轮平移
-                    preventDefaultMouseMove: false
+                    preventDefaultMouseMove: true
                 }
             ]
         };
@@ -715,9 +715,9 @@
                     start: 80,
                     end: 100,
                     zoomOnMouseWheel: true,   // 启用滚轮缩放
-                    moveOnMouseMove: true,    // 启用鼠标拖拽平移
+                    moveOnMouseMove: false,    // 【关键】禁止鼠标移动时平移（必须按住左键才能拖拽）
                     moveOnMouseWheel: false,  // 禁用滚轮平移
-                    preventDefaultMouseMove: false
+                    preventDefaultMouseMove: true
                 }
             ]
         };
@@ -820,9 +820,10 @@
     // 模拟K线数据生成
     // --------------------------------------------------------------
     function generateMockKline(code) {
-        var baseDate = new Date(2026, 0, 1);
+        var baseDate = new Date(2010, 0, 1);   // 从2010年开始
+        var n = 2000;                          // 生成约2000个交易日
         var dates = [], values = [], close = 12.0;
-        for (var i=0; i<60; i++) {
+        for (var i=0; i<n; i++) {
             var date = new Date(baseDate); date.setDate(baseDate.getDate()+i);
             var dateStr = date.toISOString().slice(0,10);
             var open = close;
