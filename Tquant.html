@@ -625,119 +625,83 @@
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点）
     // --------------------------------------------------------------
-    function renderStockKline(containerId, dates, values) {
-        // 强制重排数据
-        var fixedValues = [];
-        for (var i = 0; i < values.length; i++) {
-            var v = values[i];
-            var open = parseFloat(v[0]);
-            var close = parseFloat(v[1]);
-            var low = parseFloat(v[2]);
-            var high = parseFloat(v[3]);
-            // 确保 low 是最小值，high 是最大值
-            low = Math.min(low, open, close);
-            high = Math.max(high, open, close);
-            fixedValues.push([open, close, low, high]);
-        }
-        
-        // 在调试面板显示接收到的数据
-        var debugDiv = document.getElementById('stockDebugResult');
-        if (debugDiv && fixedValues.length > 0) {
-            debugDiv.innerHTML += '<br>📊 renderStockKline 第一条: [' + fixedValues[0].join(', ') + ']';
-        }
-        
-        var dom = document.getElementById(containerId);
-        if (!dom) return;
-        var chart = echarts.init(dom);
-        var option = {
-            backgroundColor: 'transparent',
-            tooltip: {
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: function(params) {
-                    var res = params[0].axisValue + '<br/>';
-                    var d = params[0].data;
-                    res += '开盘: ' + d[0] + '<br/>' +
-                           '收盘: ' + d[1] + '<br/>' +
-                           '最低: ' + d[2] + '<br/>' +
-                           '最高: ' + d[3];
-                    return res;
-                }
-            },
-            xAxis: { type: 'category', data: dates, axisLabel: { rotate: 45, color: '#ffffff' } },
-            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-            series: [{
-                type: 'candlestick',
-                data: fixedValues,
-                itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' }
-            }],
-            grid: { containLabel: true, backgroundColor: '#0e1220' }
-        };
-        chart.setOption(option);
-    }
+	function renderStockKline(containerId, dates, values) {
+    // 构造正确顺序的数据 [open, close, low, high]
+	    var fixedValues = [];
+	    for (var i = 0; i < values.length; i++) {
+	        var v = values[i];
+	        var open = parseFloat(v[0]);
+	        var close = parseFloat(v[1]);
+	        var low = parseFloat(v[2]);
+	        var high = parseFloat(v[3]);
+	        low = Math.min(low, open, close);
+	        high = Math.max(high, open, close);
+	        fixedValues.push([open, close, low, high]);
+	    }
 
-    // --------------------------------------------------------------
-// 个股详情页 K线数据获取 —— 循环构建 ensures 一一对应
-// --------------------------------------------------------------
-	function fetchStockKline(code, callback) {
-    	if (!bridge) {
-        	var mock = generateMockKline(code);
-        	callback(mock.dates, mock.values);
-        	return;
-    }
-    
-    bridge.get_kline_data(code).then(function(jsonStr) {
-        var data = JSON.parse(jsonStr);
-        
-        if (data.error) {
-            var mock = generateMockKline(code);
-            callback(mock.dates, mock.values);
-            return;
-        }
-        
-        var dates = [];
-        var values = [];
-        
-        // 优先使用 data.values，循环构建 dates 和 values，确保一一对应
-        if (data.dates && data.values && data.values.length > 0) {
-            for (var i = 0; i < data.dates.length; i++) {
-                dates.push(data.dates[i]);
-                var v = data.values[i];
-                values.push([
-                    parseFloat(v[0]),  // open
-                    parseFloat(v[1]),  // close
-                    parseFloat(v[2]),  // low
-                    parseFloat(v[3])   // high
-                ]);
-            }
-            console.log("✅ 使用 data.values 循环构建，第一条:", values[0]);
-        } 
-        // 备用：使用 opens/closes/lows/highs
-        else if (data.dates && data.opens && data.closes && data.lows && data.highs) {
-            for (var i = 0; i < data.dates.length; i++) {
-                dates.push(data.dates[i]);
-                values.push([
-                    parseFloat(data.opens[i]),
-                    parseFloat(data.closes[i]),
-                    parseFloat(data.lows[i]),
-                    parseFloat(data.highs[i])
-                ]);
-            }
-            console.log("使用 opens/closes/lows/highs 构造，第一条:", values[0]);
-        }
-        
-        if (dates.length > 0 && values.length > 0) {
-            callback(dates, values);
-        } else {
-            console.warn("无有效数据，使用模拟数据");
-            var mock = generateMockKline(code);
-            callback(mock.dates, mock.values);
-        }
-    }).catch(function(err) {
-        console.error("获取个股K线失败:", err);
-        var mock = generateMockKline(code);
-        callback(mock.dates, mock.values);
-    });
+	    // 获取容器并彻底清理
+	    var container = document.getElementById(containerId);
+	    if (!container) return;
+	    var oldChart = echarts.getInstanceByDom(container);
+	    if (oldChart) oldChart.dispose();
+	    container.innerHTML = "";
+
+	    // 创建全新容器
+	    var newContainer = document.createElement("div");
+	    newContainer.id = containerId + "_" + Date.now();
+	    newContainer.style.width = "100%";
+	    newContainer.style.height = "460px";
+	    newContainer.style.backgroundColor = "#0e1220";
+	    container.parentNode.replaceChild(newContainer, container);
+
+	    var chart = echarts.init(newContainer);
+	    var option = {
+	        backgroundColor: 'transparent',
+	        tooltip: {
+	            trigger: 'axis',
+	            axisPointer: { type: 'shadow' },
+	            formatter: function(params) {
+	                // 找到系列名为 'K线' 的数据
+	                var klineData = null;
+	                for (var i = 0; i < params.length; i++) {
+	                    if (params[i].seriesName === 'K线') {
+	                        klineData = params[i].data;
+	                        break;
+	                    }
+	                }
+	                if (!klineData) return '';
+	                return params[0].axisValue + '<br/>' +
+	                       '开盘: ' + klineData[0] + '<br/>' +
+	                       '收盘: ' + klineData[1] + '<br/>' +
+	                       '最低: ' + klineData[2] + '<br/>' +
+	                       '最高: ' + klineData[3];
+	            }
+	        },
+	        xAxis: {
+	            type: 'category',
+	            data: dates,
+	            axisLabel: { rotate: 45, color: '#ffffff' }
+	        },
+	        yAxis: {
+	            scale: true,
+	            axisLabel: { color: '#ffffff' },
+	            name: '价格 (元)'
+	        },
+	        series: [{
+	            name: 'K线',    // 重要：与 formatter 中匹配
+	            type: 'candlestick',
+	            data: fixedValues,
+	            itemStyle: {
+	                color: '#ef5350',
+	                color0: '#26a69a',
+	                borderColor: '#ef5350',
+	                borderColor0: '#26a69a'
+	            }
+	        }],
+	        grid: { containLabel: true, backgroundColor: '#0e1220' }
+	    };
+	    chart.setOption(option, true);
+	    alert("图表已完全重置，数据第一条: " + JSON.stringify(fixedValues[0]));
 }
     // --------------------------------------------------------------
     // 运行回测
