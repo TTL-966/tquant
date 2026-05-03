@@ -403,6 +403,8 @@
     <div id="debugRender">渲染: 未执行</div>
     <button id="forceRenderBtn" style="margin-top:8px; background:#2d3a5e; border:none; padding:4px 12px; border-radius:4px; color:white; cursor:pointer;">强制渲染测试</button>
     <button id="testFetchBtn" style="margin-top:8px; margin-left:8px; background:#2d3a5e; border:none; padding:4px 12px; border-radius:4px; color:white; cursor:pointer;">手动获取数据</button>
+    <button id="debugStockBtn" style="margin-top:8px; margin-left:8px; background:#2d3a5e; border:none; padding:4px 12px; border-radius:4px; color:white; cursor:pointer;">🔍 个股数据调试</button>
+    <div id="stockDebugResult" style="margin-top:8px; font-size:10px; color:#0f0; word-break:break-all;"></div>
 </div>
 
 <script>
@@ -1324,6 +1326,25 @@ def handle_bar(context, bar_dict):
             }).catch(function(err) {
                 updateStatus('状态: ❌ 失败');
                 updateData('错误: ' + err);
+            });
+        });
+
+        // 个股数据调试
+        document.getElementById('debugStockBtn')?.addEventListener('click', function() {
+            var resultDiv = document.getElementById('stockDebugResult');
+            resultDiv.innerHTML = '请求中...';
+            
+            var code = '000001';
+            bridge.get_kline_data(code).then(function(jsonStr) {
+                var data = JSON.parse(jsonStr);
+                var firstValue = data.values[0];
+                resultDiv.innerHTML = '✅ data.values[0] = [' + firstValue.join(', ') + ']<br>' +
+                                     '开盘: ' + firstValue[0] + '<br>' +
+                                     '收盘: ' + firstValue[1] + '<br>' +
+                                     '最低: ' + firstValue[2] + '<br>' +
+                                     '最高: ' + firstValue[3];
+            }).catch(function(err) {
+                resultDiv.innerHTML = '❌ 错误: ' + err;
             });
         });
     })();
