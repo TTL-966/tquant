@@ -672,7 +672,7 @@
     }
 
     // --------------------------------------------------------------
-// 个股详情页 K线数据获取 —— 优先使用 data.values
+// 个股详情页 K线数据获取 —— 强制重排 values 顺序为 [open, close, low, high]
 // --------------------------------------------------------------
 	function fetchStockKline(code, callback) {
     	if (!bridge) {
@@ -693,10 +693,18 @@
         var dates = data.dates;
         var values = [];
         
-        // 优先使用 data.values（调试面板就是这么做的）
+        // 优先使用 data.values，强制重排顺序为 [open, close, low, high]
         if (data.values && data.values.length > 0) {
-            values = data.values;
-            console.log("✅ 使用 data.values，第一条:", values[0]);
+            for (var i = 0; i < data.values.length; i++) {
+                var v = data.values[i];
+                values.push([
+                    parseFloat(v[0]),  // open
+                    parseFloat(v[1]),  // close
+                    parseFloat(v[2]),  // low
+                    parseFloat(v[3])   // high
+                ]);
+            }
+            console.log("✅ 使用 data.values 重排，第一条:", values[0]);
         } 
         // 备用：使用 opens/closes/lows/highs
         else if (data.opens && data.closes && data.lows && data.highs) {
