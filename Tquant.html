@@ -509,7 +509,7 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
-    // 修复后的 renderKlineWithSignals —— 增强调试输出，添加 dataZoom
+    // renderKlineWithSignals —— 添加 dataZoom 优化，同花顺风格
     // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         console.log("=== renderKlineWithSignals 被调用 ===");
@@ -560,10 +560,18 @@
                 trigger: 'axis',
                 axisPointer: { type: 'shadow' }
             },
-            xAxis: { 
-                data: dates, 
+            xAxis: {
+                data: dates,
                 type: 'category',
-                axisLabel: { rotate: 45, color: '#ffffff' }
+                axisLabel: {
+                    rotate: 0,
+                    color: '#ffffff',
+                    interval: 'auto',
+                    formatter: function(value, index) {
+                        // 只显示月份和年份，例如 '2026-01'
+                        return value.slice(0,7);
+                    }
+                }
             },
             yAxis: { 
                 scale: true, 
@@ -590,19 +598,20 @@
                 containLabel: true, 
                 backgroundColor: '#0e1220' 
             },
-            // ----------  新增 dataZoom 支持滑动缩放 ----------
+            // ----------  优化后的 dataZoom 配置 ----------
             dataZoom: [
-                {   // 鼠标滚轮缩放
-                    type: 'inside',
-                    start: 80,
-                    end: 100
-                },
-                {   // 底部滑块
+                {
                     type: 'slider',
                     start: 80,
                     end: 100,
                     bottom: 10,
                     height: 20
+                },
+                {
+                    type: 'inside',
+                    zoomOnMouseWheel: false,   // 禁用滚轮缩放
+                    moveOnMouseMove: true,     // 启用鼠标拖拽平移
+                    moveOnMouseWheel: false
                 }
             ]
         };
@@ -618,7 +627,7 @@
     }
 
     // --------------------------------------------------------------
-    // 个股详情页专用：渲染简单K线（不含买卖点），添加 dataZoom
+    // 个股详情页专用：渲染简单K线（不含买卖点）—— 同样优化
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
         var fixedValues = [];
@@ -663,7 +672,14 @@
             xAxis: {
                 type: 'category',
                 data: dates,
-                axisLabel: { rotate: 45, color: '#ffffff' }
+                axisLabel: {
+                    rotate: 0,
+                    color: '#ffffff',
+                    interval: 'auto',
+                    formatter: function(value, index) {
+                        return value.slice(0,7);
+                    }
+                }
             },
             yAxis: {
                 scale: true,
@@ -682,10 +698,21 @@
                 }
             }],
             grid: { containLabel: true, backgroundColor: '#0e1220' },
-            // ----------  新增 dataZoom 支持滑动缩放 ----------
+            // ----------  优化后的 dataZoom 配置 ----------
             dataZoom: [
-                {   type: 'inside', start: 80, end: 100 },
-                {   type: 'slider', start: 80, end: 100, bottom: 10, height: 20 }
+                {
+                    type: 'slider',
+                    start: 80,
+                    end: 100,
+                    bottom: 10,
+                    height: 20
+                },
+                {
+                    type: 'inside',
+                    zoomOnMouseWheel: false,   // 禁用滚轮缩放
+                    moveOnMouseMove: true,     // 启用鼠标拖拽平移
+                    moveOnMouseWheel: false
+                }
             ]
         };
         chart.setOption(option, true);
