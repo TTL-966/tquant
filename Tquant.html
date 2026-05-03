@@ -625,6 +625,7 @@
     // 顺序必须是 [open, close, low, high]
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
+        console.log("renderStockKline 收到的第一条数据:", values[0]);
         var dom = document.getElementById(containerId);
         if (!dom) return;
         var chart = echarts.init(dom);
@@ -636,10 +637,10 @@
                 formatter: function(params) {
                     var res = params[0].axisValue + '<br/>';
                     var d = params[0].data;
-                    res += '开盘: ' + d[0] + '<br/>' +
+                    res += '开盘: ' + d[2] + '<br/>' +
                            '收盘: ' + d[1] + '<br/>' +
-                           '最低: ' + d[2] + '<br/>' +
-                           '最高: ' + d[3];
+                           '最低: ' + d[3] + '<br/>' +
+                           '最高: ' + d[0];
                     return res;
                 }
             },
@@ -691,7 +692,7 @@
             
             // 方式1：直接使用 data.values
             if (data.dates && data.values && data.values.length > 0) {
-                console.log("使用 data.values，第一条:", data.values[0]);
+                console.log("方式1 使用 data.values，第一条:", data.values[0]);
                 callback(data.dates, data.values);
                 return;
             }
@@ -707,7 +708,7 @@
                         parseFloat(data.highs[i])
                     ]);
                 }
-                console.log("从 opens 构造 values，第一条:", values[0]);
+                console.log("方式2 构造 values 完成，第一条:", values[0]);
                 callback(data.dates, values);
                 return;
             }
