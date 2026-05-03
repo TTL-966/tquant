@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Tquant 量化工作站 | 策略回测 + K线买卖点</title>
     <!-- ECharts 核心库 -->
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="echarts.min.js"></script>
     <!-- QWebChannel -->
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
@@ -406,47 +406,17 @@
 </div>
 
 <script>
-    // ---------- 新的 Bridge 初始化 ----------
-    function initBridge(retryCount) {
-        retryCount = retryCount || 0;
-        console.log("initBridge 尝试 " + (retryCount + 1));
-        
-        if (typeof qt !== 'undefined' && qt.webChannelTransport) {
-            console.log("qt 对象存在，开始创建 QWebChannel");
-            new QWebChannel(qt.webChannelTransport, function(channel) {
-                window.bridge = channel.objects.bridge;
-                bridgeReady = true;
-                console.log("✅ Bridge 连接成功", window.bridge);
-                
-                // 更新状态显示
-                var statusDiv = document.getElementById('bridgeStatus');
-                if (statusDiv) {
-                    statusDiv.innerHTML = '🔌 Bridge: ✅ 已连接';
-                    statusDiv.style.background = '#1a5a2a';
-                }
-                
-                // 连接成功后刷新K线
-                if (typeof fetchAndRenderKline === 'function') {
-                    fetchAndRenderKline('000001');
-                }
-            });
-        } else if (retryCount < 10) {
-            console.log("⏳ 等待 WebChannel 环境，第 " + (retryCount + 1) + " 次重试");
-            setTimeout(function() { initBridge(retryCount + 1); }, 500);
+    // Bridge 状态更新
+    setTimeout(function() {
+        var statusDiv = document.getElementById('bridgeStatus');
+        if (typeof bridge !== 'undefined' && bridge !== null) {
+            statusDiv.innerHTML = '🔌 Bridge: ✅ 已连接';
+            statusDiv.style.background = '#1a5a2a';
         } else {
-            console.error("❌ WebChannel 环境不可用");
-            var statusDiv = document.getElementById('bridgeStatus');
-            if (statusDiv) {
-                statusDiv.innerHTML = '🔌 Bridge: ❌ 连接失败';
-                statusDiv.style.background = '#5a2a2a';
-            }
+            statusDiv.innerHTML = '🔌 Bridge: ❌ 未连接';
+            statusDiv.style.background = '#5a2a2a';
         }
-    }
-
-    document.addEventListener("DOMContentLoaded", function() {
-        console.log("DOMContentLoaded 事件触发");
-        initBridge();
-    });
+    }, 1000);
 
     // --------------------------------------------------------------
     // 全局变量 & 通信日志
@@ -472,6 +442,35 @@
             pendingCallbacks.push(callback);
         }
     }
+
+    // --------------------------------------------------------------
+    // 建立 QWebChannel
+    // --------------------------------------------------------------
+    document.addEventListener("DOMContentLoaded", function() {
+        if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                bridge = channel.objects.bridge;
+                bridgeReady = true;
+                log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
+                pendingCallbacks.forEach(function(cb) { cb(); });
+                pendingCallbacks = [];
+
+                if (typeof bridge.ping === 'function') {
+                    bridge.ping().then(function(reply) {
+                        log("ping 响应: " + reply);
+                    }).catch(function(err) {
+                        log("ping 失败: " + err);
+                    });
+                }
+
+                if (bridge) {
+                    fetchAndRenderKline(currentStockCode);
+                }
+            });
+        } else {
+            log("QWebChannel 环境不可用（qt.webChannelTransport 未定义），使用模拟数据。");
+        }
+    });
 
     // --------------------------------------------------------------
     // 跳转函数
