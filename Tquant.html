@@ -642,39 +642,43 @@
 	    // 获取容器并彻底清理
 	    var container = document.getElementById(containerId);
 	    if (!container) return;
+	    
+	    // 销毁旧图表实例
 	    var oldChart = echarts.getInstanceByDom(container);
 	    if (oldChart) oldChart.dispose();
-	    container.innerHTML = "";
-
-	    // 创建全新容器
-	    var newContainer = document.createElement("div");
-	    newContainer.id = containerId + "_" + Date.now();
-	    newContainer.style.width = "100%";
-	    newContainer.style.height = "460px";
-	    newContainer.style.backgroundColor = "#0e1220";
+	    
+	    // 清空容器内容
+	    container.innerHTML = '';
+	    
+	    // 创建全新容器（改变 id 避免残留）
+	    var newId = containerId + '_' + Date.now();
+	    var newContainer = document.createElement('div');
+	    newContainer.id = newId;
+	    newContainer.style.width = '100%';
+	    newContainer.style.height = '460px';
+	    newContainer.style.backgroundColor = '#0e1220';
 	    container.parentNode.replaceChild(newContainer, container);
-
+	    
+	    // 初始化 ECharts
 	    var chart = echarts.init(newContainer);
+	    
 	    var option = {
 	        backgroundColor: 'transparent',
 	        tooltip: {
 	            trigger: 'axis',
 	            axisPointer: { type: 'shadow' },
 	            formatter: function(params) {
-	                // 找到系列名为 'K线' 的数据
-	                var klineData = null;
-	                for (var i = 0; i < params.length; i++) {
-	                    if (params[i].seriesName === 'K线') {
-	                        klineData = params[i].data;
-	                        break;
-	                    }
-	                }
-	                if (!klineData) return '';
+	                // 使用 chart 内部数据，确保正确
+	                if (!params || !params.length) return '';
+	                var idx = params[0].dataIndex;
+	                var seriesData = chart.getOption().series[0].data;
+	                if (!seriesData || idx >= seriesData.length) return '';
+	                var d = seriesData[idx];
 	                return params[0].axisValue + '<br/>' +
-	                       '开盘: ' + klineData[0] + '<br/>' +
-	                       '收盘: ' + klineData[1] + '<br/>' +
-	                       '最低: ' + klineData[2] + '<br/>' +
-	                       '最高: ' + klineData[3];
+	                       '开盘: ' + d[0] + '<br/>' +
+	                       '收盘: ' + d[1] + '<br/>' +
+	                       '最低: ' + d[2] + '<br/>' +
+	                       '最高: ' + d[3];
 	            }
 	        },
 	        xAxis: {
@@ -688,7 +692,7 @@
 	            name: '价格 (元)'
 	        },
 	        series: [{
-	            name: 'K线',    // 重要：与 formatter 中匹配
+	            name: 'K线',
 	            type: 'candlestick',
 	            data: fixedValues,
 	            itemStyle: {
@@ -700,8 +704,11 @@
 	        }],
 	        grid: { containLabel: true, backgroundColor: '#0e1220' }
 	    };
+	    
 	    chart.setOption(option, true);
-	    alert("图表已完全重置，数据第一条: " + JSON.stringify(fixedValues[0]));
+	    
+	    // 可选：清除以前的调试 alert，保留一个成功的提示
+	    // alert("K线图渲染完成，数据第一条: " + JSON.stringify(fixedValues[0]));
 }
     // --------------------------------------------------------------
     // 个股详情页 K线数据获取 —— 循环构建 ensures 一一对应（添加调试 alert）
