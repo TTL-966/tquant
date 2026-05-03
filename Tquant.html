@@ -704,6 +704,76 @@
 	    alert("图表已完全重置，数据第一条: " + JSON.stringify(fixedValues[0]));
 }
     // --------------------------------------------------------------
+    // 个股详情页 K线数据获取 —— 循环构建 ensures 一一对应（添加调试 alert）
+    // --------------------------------------------------------------
+	function fetchStockKline(code, callback) {
+        alert("fetchStockKline 开始执行，code=" + code);
+    	if (!bridge) {
+        	var mock = generateMockKline(code);
+        	callback(mock.dates, mock.values);
+        	return;
+    }
+    
+    bridge.get_kline_data(code).then(function(jsonStr) {
+        var data = JSON.parse(jsonStr);
+        alert("数据获取成功，values长度=" + (data.values ? data.values.length : 0));
+        
+        if (data.error) {
+            var mock = generateMockKline(code);
+            callback(mock.dates, mock.values);
+            return;
+        }
+        
+        var dates = [];
+        var values = [];
+        
+        // 优先使用 data.values，循环构建 dates 和 values，确保一一对应
+        if (data.dates && data.values && data.values.length > 0) {
+            for (var i = 0; i < data.dates.length; i++) {
+                dates.push(data.dates[i]);
+                var v = data.values[i];
+                values.push([
+                    parseFloat(v[0]),  // open
+                    parseFloat(v[1]),  // close
+                    parseFloat(v[2]),  // low
+                    parseFloat(v[3])   // high
+                ]);
+            }
+            console.log("✅ 使用 data.values 循环构建，第一条:", values[0]);
+        } 
+        // 备用：使用 opens/closes/lows/highs
+        else if (data.dates && data.opens && data.closes && data.lows && data.highs) {
+            for (var i = 0; i < data.dates.length; i++) {
+                dates.push(data.dates[i]);
+                values.push([
+                    parseFloat(data.opens[i]),
+                    parseFloat(data.closes[i]),
+                    parseFloat(data.lows[i]),
+                    parseFloat(data.highs[i])
+                ]);
+            }
+            console.log("使用 opens/closes/lows/highs 构造，第一条:", values[0]);
+        }
+        
+        // 检查数据是否有效
+        if (dates.length > 0 && values.length > 0) {
+            alert("准备调用 callback，dates长度=" + dates.length);
+            callback(dates, values);
+        } else {
+            // 无有效数据，使用模拟数据并弹出警告
+            console.warn("无有效数据，使用模拟数据");
+            alert("⚠️ 无有效数据，将使用模拟数据");
+            var mock = generateMockKline(code);
+            callback(mock.dates, mock.values);
+        }
+    }).catch(function(err) {
+        console.error("获取个股K线失败:", err);
+        alert("❌ 获取个股K线失败: " + err);
+        var mock = generateMockKline(code);
+        callback(mock.dates, mock.values);
+    });
+}
+    // --------------------------------------------------------------
     // 运行回测
     // --------------------------------------------------------------
     function runBacktest(code) {
@@ -947,6 +1017,7 @@
                 var searchBtn = document.getElementById('stockSearchBtn');
                 var codeInput = document.getElementById('stockCodeInput');
                 var loadStock = function() {
+                    alert("loadStock 被调用，code=" + code);
                     var code = codeInput.value.trim();
                     if (code === '') code = '000001';
                     fetchStockKline(code, function(dates, values) {
