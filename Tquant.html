@@ -509,7 +509,7 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
-    // renderKlineWithSignals —— 同花顺风格交互：滚轮缩放 + 拖拽平移，底部滑块
+    // renderKlineWithSignals —— 同花顺风格交互：滚轮缩放 + 按住左键拖拽平移，底部滑块
     // --------------------------------------------------------------
     function renderKlineWithSignals(dates, values, buyPts, sellPts) {
         console.log("=== renderKlineWithSignals 被调用 ===");
@@ -613,8 +613,7 @@
                     end: 100,
                     zoomOnMouseWheel: true,   // 启用滚轮缩放
                     moveOnMouseMove: false,    // 【关键】禁止鼠标移动时平移（必须按住左键才能拖拽）
-                    moveOnMouseWheel: false,  // 禁用滚轮平移
-                    preventDefaultMouseMove: true
+                    moveOnMouseWheel: false   // 禁用滚轮平移
                 }
             ]
         };
@@ -716,8 +715,7 @@
                     end: 100,
                     zoomOnMouseWheel: true,   // 启用滚轮缩放
                     moveOnMouseMove: false,    // 【关键】禁止鼠标移动时平移（必须按住左键才能拖拽）
-                    moveOnMouseWheel: false,  // 禁用滚轮平移
-                    preventDefaultMouseMove: true
+                    moveOnMouseWheel: false   // 禁用滚轮平移
                 }
             ]
         };
