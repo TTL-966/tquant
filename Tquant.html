@@ -178,6 +178,8 @@
             gap: 14px;
             margin: 16px 0;
             flex-shrink: 0;
+            min-width: 0;
+            align-items: center;
         }
         .metric-row > * {
             flex-shrink: 0;
@@ -355,10 +357,16 @@
             font-size: 13px;
             flex: 1;
         }
-        /* ----------  新增通用 select 宽度限制 ---------- */
+        /* ----------  通用 select 宽度限制 ---------- */
         select {
             max-width: 140px;
             flex-shrink: 0;
+            height: 34px;
+            line-height: 34px;
+            box-sizing: border-box;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         /* ----------  可滚动表格容器 ---------- */
         .scrollable-table {
@@ -377,6 +385,8 @@
             min-width: 130px;
             max-width: 160px;
             flex-shrink: 0;
+            height: 34px;
+            box-sizing: border-box;
         }
     </style>
 </head>
@@ -438,6 +448,7 @@
     var bridgeReady = false;
     var pendingCallbacks = [];
     var autoRunBacktest = false;
+    var autoBacktestScheduled = false;  // 新增：自动回测仅触发一次
 
     function log(msg) {
         console.log("[Tquant]", msg);
@@ -503,6 +514,13 @@
             currentKlineDates = mock.dates;
             currentKlineValues = mock.values;
             renderKlineWithSignals(mock.dates, mock.values, buyPoints, sellPoints, null);
+            // 自动回测（模拟数据也触发）
+            if (autoBacktestScheduled) {
+                autoBacktestScheduled = false;
+                var sd = document.getElementById('startDateInput').value;
+                var ed = document.getElementById('endDateInput').value;
+                runBacktest(code, sd, ed);
+            }
             return;
         }
         log("请求 K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
@@ -520,6 +538,13 @@
             currentKlineValues = data.values;
             // 单纯刷新K线时，均线数据为 null（不回传均线）
             renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, null);
+            // 自动回测（仅在当前页面首次加载时触发）
+            if (autoBacktestScheduled) {
+                autoBacktestScheduled = false;
+                var sd = document.getElementById('startDateInput').value;
+                var ed = document.getElementById('endDateInput').value;
+                runBacktest(code, sd, ed);
+            }
         }).catch(function(err) { log("请求失败: " + err); });
     }
 
@@ -1168,12 +1193,16 @@
                 if (refreshBtn) refreshBtn.onclick = function() {
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
                 };
+                // 首次加载设置自动回测标志，并在K线数据加载完成后触发一次回测
+                autoBacktestScheduled = true;
                 // 延迟加载，确保容器就绪
                 setTimeout(function() {
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
                     if (autoRunBacktest) {
                         autoRunBacktest = false;
-                        runBacktest(currentStockCode, startDateInput.value, endDateInput.value);
+                        // 如果fetchAndRenderKline尚未触发自动回测（因为autoBacktestScheduled会触发）
+                        // 但保险起见，仍可调用runBacktest，但为防止重复，若autoBacktestScheduled为true，则fetchAndRenderKline会处理
+                        // 这里不再额外调用
                     }
                 }, 200);
             }, 50);
