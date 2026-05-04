@@ -181,17 +181,24 @@
             align-items: center;
             min-width: 0;
         }
-        .metric-row select,
+        .metric-row select {
+            width: 130px;
+            flex: none;
+            height: 34px;
+            box-sizing: border-box;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .metric-row input[type="date"] {
-            flex: 0 0 auto;
-            min-width: 0;
-            width: auto;
-            max-width: 140px;
+            width: 145px;
+            flex: none;
             height: 34px;
             box-sizing: border-box;
         }
         .metric-row > * {
             flex-shrink: 0;
+            flex-grow: 0;
         }
         select option {
             overflow: hidden;
@@ -495,10 +502,8 @@
                     });
                 }
 
-                if (bridge) {
-                    // 默认全范围加载
-                    fetchAndRenderKline(currentStockCode, "2010-01-01", "2026-12-31");
-                }
+                // 不再自动加载K线，首次加载由用户导航触发
+                // 删除原来的默认加载
             });
         } else {
             log("QWebChannel 环境不可用（qt.webChannelTransport 未定义），使用模拟数据。");
@@ -894,21 +899,26 @@
                 for (var i = 0; i < data.dates.length; i++) {
                     dates.push(data.dates[i]);
                     var v = data.values[i];
-                    values.push([
-                        parseFloat(v[0]),
-                        parseFloat(v[1]),
-                        parseFloat(v[2]),
-                        parseFloat(v[3])
-                    ]);
+                    // 确保有四个有效数字
+                    if (v && v.length >= 4) {
+                        values.push([
+                            parseFloat(v[0]) || 0,
+                            parseFloat(v[1]) || 0,
+                            parseFloat(v[2]) || 0,
+                            parseFloat(v[3]) || 0
+                        ]);
+                    } else {
+                        console.warn("无效K线数据点", v);
+                    }
                 }
             } else if (data.dates && data.opens && data.closes && data.lows && data.highs) {
                 for (var i = 0; i < data.dates.length; i++) {
                     dates.push(data.dates[i]);
                     values.push([
-                        parseFloat(data.opens[i]),
-                        parseFloat(data.closes[i]),
-                        parseFloat(data.lows[i]),
-                        parseFloat(data.highs[i])
+                        parseFloat(data.opens[i]) || 0,
+                        parseFloat(data.closes[i]) || 0,
+                        parseFloat(data.lows[i]) || 0,
+                        parseFloat(data.highs[i]) || 0
                     ]);
                 }
             }
@@ -1237,7 +1247,8 @@
                     });
                 };
                 if (searchBtn) searchBtn.onclick = loadStock;
-                loadStock();
+                // 增加一点延迟确保容器可见
+                setTimeout(loadStock, 100);
             }, 50);
         } else if (pageId === 'history') {
             var listHtml = backtestStrategies.map(function(s) {
