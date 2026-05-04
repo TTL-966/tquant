@@ -181,20 +181,22 @@
             align-items: center;
             min-width: 0;
         }
-        .metric-row select {
-            width: 130px;
-            flex: none;
-            height: 34px;
-            box-sizing: border-box;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        /* FIX: 强制固定表单控件宽度，阻止拉伸 */
+        .metric-row select,
+        .metric-row input[type="date"] {
+            width: 130px !important;
+            min-width: 130px !important;
+            max-width: 130px !important;
+            flex: none !important;
+            flex-shrink: 0 !important;
+            flex-grow: 0 !important;
+            height: 34px !important;
+            box-sizing: border-box !important;
         }
         .metric-row input[type="date"] {
-            width: 145px;
-            flex: none;
-            height: 34px;
-            box-sizing: border-box;
+            width: 145px !important;
+            min-width: 145px !important;
+            max-width: 145px !important;
         }
         .metric-row > * {
             flex-shrink: 0;
@@ -379,7 +381,7 @@
         }
         /* ----------  通用 select 宽度限制 ---------- */
         select {
-            min-width: 0;
+            min-width: 0 !important;
             max-width: 140px;
             flex-shrink: 0;
             height: 34px;
@@ -842,6 +844,7 @@
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点、不含均线）
     // 增强版：强制高度、清理、数据预处理、延迟resize，重试机制
+    // 新增：添加 MA5/MA10/MA20/MA30 均线
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values, retryCount) {
         // /* FIX */ 增加 retryCount 参数，默认0
@@ -876,7 +879,73 @@
             high = Math.max(high, open, close);
             return [open, close, low, high];
         });
-        
+
+        // ----------  /* FIX: 计算均线 */ ----------
+        function calcMA(vals, period) {
+            var ma = [];
+            for (var i = 0; i < vals.length; i++) {
+                if (i < period - 1) {
+                    ma.push(null);
+                    continue;
+                }
+                var sum = 0;
+                for (var j = 0; j < period; j++) {
+                    sum += vals[i - j][1]; // 取 close
+                }
+                ma.push(parseFloat((sum / period).toFixed(2)));
+            }
+            return ma;
+        }
+
+        var ma5Data = calcMA(values, 5);
+        var ma10Data = calcMA(values, 10);
+        var ma20Data = calcMA(values, 20);
+        var ma30Data = calcMA(values, 30);
+
+        // 构造均线系列
+        var series = [
+            {
+                name: 'K线',
+                type: 'candlestick',
+                data: fixedValues,
+                itemStyle: {
+                    color: '#ef5350',
+                    color0: '#26a69a',
+                    borderColor: '#ef5350',
+                    borderColor0: '#26a69a'
+                }
+            },
+            {
+                name: 'MA5',
+                type: 'line',
+                data: ma5Data,
+                lineStyle: { width: 1, color: '#f2c94c' },
+                smooth: false,
+                showSymbol: false
+            },
+            {
+                name: 'MA10',
+                type: 'line',
+                data: ma10Data,
+                lineStyle: { width: 1, color: '#f2994a' },
+                showSymbol: false
+            },
+            {
+                name: 'MA20',
+                type: 'line',
+                data: ma20Data,
+                lineStyle: { width: 1, color: '#eb5757' },
+                showSymbol: false
+            },
+            {
+                name: 'MA30',
+                type: 'line',
+                data: ma30Data,
+                lineStyle: { width: 1, color: '#6fcf97' },
+                showSymbol: false
+            }
+        ];
+
         var chart = echarts.init(container);
         var option = {
             backgroundColor: 'transparent',
@@ -887,10 +956,12 @@
                 axisLabel: { rotate: 0, color: '#ffffff', interval: 'auto', formatter: function(v) { return v.slice(0,7); } }
             },
             yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-            series: [{
-                name: 'K线', type: 'candlestick', data: fixedValues,
-                itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' }
-            }],
+            series: series,
+            legend: {
+                data: ['K线', 'MA5', 'MA10', 'MA20', 'MA30'],
+                textStyle: { color: '#ffffff' },
+                left: 'left'
+            },
             grid: { containLabel: true, backgroundColor: '#0e1220' },
             dataZoom: [{ type: 'inside', start: 80, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }]
         };
