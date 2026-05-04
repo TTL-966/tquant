@@ -32,11 +32,9 @@ class Database:
             start_date = "2010-01-01"
         if end_date is None:
             end_date = "2026-12-31"
-        start = start_date.replace('-', '')
-        end = end_date.replace('-', '')
         sql = text("""
             SELECT trade_date, open, high, low, close, vol AS volume
-            FROM stock_daily
+            FROM stock_daily_qfq_with_name
             WHERE ts_code = :code
               AND trade_date >= :start
               AND trade_date <= :end
@@ -48,24 +46,17 @@ class Database:
                 conn,
                 params={
                     "code": code,
-                    "start": start,
-                    "end": end
+                    "start": start_date,
+                    "end": end_date
                 }
             )
         return df
 
     def get_kline(self, code, start_date="2010-01-01", end_date="2026-12-31"):
-        """
-        获取K线数据
-        code: 股票代码，如 '000001' 或 '000001.SZ'
-        start_date: 开始日期，格式 YYYY-MM-DD
-        end_date: 结束日期，格式 YYYY-MM-DD
-        """
         if start_date is None:
             start_date = "2010-01-01"
         if end_date is None:
             end_date = "2026-12-31"
-        # 没有数据库连接，直接返回模拟数据
         if self.engine is None:
             return self._generate_mock_data()
 
@@ -77,7 +68,6 @@ class Database:
             code_for_query = code
             suffix = '.' + code.split('.')[1]
 
-        # 第一次查询
         try:
             df = self._query_kline(code_for_query, start_date, end_date)
             if not df.empty:
@@ -85,7 +75,6 @@ class Database:
         except Exception as e:
             print("查询失败:", e)
 
-        # 如果第一次查询未找到数据且传入的是无后缀代码，尝试另一个市场
         if '.' not in original_code:
             alt_suffix = None
             if suffix == '.SZ':
@@ -102,11 +91,9 @@ class Database:
                 except Exception as e:
                     print("备用查询失败:", e)
 
-        # 最终返回模拟数据（覆盖整个请求范围）
         return self._generate_mock_data()
 
     def _generate_mock_data(self):
-        """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线数据"""
         n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='B')
         n = len(n_dates)
         np.random.seed(42)
