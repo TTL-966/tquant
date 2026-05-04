@@ -142,6 +142,7 @@
             width: 100%;
             height: 460px !important;
             min-height: 460px;
+            flex-shrink: 0;
             background: #0e1220;
             border-radius: 20px;
             margin: 10px 0;
@@ -177,12 +178,25 @@
             flex-wrap: wrap;
             gap: 14px;
             margin: 16px 0;
-            flex-shrink: 0;
-            min-width: 0;
             align-items: center;
+            min-width: 0;
+        }
+        .metric-row select,
+        .metric-row input[type="date"] {
+            flex: 0 0 auto;
+            min-width: 0;
+            width: auto;
+            max-width: 150px;
+            height: 34px;
+            box-sizing: border-box;
+            line-height: normal;
         }
         .metric-row > * {
             flex-shrink: 0;
+        }
+        select option {
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .metric-tag {
             background: #1f273f;
@@ -448,7 +462,7 @@
     var bridgeReady = false;
     var pendingCallbacks = [];
     var autoRunBacktest = false;
-    var autoBacktestScheduled = false;  // 新增：自动回测仅触发一次
+    var autoBacktestScheduled = false;  // 自动回测仅触发一次
 
     function log(msg) {
         console.log("[Tquant]", msg);
@@ -552,10 +566,36 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
+    // 均线图例格式化辅助函数
+    // --------------------------------------------------------------
+    function formatMaLegend(maArray, name) {
+        // 找出最后一个非零、非空的有效值
+        var lastVal = null, prevVal = null;
+        for (var i = maArray.length - 1; i >= 0; i--) {
+            var v = maArray[i];
+            if (v !== 0 && v !== null && !isNaN(v)) {
+                if (lastVal === null) {
+                    lastVal = v;
+                } else if (prevVal === null) {
+                    prevVal = v;
+                    break;
+                }
+            }
+        }
+        if (lastVal === null) return name;
+        var arrow = '';
+        if (prevVal !== null) {
+            arrow = lastVal > prevVal ? '↑' : (lastVal < prevVal ? '↓' : '→');
+        }
+        return name + ':' + lastVal.toFixed(2) + arrow;
+    }
+
+    // --------------------------------------------------------------
     // renderKlineWithSignals —— 支持叠加均线(MA5, MA10, MA20, MA30)
     // 若 maData 非空且与 dates 长度一致，则添加四条折线
+    // 新增 extraLines 参数（预留扩展）
     // --------------------------------------------------------------
-    function renderKlineWithSignals(dates, values, buyPts, sellPts, maData) {
+    function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, extraLines) {
         console.log("=== renderKlineWithSignals 被调用 ===");
         console.log("dates 数量:", dates ? dates.length : 0);
         console.log("values 数量:", values ? values.length : 0);
@@ -677,52 +717,70 @@
         // ----------  均线系列 ----------
         var legendData = ['K线', '买入点', '卖出点'];
         if (maData && maData.ma5 && maData.ma5.length === dates.length) {
+            // 计算图例显示名称
+            var ma5Name = formatMaLegend(maData.ma5, 'MA5');
+            var ma10Name = formatMaLegend(maData.ma10, 'MA10');
+            var ma20Name = formatMaLegend(maData.ma20, 'MA20');
+            var ma30Name = formatMaLegend(maData.ma30, 'MA30');
             // MA5
             series.push({
-                name: 'MA5',
+                name: ma5Name,
                 type: 'line',
                 data: maData.ma5,
                 lineStyle: { width: 1, color: '#f2c94c' },
                 smooth: false,
                 showSymbol: false
             });
-            legendData.push('MA5');
+            legendData.push(ma5Name);
             // MA10
             series.push({
-                name: 'MA10',
+                name: ma10Name,
                 type: 'line',
                 data: maData.ma10,
                 lineStyle: { width: 1, color: '#f2994a' },
                 showSymbol: false
             });
-            legendData.push('MA10');
+            legendData.push(ma10Name);
             // MA20
             series.push({
-                name: 'MA20',
+                name: ma20Name,
                 type: 'line',
                 data: maData.ma20,
                 lineStyle: { width: 1, color: '#eb5757' },
                 showSymbol: false
             });
-            legendData.push('MA20');
+            legendData.push(ma20Name);
             // MA30
             series.push({
-                name: 'MA30',
+                name: ma30Name,
                 type: 'line',
                 data: maData.ma30,
                 lineStyle: { width: 1, color: '#6fcf97' },
                 showSymbol: false
             });
-            legendData.push('MA30');
+            legendData.push(ma30Name);
         }
 
+        // 预留 extraLines
+        if (extraLines && extraLines.length > 0) {
+            for (var ei = 0; ei < extraLines.length; ei++) {
+                var extra = extraLines[ei];
+                // 假设 extra 包含 {name, data, color} 基本字段
+                series.push({
+                    name: extra.name,
+                    type: 'line',
+                    data: extra.data,
+                    lineStyle: { width: 1, color: extra.color || '#ffffff' },
+                    showSymbol: false
+                });
+                legendData.push(extra.name);
+            }
+        }
+
+        // 去掉标题
         var option = {
             backgroundColor: 'transparent',
-            title: { 
-                text: 'K线图', 
-                left: 'center', 
-                textStyle: { color: '#ffffff' } 
-            },
+            // title 配置省略
             tooltip: { 
                 trigger: 'axis',
                 axisPointer: { type: 'shadow' }
@@ -769,7 +827,7 @@
         chart.setOption(option);
         console.log("图表设置完成");
         
-        // 强制调整大小
+        // 强制调整大小（只调用一次，不添加持续监听）
         setTimeout(function() {
             chart.resize();
             console.log("图表已调整大小");
@@ -783,6 +841,15 @@
         var container = document.getElementById(containerId);
         if (!container) {
             console.error("❌ 渲染个股K线失败：找不到容器", containerId);
+            return;
+        }
+        // 检查尺寸，若高度为0则重试一次（可能容器刚创建）
+        var rect = container.getBoundingClientRect();
+        if (rect.height === 0) {
+            console.warn("个股K线容器高度为0，延迟100ms重试");
+            setTimeout(function() {
+                renderStockKline(containerId, dates, values);
+            }, 100);
             return;
         }
         var fixedValues = [];
@@ -1116,7 +1183,8 @@
                 seen[c] = true;
                 var opt = document.createElement('option');
                 opt.value = c;
-                opt.textContent = c;
+                // 截断过长的选项文字
+                opt.textContent = c.length > 10 ? c.slice(0, 10) + '…' : c;
                 sel.appendChild(opt);
             }
         });
@@ -1200,9 +1268,6 @@
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
                     if (autoRunBacktest) {
                         autoRunBacktest = false;
-                        // 如果fetchAndRenderKline尚未触发自动回测（因为autoBacktestScheduled会触发）
-                        // 但保险起见，仍可调用runBacktest，但为防止重复，若autoBacktestScheduled为true，则fetchAndRenderKline会处理
-                        // 这里不再额外调用
                     }
                 }, 200);
             }, 50);
@@ -1214,7 +1279,7 @@
                         <input type="text" id="stockCodeInput" placeholder="股票代码" value="000001" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; width:120px;">
                         <button id="stockSearchBtn">查询K线</button>
                     </div>
-                    <div id="stockKlineChart" class="kline-container"></div>
+                    <div id="stockKlineChart" class="kline-container" style="height:460px;"></div>
                     <div style="margin-top:12px;">
                         <span>支持日K/周K/月K切换，均线M5/M10等，点击股票显示K线图预览。</span>
                     </div>
