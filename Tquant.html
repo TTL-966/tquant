@@ -179,6 +179,9 @@
             margin: 16px 0;
             flex-shrink: 0;
         }
+        .metric-row > * {
+            flex-shrink: 0;
+        }
         .metric-tag {
             background: #1f273f;
             padding: 6px 14px;
@@ -354,7 +357,7 @@
         }
         /* ----------  新增通用 select 宽度限制 ---------- */
         select {
-            max-width: 240px;
+            max-width: 140px;
             flex-shrink: 0;
         }
         /* ----------  可滚动表格容器 ---------- */
@@ -752,6 +755,11 @@
     // 个股详情页专用：渲染简单K线（不含买卖点、不含均线）
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
+        var container = document.getElementById(containerId);
+        if (!container) {
+            console.error("❌ 渲染个股K线失败：找不到容器", containerId);
+            return;
+        }
         var fixedValues = [];
         for (var i = 0; i < values.length; i++) {
             var v = values[i];
@@ -763,9 +771,6 @@
             high = Math.max(high, open, close);
             fixedValues.push([open, close, low, high]);
         }
-
-        var container = document.getElementById(containerId);
-        if (!container) return;
 
         // 销毁旧图表
         var oldChart = echarts.getInstanceByDom(container);
@@ -880,9 +885,10 @@
             }
             
             if (dates.length > 0 && values.length > 0) {
+                console.log("✅ 个股K线有效，渲染中...");
                 callback(dates, values);
             } else {
-                console.warn("无有效数据，使用模拟数据");
+                console.warn("⚠️ 无有效数据，使用模拟数据");
                 var mock = generateMockKline(code);
                 callback(mock.dates, mock.values);
             }
@@ -1162,9 +1168,14 @@
                 if (refreshBtn) refreshBtn.onclick = function() {
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
                 };
-                // 首次加载使用输入框的值（默认全范围）
-                fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
-                if (autoRunBacktest) { autoRunBacktest = false; runBacktest(currentStockCode, startDateInput.value, endDateInput.value); }
+                // 延迟加载，确保容器就绪
+                setTimeout(function() {
+                    fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
+                    if (autoRunBacktest) {
+                        autoRunBacktest = false;
+                        runBacktest(currentStockCode, startDateInput.value, endDateInput.value);
+                    }
+                }, 200);
             }, 50);
         } else if (pageId === 'stock') {
             container.innerHTML = `
