@@ -379,6 +379,7 @@
         }
         /* ----------  通用 select 宽度限制 ---------- */
         select {
+            min-width: 0;
             max-width: 140px;
             flex-shrink: 0;
             height: 34px;
@@ -387,6 +388,15 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+        /* ----------  修复下拉框固定宽度（使用 !important 覆盖全局） ---------- */
+        .metric-row select#stockSelectorKline,
+        select#stockSelectorKline {
+            width: 130px !important;
+            min-width: 130px !important;
+            max-width: 130px !important;
+            flex: none !important;
+            flex-shrink: 0 !important;
         }
         /* ----------  可滚动表格容器 ---------- */
         .scrollable-table {
@@ -599,6 +609,13 @@
         if (!dom) {
             console.error('❌ 找不到 klineMainChart 容器');
             return;
+        }
+        
+        // ----------  /* FIX */ 强制容器高度，防止高度为0导致图表不显示 ----------
+        if (dom.clientHeight === 0) {
+            console.warn("klineMainChart 容器高度为0，强制设置高度");
+            dom.style.height = "460px";
+            dom.style.width = "100%";
         }
         
         // 检查容器尺寸
@@ -824,12 +841,22 @@
 
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点、不含均线）
-    // 增强版：强制高度、清理、数据预处理、延迟resize
+    // 增强版：强制高度、清理、数据预处理、延迟resize，重试机制
     // --------------------------------------------------------------
-    function renderStockKline(containerId, dates, values) {
+    function renderStockKline(containerId, dates, values, retryCount) {
+        // /* FIX */ 增加 retryCount 参数，默认0
+        if (retryCount === undefined) retryCount = 0;
         var container = document.getElementById(containerId);
         if (!container) {
             console.error("❌ 个股K线容器不存在:", containerId);
+            return;
+        }
+        // /* FIX */ 若容器高度为0且重试次数<5，延迟100ms重试
+        if (container.clientHeight === 0 && retryCount < 5) {
+            console.warn("个股K线容器高度为0，延迟重试 retryCount=" + retryCount);
+            setTimeout(function() {
+                renderStockKline(containerId, dates, values, retryCount + 1);
+            }, 100);
             return;
         }
         // 确保容器高度
@@ -1218,10 +1245,10 @@
                 autoBacktestScheduled = true;
                 autoRunBacktest = false; // 防止重复
 
-                // 延迟以确保 DOM 完全渲染
+                // /* FIX */ 延迟增加到 300ms 确保容器渲染完成
                 setTimeout(function() {
                     fetchAndRenderKline(currentStockCode, startDate, endDate);
-                }, 200);
+                }, 300);
             }, 50);
         } else if (pageId === 'stock') {
             container.innerHTML = `
@@ -1243,12 +1270,13 @@
                     var stockCode = codeInput.value.trim();
                     if (stockCode === '') stockCode = '000001';
                     fetchStockKline(stockCode, function(dates, values) {
+                        // /* FIX */ 调用 renderStockKline 时不传 retryCount，内部使用默认0
                         renderStockKline('stockKlineChart', dates, values);
                     });
                 };
                 if (searchBtn) searchBtn.onclick = loadStock;
-                // 增加一点延迟确保容器可见
-                setTimeout(loadStock, 100);
+                // /* FIX */ 延迟增加到 200ms 确保容器可见
+                setTimeout(loadStock, 200);
             }, 50);
         } else if (pageId === 'history') {
             var listHtml = backtestStrategies.map(function(s) {
