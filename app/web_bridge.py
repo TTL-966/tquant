@@ -21,25 +21,22 @@ class WebBridge(QObject):
     def ping(self):
         return "pong"
 
-    @Slot(str, result=str)
-    def get_kline_data(self, code):
+    @Slot(str, str, str, result=str)
+    def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31"):
         """
-        返回K线数据（JSON），包含 dates, values (OHLC), opens, highs, lows, closes, volumes
+        返回K线数据（JSON），包含 dates, values (OHLC)。
+        支持自定义日期范围。
         """
         try:
-            raw = self.data_feed.get_kline_json(code)
+            raw = self.data_feed.get_kline_json(code, start_date, end_date)
             if isinstance(raw, str):
-                # 可能是已经JSON序列化的数据，尝试解析
                 parsed = json.loads(raw)
-                # 如果已经包含所期望的字段，直接返回原字符串
                 if 'dates' in parsed and 'values' in parsed:
                     return raw
-                # 否则可能是不兼容格式，回退到模拟数据
                 return self._mock_kline_json(code)
             # 如果是DataFrame
             if hasattr(raw, 'to_dict'):
                 df = raw
-                # 构建OHLC values
                 values = []
                 for _, row in df.iterrows():
                     values.append([
@@ -58,11 +55,9 @@ class WebBridge(QObject):
                     "volumes": df['volume'].tolist()
                 }
                 return json.dumps(data)
-            # 其他情况（不应发生），退化为模拟数据
             return self._mock_kline_json(code)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
-            # 任何错误都返回模拟数据（完整范围）
             return self._mock_kline_json(code)
 
     def _mock_kline_json(self, code):
@@ -96,19 +91,18 @@ class WebBridge(QObject):
         }
         return json.dumps(data)
 
-    @Slot(str, result=str)
-    def run_backtest(self, code):
+    @Slot(str, str, str, result=str)
+    def run_backtest(self, code, start_date="2010-01-01", end_date="2026-12-31"):
         """
-        运行回测，返回含收益率曲线、信号等完整数据
+        运行回测，返回含收益率曲线、信号、均线数据等完整数据。
         """
         try:
-            # 调用策略引擎获取信号
-            signals = self.strategy_engine.run_backtest(code)
-            # 从模拟交易中获取收益率曲线（模拟）
+            signals, ma_data = self.strategy_engine.run_backtest(code, start_date, end_date)
             equity_curve = self._get_equity_curve(code)
             result = {
                 "success": True,
                 "signals": signals,
+                "ma_data": ma_data,
                 "equity_curve": equity_curve
             }
             return json.dumps(result)
@@ -143,7 +137,6 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
 
-    # ---------- 数据库连接测试 ----------
     @Slot(result=str)
     def test_db_connection(self):
         try:
@@ -152,14 +145,12 @@ class WebBridge(QObject):
         except Exception as e:
             return json.dumps({"connected": False, "message": str(e)})
 
-    # ---------- 新增：获取已成交股票列表（用于买卖点K线下拉框） ----------
     @Slot(result=str)
     def get_traded_stocks(self):
         """返回持仓中的股票代码列表"""
         try:
             portfolio = self.trade.get_portfolio()
             holdings = portfolio.get("holdings", [])
-
             codes = []
             if isinstance(holdings, dict):
                 codes = list(holdings.keys())
@@ -167,13 +158,11 @@ class WebBridge(QObject):
                 for item in holdings:
                     if isinstance(item, dict) and 'code' in item:
                         codes.append(item['code'])
-
             return json.dumps({"stocks": codes})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"stocks": []})
 
-    # ---------- 辅助：生成简单收益率曲线 ----------
     def _get_equity_curve(self, code):
         """
         根据当前持仓和现金构造一条模拟的收益率曲线
@@ -182,13 +171,10 @@ class WebBridge(QObject):
             df = self.data_feed.get_kline_json(code)
             if not hasattr(df, 'to_dict'):
                 return []
-            # 取最后30个交易日
             df = df.tail(30)
-            # 假设第一天资金为100万，逐步买入信号（这里简单取收盘价变化）
             initial_cash = 1000000.0
             curve = []
             for i, row in df.iterrows():
-                # 模拟收益率：当日收盘价除以基准价（取第一根收盘为基准）
                 base_close = df.iloc[0]['close']
                 ratio = row['close'] / base_close
                 equity = initial_cash * ratio

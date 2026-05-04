@@ -25,19 +25,8 @@ class DataFeed:
         return s
 
     def get_kline_json(self, code, start_date=None, end_date=None):
-        """获取K线数据 JSON，日期范围使用 db 模块的默认值（2010-01-01 ~ 2026-12-31）
-           若传入非 None 的 start_date / end_date 则覆盖对应默认值。
-        """
-        # 利用 db.get_kline 自身的默认参数：只有当参数为 None 时不传入，
-        # 从而让 db.get_kline 使用其内部默认值。
-        if start_date is None and end_date is None:
-            df = self.db.get_kline(code)
-        elif start_date is None:
-            df = self.db.get_kline(code, end_date=end_date)
-        elif end_date is None:
-            df = self.db.get_kline(code, start_date=start_date)
-        else:
-            df = self.db.get_kline(code, start_date, end_date)
+        """获取K线数据 JSON，支持自定义日期范围（默认使用 db 模块的默认值）"""
+        df = self.db.get_kline(code, start_date, end_date)
 
         if df is None or df.empty:
             return self._mock_kline_json(code)
