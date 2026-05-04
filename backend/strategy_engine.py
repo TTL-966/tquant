@@ -3,14 +3,13 @@ from backend.db import Database
 import pandas as pd
 import numpy as np
 import json
-import datetime
 
 class StrategyEngine:
     def __init__(self):
         self.data_feed = DataFeed()
         self.signals = []  # 存储最后一次回测的买卖点
 
-    def run_backtest(self, code, start_date="2010-01-01", end_date='2026-12-31',
+    def run_backtest(self, code, start_date="2010-01-01", end_date="2026-12-31",
                      initial_cash=1000000, shares_per_trade=100):
         """
         使用双均线策略(MA5, MA20)产生买卖信号。

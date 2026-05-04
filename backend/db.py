@@ -34,8 +34,6 @@ class Database:
             end_date = "2026-12-31"
         start = start_date.replace('-', '')
         end = end_date.replace('-', '')
-        start = start_date.replace('-', '')
-        end = end_date.replace('-', '')
         sql = text("""
             SELECT trade_date, open, high, low, close, vol AS volume
             FROM stock_daily
