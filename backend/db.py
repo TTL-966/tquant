@@ -28,6 +28,12 @@ class Database:
 
     def _query_kline(self, code, start_date, end_date):
         """内部查询方法，返回DataFrame；若失败则抛出异常"""
+        if start_date is None:
+            start_date = "2010-01-01"
+        if end_date is None:
+            end_date = "2026-12-31"
+        start = start_date.replace('-', '')
+        end = end_date.replace('-', '')
         start = start_date.replace('-', '')
         end = end_date.replace('-', '')
         sql = text("""
@@ -57,6 +63,10 @@ class Database:
         start_date: 开始日期，格式 YYYY-MM-DD
         end_date: 结束日期，格式 YYYY-MM-DD
         """
+        if start_date is None:
+            start_date = "2010-01-01"
+        if end_date is None:
+            end_date = "2026-12-31"
         # 没有数据库连接，直接返回模拟数据
         if self.engine is None:
             return self._generate_mock_data()
