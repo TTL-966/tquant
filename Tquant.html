@@ -559,12 +559,15 @@
                 var pt = buyPts[i];
                 var idx = dates.indexOf(pt.date);
                 if (idx >= 0 && idx < values.length) {
-                    var high = values[idx][3]; // 最高价
-                    var price = high + 0.05;
-                    buySeriesData.push([idx, price]);
-                }
-            }
-        }
+		            var high = values[idx][3];
+		            var price = high + 0.05;
+		            buySeriesData.push([idx, price]);
+		            console.log("买入点添加:", pt.date, "索引", idx, "价格", price);
+		        } else {
+		            console.warn("买入点日期未找到:", pt.date, "dates中是否存在?", dates.includes(pt.date));
+        				}
+    }
+}
         if (sellPts && sellPts.length > 0) {
             for (var i = 0; i < sellPts.length; i++) {
                 var pt = sellPts[i];
@@ -573,6 +576,9 @@
                     var low = values[idx][2]; // 最低价
                     var price = low - 0.05;
                     sellSeriesData.push([idx, price]);
+                    console.log("卖出点添加:", pt.date, "索引", idx, "价格", price);
+                } else {
+                	console.warn("买入点日期未找到:", pt.date, "dates中是否存在?", dates.includes(pt.date));
                 }
             }
         }
@@ -844,27 +850,49 @@
     // --------------------------------------------------------------
     function runBacktest(code) {
         if (!bridge) {
-            log("bridge 未连接，使用模拟信号");
-            var mockSignals = [ { date: '2026-01-05', code: code, type: 'buy', price: 12.35, shares: 800 }, { date: '2026-01-12', code: code, type: 'sell', price: 13.68, shares: 800 } ];
+        log("bridge 未连接，使用动态模拟信号");
+        // 确保K线数据已存在
+        if (currentKlineDates.length === 0) {
+            var mock = generateMockKline(code);
+            currentKlineDates = mock.dates;
+            currentKlineValues = mock.values;
+        }
+        var len = currentKlineDates.length;
+        if (len > 20) {
+            var buyDate = currentKlineDates[Math.floor(len * 0.3)];
+            var sellDate = currentKlineDates[Math.floor(len * 0.7)];
+            var buyIdx = currentKlineDates.indexOf(buyDate);
+            var sellIdx = currentKlineDates.indexOf(sellDate);
+            var buyPrice = currentKlineValues[buyIdx] ? currentKlineValues[buyIdx][1] : 12.35;
+            var sellPrice = currentKlineValues[sellIdx] ? currentKlineValues[sellIdx][1] : 13.68;
+            var mockSignals = [
+                { date: buyDate, code: code, type: 'buy', price: buyPrice, shares: 800 },
+                { date: sellDate, code: code, type: 'sell', price: sellPrice, shares: 800 }
+            ];
             buyPoints = mockSignals.filter(s => s.type === 'buy');
             sellPoints = mockSignals.filter(s => s.type === 'sell');
-            if (currentKlineDates.length > 0) renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
-            else fetchAndRenderKline(code);
-            return;
+            renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
+        } else {
+            log("K线数据不足，无法生成模拟信号");
         }
-        log("运行回测: " + code);
-        bridge.run_backtest(code).then(function(jsonStr) {
-            var res = JSON.parse(jsonStr);
-            if (res.error) { log("回测出错: " + res.error); return; }
-            if (res.success) {
-                buyPoints = res.signals.filter(s => s.type === 'buy');
-                sellPoints = res.signals.filter(s => s.type === 'sell');
-                log("回测完成，买入 " + buyPoints.length + " 卖出 " + sellPoints.length);
-                if (currentKlineDates.length > 0) renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
-                else fetchAndRenderKline(code);
-            }
-        }).catch(function(err) { log("回测请求失败: " + err); });
+        return;
     }
+    log("运行回测: " + code);
+    bridge.run_backtest(code).then(function(jsonStr) {
+        var res = JSON.parse(jsonStr);
+        if (res.error) { log("回测出错: " + res.error); return; }
+        if (res.success) {
+            buyPoints = res.signals.filter(s => s.type === 'buy');
+            sellPoints = res.signals.filter(s => s.type === 'sell');
+            log("回测完成，买入 " + buyPoints.length + " 卖出 " + sellPoints.length);
+            if (currentKlineDates.length > 0) {
+                renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints);
+            } else {
+                fetchAndRenderKline(code);
+            }
+        }
+    }).catch(function(err) { log("回测请求失败: " + err); });
+}
 
     // --------------------------------------------------------------
     // 模拟K线数据生成（覆盖 2010-01-01 至 2026-12-31）
