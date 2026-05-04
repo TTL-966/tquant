@@ -566,28 +566,20 @@
     var currentKlineValues = [];
 
     // --------------------------------------------------------------
-    // 均线图例格式化辅助函数
+    // 均线图例格式化辅助函数（去掉箭头，只显示数值）
     // --------------------------------------------------------------
     function formatMaLegend(maArray, name) {
         // 找出最后一个非零、非空的有效值
-        var lastVal = null, prevVal = null;
+        var lastVal = null;
         for (var i = maArray.length - 1; i >= 0; i--) {
             var v = maArray[i];
             if (v !== 0 && v !== null && !isNaN(v)) {
-                if (lastVal === null) {
-                    lastVal = v;
-                } else if (prevVal === null) {
-                    prevVal = v;
-                    break;
-                }
+                lastVal = v;
+                break;
             }
         }
         if (lastVal === null) return name;
-        var arrow = '';
-        if (prevVal !== null) {
-            arrow = lastVal > prevVal ? '↑' : (lastVal < prevVal ? '↓' : '→');
-        }
-        return name + ':' + lastVal.toFixed(2) + arrow;
+        return name + ':' + lastVal.toFixed(2);
     }
 
     // --------------------------------------------------------------
@@ -717,7 +709,7 @@
         // ----------  均线系列 ----------
         var legendData = ['K线', '买入点', '卖出点'];
         if (maData && maData.ma5 && maData.ma5.length === dates.length) {
-            // 计算图例显示名称
+            // 计算图例显示名称（无箭头）
             var ma5Name = formatMaLegend(maData.ma5, 'MA5');
             var ma10Name = formatMaLegend(maData.ma10, 'MA10');
             var ma20Name = formatMaLegend(maData.ma20, 'MA20');
@@ -827,15 +819,14 @@
         chart.setOption(option);
         console.log("图表设置完成");
         
-        // 强制调整大小（只调用一次，不添加持续监听）
-        setTimeout(function() {
-            chart.resize();
-            console.log("图表已调整大小");
-        }, 100);
+        // 不再主动 resize，注释掉原来的 setTimeout 调用
+        // 如果后续需要自适应，可启用 ECharts 自带的窗口监听，但不要在每次渲染时手动 resize
+        // (已移除)
     }
 
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点、不含均线）
+    // 修复：不执行 innerHTML = ''，只 dispose 旧实例，且检查高度
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
         var container = document.getElementById(containerId);
@@ -843,7 +834,7 @@
             console.error("❌ 渲染个股K线失败：找不到容器", containerId);
             return;
         }
-        // 检查尺寸，若高度为0则重试一次（可能容器刚创建）
+        // 检查尺寸，若高度为0则延迟100ms重试
         var rect = container.getBoundingClientRect();
         if (rect.height === 0) {
             console.warn("个股K线容器高度为0，延迟100ms重试");
@@ -852,6 +843,13 @@
             }, 100);
             return;
         }
+        
+        // 清理旧图表（不要清空 innerHTML）
+        var oldChart = echarts.getInstanceByDom(container);
+        if (oldChart) {
+            oldChart.dispose();
+        }
+        
         var fixedValues = [];
         for (var i = 0; i < values.length; i++) {
             var v = values[i];
@@ -863,12 +861,7 @@
             high = Math.max(high, open, close);
             fixedValues.push([open, close, low, high]);
         }
-
-        // 销毁旧图表
-        var oldChart = echarts.getInstanceByDom(container);
-        if (oldChart) oldChart.dispose();
-        container.innerHTML = '';
-
+        
         var chart = echarts.init(container);
         var option = {
             backgroundColor: 'transparent',
@@ -895,9 +888,7 @@
                     rotate: 0,
                     color: '#ffffff',
                     interval: 'auto',
-                    formatter: function(value, index) {
-                        return value.slice(0,7);
-                    }
+                    formatter: function(value) { return value.slice(0,7); }
                 }
             },
             yAxis: {
