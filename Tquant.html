@@ -186,10 +186,9 @@
             flex: 0 0 auto;
             min-width: 0;
             width: auto;
-            max-width: 150px;
+            max-width: 140px;
             height: 34px;
             box-sizing: border-box;
-            line-height: normal;
         }
         .metric-row > * {
             flex-shrink: 0;
@@ -531,9 +530,7 @@
             // 自动回测（模拟数据也触发）
             if (autoBacktestScheduled) {
                 autoBacktestScheduled = false;
-                var sd = document.getElementById('startDateInput').value;
-                var ed = document.getElementById('endDateInput').value;
-                runBacktest(code, sd, ed);
+                runBacktest(code, startDate, endDate);
             }
             return;
         }
@@ -555,9 +552,7 @@
             // 自动回测（仅在当前页面首次加载时触发）
             if (autoBacktestScheduled) {
                 autoBacktestScheduled = false;
-                var sd = document.getElementById('startDateInput').value;
-                var ed = document.getElementById('endDateInput').value;
-                runBacktest(code, sd, ed);
+                runBacktest(code, startDate, endDate);
             }
         }).catch(function(err) { log("请求失败: " + err); });
     }
@@ -819,107 +814,58 @@
         chart.setOption(option);
         console.log("图表设置完成");
         
-        // 不再主动 resize，注释掉原来的 setTimeout 调用
-        // 如果后续需要自适应，可启用 ECharts 自带的窗口监听，但不要在每次渲染时手动 resize
-        // (已移除)
+        // 不再主动 resize
     }
 
     // --------------------------------------------------------------
     // 个股详情页专用：渲染简单K线（不含买卖点、不含均线）
-    // 修复：不执行 innerHTML = ''，只 dispose 旧实例，且检查高度
+    // 增强版：强制高度、清理、数据预处理、延迟resize
     // --------------------------------------------------------------
     function renderStockKline(containerId, dates, values) {
         var container = document.getElementById(containerId);
         if (!container) {
-            console.error("❌ 渲染个股K线失败：找不到容器", containerId);
+            console.error("❌ 个股K线容器不存在:", containerId);
             return;
         }
-        // 检查尺寸，若高度为0则延迟100ms重试
-        var rect = container.getBoundingClientRect();
-        if (rect.height === 0) {
-            console.warn("个股K线容器高度为0，延迟100ms重试");
-            setTimeout(function() {
-                renderStockKline(containerId, dates, values);
-            }, 100);
-            return;
+        // 确保容器高度
+        if (container.clientHeight === 0) {
+            container.style.height = "460px";
+            container.style.minHeight = "460px";
         }
-        
-        // 清理旧图表（不要清空 innerHTML）
+        // 清理旧图表
         var oldChart = echarts.getInstanceByDom(container);
-        if (oldChart) {
-            oldChart.dispose();
-        }
+        if (oldChart) oldChart.dispose();
         
-        var fixedValues = [];
-        for (var i = 0; i < values.length; i++) {
-            var v = values[i];
-            var open = parseFloat(v[0]);
-            var close = parseFloat(v[1]);
-            var low = parseFloat(v[2]);
-            var high = parseFloat(v[3]);
+        // 数据预处理
+        var fixedValues = values.map(function(v) {
+            var open = parseFloat(v[0]), close = parseFloat(v[1]);
+            var low = parseFloat(v[2]), high = parseFloat(v[3]);
             low = Math.min(low, open, close);
             high = Math.max(high, open, close);
-            fixedValues.push([open, close, low, high]);
-        }
+            return [open, close, low, high];
+        });
         
         var chart = echarts.init(container);
         var option = {
             backgroundColor: 'transparent',
-            tooltip: {
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: function(params) {
-                    if (!params || !params.length) return '';
-                    var idx = params[0].dataIndex;
-                    var seriesData = chart.getOption().series[0].data;
-                    if (!seriesData || idx >= seriesData.length) return '';
-                    var d = seriesData[idx];
-                    return params[0].axisValue + '<br/>' +
-                           '开盘: ' + d[0] + '<br/>' +
-                           '收盘: ' + d[1] + '<br/>' +
-                           '最低: ' + d[2] + '<br/>' +
-                           '最高: ' + d[3];
-                }
-            },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
             xAxis: {
                 type: 'category',
                 data: dates,
-                axisLabel: {
-                    rotate: 0,
-                    color: '#ffffff',
-                    interval: 'auto',
-                    formatter: function(value) { return value.slice(0,7); }
-                }
+                axisLabel: { rotate: 0, color: '#ffffff', interval: 'auto', formatter: function(v) { return v.slice(0,7); } }
             },
-            yAxis: {
-                scale: true,
-                axisLabel: { color: '#ffffff' },
-                name: '价格 (元)'
-            },
+            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
             series: [{
-                name: 'K线',
-                type: 'candlestick',
-                data: fixedValues,
-                itemStyle: {
-                    color: '#ef5350',
-                    color0: '#26a69a',
-                    borderColor: '#ef5350',
-                    borderColor0: '#26a69a'
-                }
+                name: 'K线', type: 'candlestick', data: fixedValues,
+                itemStyle: { color: '#ef5350', color0: '#26a69a', borderColor: '#ef5350', borderColor0: '#26a69a' }
             }],
             grid: { containLabel: true, backgroundColor: '#0e1220' },
-            dataZoom: [
-                {
-                    type: 'inside',
-                    start: 80,
-                    end: 100,
-                    zoomOnMouseWheel: true,
-                    moveOnMouseMove: true,
-                    moveOnMouseWheel: false
-                }
-            ]
+            dataZoom: [{ type: 'inside', start: 80, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }]
         };
         chart.setOption(option, true);
+        
+        // 强制 resize 一次
+        setTimeout(function() { chart.resize(); }, 100);
     }
 
     // --------------------------------------------------------------
@@ -1252,14 +1198,19 @@
                 if (refreshBtn) refreshBtn.onclick = function() {
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
                 };
-                // 首次加载设置自动回测标志，并在K线数据加载完成后触发一次回测
+                // 清空旧信号
+                buyPoints = [];
+                sellPoints = [];
+                var startDate = startDateInput.value;
+                var endDate = endDateInput.value;
+
+                // 设置自动回测标志，并在 K 线加载完成后触发
                 autoBacktestScheduled = true;
-                // 延迟加载，确保容器就绪
+                autoRunBacktest = false; // 防止重复
+
+                // 延迟以确保 DOM 完全渲染
                 setTimeout(function() {
-                    fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
-                    if (autoRunBacktest) {
-                        autoRunBacktest = false;
-                    }
+                    fetchAndRenderKline(currentStockCode, startDate, endDate);
                 }, 200);
             }, 50);
         } else if (pageId === 'stock') {
