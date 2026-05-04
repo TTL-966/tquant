@@ -89,6 +89,7 @@ class Database:
                 try:
                     df = self._query_kline(alt_code, start_date, end_date)
                     if not df.empty:
+                        print(f"[DB] 查询成功，返回 {len(df)} 条数据，日期范围 {df['trade_date'].min()} 到 {df['trade_date'].max()}")
                         return df
                 except Exception as e:
                     print("备用查询失败:", e)
@@ -115,6 +116,7 @@ class Database:
             'close': closes,
             'volume': volumes
         })
+        print(f"[DB] 使用模拟数据，生成 {len(df)} 条数据")
         return df
 
     def connection_status(self):
