@@ -58,19 +58,19 @@ class WebBridge(QObject):
                     "volumes": df['volume'].tolist()
                 }
                 return json.dumps(data)
-            # 其他情况（不应发生），退化为模拟
+            # 其他情况（不应发生），退化为模拟数据
             return self._mock_kline_json(code)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
-            # 任何错误都返回模拟数据
+            # 任何错误都返回模拟数据（完整范围）
             return self._mock_kline_json(code)
 
     def _mock_kline_json(self, code):
-        """生成标准格式的模拟K线JSON（始终包含 dates, values）"""
-        n = 60
+        """生成覆盖 2010-01-01 至 2026-12-31 的标准格式模拟K线JSON"""
+        n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='B')
+        n = len(n_dates)
         np.random.seed(42)
         base = 12.0
-        dates = pd.date_range("2026-01-01", periods=n, freq='B')
         opens = base + np.cumsum(np.random.randn(n) * 0.5)
         closes = opens + np.random.randn(n) * 0.6
         highs = np.maximum(opens, closes) + np.random.rand(n) * 0.5
@@ -86,7 +86,7 @@ class WebBridge(QObject):
                 round(highs[i], 2)
             ])
         data = {
-            "dates": [d.strftime('%Y-%m-%d') for d in dates],
+            "dates": [d.strftime('%Y-%m-%d') for d in n_dates],
             "values": values,
             "opens": [round(o, 2) for o in opens],
             "highs": [round(h, 2) for h in highs],

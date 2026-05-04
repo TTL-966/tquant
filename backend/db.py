@@ -94,14 +94,15 @@ class Database:
                 except Exception as e:
                     print("备用查询失败:", e)
 
-        # 最终返回模拟数据
+        # 最终返回模拟数据（覆盖整个请求范围）
         return self._generate_mock_data()
 
     def _generate_mock_data(self):
-        """生成足够多的模拟K线数据（约2000个交易日，从2010年开始）"""
-        n = 2000
+        """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线数据"""
+        n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='B')
+        n = len(n_dates)
         np.random.seed(42)
-        dates = pd.date_range("2010-01-01", periods=n, freq='B')
+        dates = n_dates
         base = 12.0
         opens = base + np.cumsum(np.random.randn(n) * 0.5)
         closes = opens + np.random.randn(n) * 0.6
@@ -116,7 +117,7 @@ class Database:
             'close': closes,
             'volume': volumes
         })
-        print(f"[DB] 使用模拟数据，生成 {len(df)} 条数据")
+        print(f"[DB] 使用模拟数据，生成 {len(df)} 条数据（{dates[0].strftime('%Y-%m-%d')} ~ {dates[-1].strftime('%Y-%m-%d')}）")
         return df
 
     def connection_status(self):

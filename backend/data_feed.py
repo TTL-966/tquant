@@ -53,17 +53,17 @@ class DataFeed:
         return json.dumps(result)
 
     def _mock_kline_json(self, code):
-        """生成模拟K线JSON（与真实数据格式一致）"""
+        """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线JSON（与真实数据格式一致）"""
         import numpy as np
         np.random.seed(42)
-        n = 60
-        dates = pd.date_range("2026-01-01", periods=n, freq='B')
+        dates_all = pd.date_range("2010-01-01", "2026-12-31", freq='B')
+        n = len(dates_all)
         opens = 12.0 + np.cumsum(np.random.randn(n) * 0.5)
         closes = opens + np.random.randn(n) * 0.6
         highs = np.maximum(opens, closes) + np.random.rand(n) * 0.5
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
 
-        date_strs = [d.strftime('%Y-%m-%d') for d in dates]
+        date_strs = [d.strftime('%Y-%m-%d') for d in dates_all]
         values = [[round(opens[i], 2), round(closes[i], 2), round(lows[i], 2), round(highs[i], 2)]
                   for i in range(n)]
         return json.dumps({"dates": date_strs, "values": values})
