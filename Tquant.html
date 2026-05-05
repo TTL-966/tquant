@@ -1393,6 +1393,7 @@
                         <input type="text" id="stockCodeInput" placeholder="股票代码" value="000001" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; width:120px;">
                         <button id="stockSearchBtn">查询K线</button>
                     </div>
+                    <div id="stockInfoDisplay" style="margin: 12px 0; padding: 8px 16px; background: #1a2135; border-radius: 12px; min-height: 40px;"></div>
                     <div id="stockKlineChart" class="kline-container" style="height:460px;"></div>
                     <div style="margin-top:12px;">
                         <span>支持日K/周K/月K切换，均线M5/M10等，点击股票显示K线图预览。</span>
@@ -1401,14 +1402,25 @@
             setTimeout(function() {
                 var searchBtn = document.getElementById('stockSearchBtn');
                 var codeInput = document.getElementById('stockCodeInput');
+                var stockInfoDisplay = document.getElementById('stockInfoDisplay');
+                function updateStockInfo(code) {
+                    if (!code) {
+                        stockInfoDisplay.innerHTML = '请输入股票代码查询';
+                    } else {
+                        stockInfoDisplay.innerHTML = formatStockDisplayHtml(code);
+                    }
+                }
                 var loadStock = function() {
                     var stockCode = codeInput.value.trim();
                     if (stockCode === '') stockCode = '000001';
                     fetchStockKline(stockCode, function(dates, values) {
                         renderStockKline('stockKlineChart', dates, values);
                     });
+                    updateStockInfo(stockCode);
                 };
                 if (searchBtn) searchBtn.onclick = loadStock;
+                // 初始化显示
+                updateStockInfo('000001');
                 // 增加一点延迟确保容器可见
                 setTimeout(loadStock, 100);
             }, 50);
