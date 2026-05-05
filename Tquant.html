@@ -1410,18 +1410,105 @@
                         stockInfoDisplay.innerHTML = formatStockDisplayHtml(code);
                     }
                 }
+                // ---------------- 超时熔断辅助函数 ----------------
+                function withTimeout(promise, ms) {
+                    var timeout = new Promise(function(_, reject) {
+                        setTimeout(function() {
+                            reject(new Error('查询超时，请重试'));
+                        }, ms);
+                    });
+                    return Promise.race([promise, timeout]);
+                }
+
+                function parseKlineData(jsonStr) {
+                    var data = JSON.parse(jsonStr);
+                    if (data.error) {
+                        return null;
+                    }
+                    var dates = [];
+                    var values = [];
+                    if (data.dates && data.values && data.values.length > 0) {
+                        for (var i = 0; i < data.dates.length; i++) {
+                            dates.push(data.dates[i]);
+                            var v = data.values[i];
+                            if (v && v.length >= 4) {
+                                values.push([
+                                    parseFloat(v[0]) || 0,
+                                    parseFloat(v[1]) || 0,
+                                    parseFloat(v[2]) || 0,
+                                    parseFloat(v[3]) || 0
+                                ]);
+                            } else {
+                                console.warn("无效K线数据点", v);
+                            }
+                        }
+                    } else if (data.dates && data.opens && data.closes && data.lows && data.highs) {
+                        for (var i = 0; i < data.dates.length; i++) {
+                            dates.push(data.dates[i]);
+                            values.push([
+                                parseFloat(data.opens[i]) || 0,
+                                parseFloat(data.closes[i]) || 0,
+                                parseFloat(data.lows[i]) || 0,
+                                parseFloat(data.highs[i]) || 0
+                            ]);
+                        }
+                    }
+                    if (dates.length > 0 && values.length > 0) {
+                        return { dates: dates, values: values };
+                    }
+                    return null;
+                }
+
                 var loadStock = function() {
                     var stockCode = codeInput.value.trim();
                     if (stockCode === '') stockCode = '000001';
-                    fetchStockKline(stockCode, function(dates, values) {
-                        renderStockKline('stockKlineChart', dates, values);
+                    // 显示加载状态
+                    stockInfoDisplay.innerHTML = '⏳ 加载中...';
+                    // 如果 bridge 不存在，直接使用模拟数据
+                    if (!bridge) {
+                        var mock = generateMockKline(stockCode);
+                        updateStockInfo(stockCode);
+                        renderStockKline('stockKlineChart', mock.dates, mock.values);
+                        return;
+                    }
+                    // 构造请求 promise，包含超时
+                    var callPromise = bridge.get_kline_data(stockCode, "2010-01-01", "2026-12-31");
+                    var raced = withTimeout(callPromise, 5000);
+                    raced.then(function(jsonStr) {
+                        var parsed = parseKlineData(jsonStr);
+                        if (parsed) {
+                            updateStockInfo(stockCode);
+                            renderStockKline('stockKlineChart', parsed.dates, parsed.values);
+                        } else {
+                            // 后端返回错误或无数据，降级使用模拟
+                            console.warn("后端数据无效，使用模拟数据");
+                            var mock = generateMockKline(stockCode);
+                            updateStockInfo(stockCode);
+                            renderStockKline('stockKlineChart', mock.dates, mock.values);
+                        }
+                    }).catch(function(err) {
+                        console.error("获取K线失败或超时:", err);
+                        // 显示错误信息
+                        stockInfoDisplay.innerHTML = '⚠️ ' + err.message;
+                        // 降级使用模拟数据，以防界面空白
+                        var mock = generateMockKline(stockCode);
+                        renderStockKline('stockKlineChart', mock.dates, mock.values);
                     });
-                    updateStockInfo(stockCode);
                 };
+
                 if (searchBtn) searchBtn.onclick = loadStock;
+                // 新增：按下回车键触发查询
+                if (codeInput) {
+                    codeInput.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            loadStock();
+                        }
+                    });
+                }
                 // 初始化显示
                 updateStockInfo('000001');
-                // 增加一点延迟确保容器可见
+                // 延迟初始化加载一次
                 setTimeout(loadStock, 100);
             }, 50);
         } else if (pageId === 'history') {
