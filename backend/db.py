@@ -138,3 +138,44 @@ class Database:
         except Exception as e:
             print("搜索股票失败:", e)
             return []
+
+    def get_name_by_code(self, code):
+        """
+        根据股票代码（6位数字）返回 '名称 (代码)' 格式的字符串。
+        如果数据库不可用或未找到，则仅返回 '代码'。
+        """
+        if self.engine is None:
+            return code
+        # 构建可能的 ts_code 前缀
+        # 我们尝试第一个后缀，如果不行则尝试另一个
+        for suffix in ('.SZ', '.SH', '.BJ'):
+            ts_code_candidate = f"{code}{suffix}"
+            sql = text("""
+                SELECT name FROM stock_daily_qfq_with_name
+                WHERE ts_code = :ts_code
+                LIMIT 1
+            """)
+            try:
+                with self.engine.connect() as conn:
+                    rows = conn.execute(sql, {"ts_code": ts_code_candidate}).fetchall()
+                if rows:
+                    name = rows[0][0]
+                    return f"{name} ({code})"
+            except Exception:
+                continue
+        # 若都失败，退一步进行模糊匹配（只匹配ts_code前缀）
+        like = f"{code}%"
+        sql = text("""
+            SELECT name FROM stock_daily_qfq_with_name
+            WHERE ts_code LIKE :like
+            LIMIT 1
+        """)
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, {"like": like}).fetchall()
+            if rows:
+                name = rows[0][0]
+                return f"{name} ({code})"
+        except Exception:
+            pass
+        return code

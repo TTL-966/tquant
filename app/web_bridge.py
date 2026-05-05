@@ -101,7 +101,30 @@ class WebBridge(QObject):
     @Slot(result=str)
     def get_portfolio(self):
         try:
-            return json.dumps(self.trade.get_portfolio())
+            portfolio = self.trade.get_portfolio()
+            # 添加股票名称展示
+            holdings = portfolio.get("holdings")
+            if isinstance(holdings, dict):
+                enhanced_holdings = {}
+                for code, info in holdings.items():
+                    display = self.db.get_name_by_code(code)
+                    enhanced_holdings[code] = info
+                    if isinstance(enhanced_holdings[code], dict):
+                        enhanced_holdings[code]["display"] = display
+                    else:
+                        # 如果info不是dict，创建一个包裹
+                        enhanced_holdings[code] = {"value": info, "display": display}
+                portfolio["holdings"] = enhanced_holdings
+            elif isinstance(holdings, list):
+                enhanced_holdings = []
+                for item in holdings:
+                    if isinstance(item, dict) and 'code' in item:
+                        code = item['code']
+                        display = self.db.get_name_by_code(code)
+                        item["display"] = display
+                    enhanced_holdings.append(item)
+                portfolio["holdings"] = enhanced_holdings
+            return json.dumps(portfolio)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
@@ -120,11 +143,16 @@ class WebBridge(QObject):
             holdings = portfolio.get("holdings", [])
             codes = []
             if isinstance(holdings, dict):
-                codes = list(holdings.keys())
+                raw_codes = list(holdings.keys())
+                for code in raw_codes:
+                    display = self.db.get_name_by_code(code)
+                    codes.append({"code": code, "display": display})
             elif isinstance(holdings, list):
                 for item in holdings:
                     if isinstance(item, dict) and 'code' in item:
-                        codes.append(item['code'])
+                        code = item['code']
+                        display = self.db.get_name_by_code(code)
+                        codes.append({"code": code, "display": display})
             return json.dumps({"stocks": codes})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
@@ -133,7 +161,11 @@ class WebBridge(QObject):
     @Slot(str, result=str)
     def search_stock(self, keyword):
         try:
-            return json.dumps(self.db.search_stock(keyword))
+            result = self.db.search_stock(keyword)
+            # 为每条记录添加 display 字段
+            for item in result:
+                item["display"] = f"{item['name']} ({item['code']})"
+            return json.dumps(result)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps([])
