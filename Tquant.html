@@ -1302,8 +1302,22 @@
                             var list = data.stocks || [];
                             if (list.length > 0) {
                                 callback(list.map(function(s) { return s.code; }));
+                if (typeof bridge.get_traded_stocks === 'function') {
+                     bridge.get_traded_stocks().then(function(jsonStr) {
+                         var data = JSON.parse(jsonStr);
+                         var stocks = data.stocks || [];
+                         stocks.forEach(function(s) {
+                             // display 格式: "名称(代码)"
+                             var display = s.display || '';
+                             var match = display.match(/^(.+?)\((\d+)\)$/);
+                             if (match) {
+                                 var name = match[1];
+                                 var code = match[2];
+                                stockNameMap[code] = name;
+
                             } else {
                                 callback(tradeStockLibrary.map(function(t) { return t.code; }));
+                                stockNameMap[s.code] = s.code
                             }
                         }).catch(function() {
                             callback(tradeStockLibrary.map(function(t) { return t.code; }));
@@ -1526,6 +1540,9 @@ def handle_bar(context, bar_dict):
                             alert('头像已保存！');
                         } else {
                             alert('请先选择一张图片。');
+                            log("股票名称映射已加载，共 " + Object.keys(stockNameMap).length + " 只");
+                   		}).catch(function(err) {
+                        	console.warn("获取股票列表失败，可能无法显示名称",err);
                         }
                     });
                 }
