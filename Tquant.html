@@ -465,6 +465,14 @@
 </div>
 
 <script>
+    // ---- 默认股票名称映射（fallback）----  /* NEW */
+    var defaultStockNames = {
+        '000001': '平安银行',
+        '000858': '五粮液',
+        '300750': '宁德时代',
+        '600519': '贵州茅台'
+    };
+
     // Bridge 状态更新
     setTimeout(function() {
         var statusDiv = document.getElementById('bridgeStatus');
@@ -492,7 +500,8 @@
     var autoBacktestScheduled = false;  // 自动回测仅触发一次
 
     // ---- 阶段1：股票名称显示 ---- 开始 ----  /* MODIFIED */
-    var stockNameMap = {}; // 缓存代码->名称
+    // stockNameMap 初始化为默认值的浅拷贝
+    var stockNameMap = Object.assign({}, defaultStockNames);
     function formatStockDisplay(code) {
         return stockNameMap[code] ? stockNameMap[code] + '(' + code + ')' : code;
     }
@@ -870,7 +879,7 @@
                     start: 80,
                     end: 100,
                     zoomOnMouseWheel: true,
-                    moveOnMouseMove: true,
+                    moveOnMouseMove: false,   // 修正：禁止松开鼠标后继续平移
                     moveOnMouseWheel: false
                 }
             ]
@@ -1004,7 +1013,7 @@
                 left: 'left'
             },
             grid: { containLabel: true, backgroundColor: '#0e1220' },
-            dataZoom: [{ type: 'inside', start: 80, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }]
+            dataZoom: [{ type: 'inside', start: 80, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: false, moveOnMouseWheel: false }] // 修正：禁止松开鼠标后继续平移
         };
         chart.setOption(option, true);
         
@@ -1289,7 +1298,9 @@
         if (sel.options.length === 0) {
             var opt = document.createElement('option');
             opt.value = '000001';
-            opt.textContent = '000001 (默认)';
+            // ---- 修改：兜底选项显示中文名称 ---- 开始 ----  /* MODIFIED */
+            opt.textContent = formatStockNameOnly('000001');
+            // ---- 修改：兜底选项显示中文名称 ---- 结束 ----
             sel.appendChild(opt);
         }
     }
