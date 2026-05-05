@@ -474,6 +474,13 @@
     var autoRunBacktest = false;
     var autoBacktestScheduled = false;  // 自动回测仅触发一次
 
+    // ---- 阶段1：股票名称显示 ---- 开始 ----  /* MODIFIED */
+    var stockNameMap = {}; // 缓存代码->名称
+    function formatStockDisplay(code) {
+        return stockNameMap[code] ? stockNameMap[code] + '(' + code + ')' : code;
+    }
+    // ---- 阶段1：股票名称显示 ---- 结束 ----
+
     function log(msg) {
         console.log("[Tquant]", msg);
     }
@@ -505,6 +512,31 @@
                         log("ping 失败: " + err);
                     });
                 }
+
+                // ---- 阶段1：初始化股票名称映射 ---- 开始 ----  /* MODIFIED */
+                if (typeof bridge.get_traded_stocks === 'function') {
+                    bridge.get_traded_stocks().then(function(jsonStr) {
+                        var data = JSON.parse(jsonStr);
+                        var stocks = data.stocks || [];
+                        stocks.forEach(function(s) {
+                            // display 格式: "名称(代码)"
+                            var display = s.display || '';
+                            var match = display.match(/^(.+?)\((\d+)\)$/);
+                            if (match) {
+                                var name = match[1];
+                                var code = match[2];
+                                stockNameMap[code] = name;
+                            } else {
+                                // 降级处理：直接用 code 作为名称
+                                stockNameMap[s.code] = s.code;
+                            }
+                        });
+                        log("股票名称映射已加载，共 " + Object.keys(stockNameMap).length + " 只");
+                    }).catch(function(err) {
+                        console.warn("获取股票列表失败，可能无法显示名称", err);
+                    });
+                }
+                // ---- 阶段1：初始化股票名称映射 ---- 结束 ----
 
                 // 不再自动加载K线，首次加载由用户导航触发
                 // 删除原来的默认加载
@@ -1142,17 +1174,26 @@
 
     function renderProfileWithData(data) {
         var container = document.getElementById('dynamicContent');
+        // ---- 阶段1：修改持仓表格代码列 ---- 开始 ----  /* MODIFIED */
         var holdingRows = data.holdings.map(function(h) {
             var profitCls = h.profit >= 0 ? 'profit-positive' : 'profit-negative';
-            return `<tr><td>${h.code}</td><td>${h.shares}</td><td>${h.cost.toFixed(2)}</td><td class="${profitCls}">${h.profit.toFixed(2)}</td></tr>`;
+            return `<tr><td>${formatStockDisplay(h.code)}</td><td>${h.shares}</td><td>${h.cost.toFixed(2)}</td><td class="${profitCls}">${h.profit.toFixed(2)}</td></tr>`;
         }).join('');
+        // ---- 阶段1：修改交易记录表格代码列 ---- 开始 ----  /* MODIFIED */
         var tradeRows = data.history.map(function(t) {
             var typeCls = t.type === '买入' ? 'profit-positive' : 'profit-negative';
-            return `</tr><td>${t.date}</td><td class="${typeCls}">${t.type}</td><td>${t.code}</td><td>${t.price.toFixed(2)}</td><td>${t.shares}</td></tr>`;
+            return `</tr><td>${t.date}</td><td class="${typeCls}">${t.type}</td><td>${formatStockDisplay(t.code)}</td><td>${t.price.toFixed(2)}</td><td>${t.shares}</td></tr>`;
         }).join('');
+        // ---- 阶段1：修改交易记录表格代码列 ---- 结束 ----
         var totalReturn = (data.total_assets - 1000000) / 1000000 * 100;
         var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
         var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
+        // ---- 阶段1：修改模拟交易下拉框选项文本 ---- 开始 ----  /* MODIFIED */
+        var tradeCodes = ['000001','000858','300750'];
+        var tradeOptionsHtml = tradeCodes.map(function(c) {
+            return '<option value="' + c + '">' + formatStockDisplay(c) + '</option>';
+        }).join('');
+        // ---- 阶段1：修改模拟交易下拉框选项文本 ---- 结束 ----
         container.innerHTML = `
             <div class="card">
                 <div class="card-title">📋 当前持仓</div>
@@ -1175,7 +1216,7 @@
             <div class="card">
                 <div class="card-title">🛒 模拟交易(输入)</div>
                 <div class="trade-input-row">
-                    <select id="tradeStockSelect"><option value="000001">000001</option><option value="000858">000858</option><option value="300750">300750</option></select>
+                    <select id="tradeStockSelect">${tradeOptionsHtml}</select>
                     <input type="number" id="tradeShares" placeholder="数量" value="100" min="1" step="1">
                     <input type="number" id="tradePrice" placeholder="价格" value="12.00" step="0.01">
                     <button id="tradeBuyBtn">买入</button>
@@ -1213,8 +1254,9 @@
                 seen[c] = true;
                 var opt = document.createElement('option');
                 opt.value = c;
-                // 截断过长的选项文字
-                opt.textContent = c.length > 10 ? c.slice(0, 10) + '…' : c;
+                // ---- 阶段1：修改选项文本为 formatStockDisplay ---- 开始 ----  /* MODIFIED */
+                opt.textContent = formatStockDisplay(c);
+                // ---- 阶段1：修改选项文本为 formatStockDisplay ---- 结束 ----
                 sel.appendChild(opt);
             }
         });
@@ -1259,7 +1301,7 @@
                             var data = JSON.parse(jsonStr);
                             var list = data.stocks || [];
                             if (list.length > 0) {
-                                callback(list);
+                                callback(list.map(function(s) { return s.code; }));
                             } else {
                                 callback(tradeStockLibrary.map(function(t) { return t.code; }));
                             }
@@ -1405,9 +1447,11 @@ def handle_bar(context, bar_dict):
         } else if (pageId === 'detail') {
             var profitTags = [ "策略收益 +23.5%", "基准收益 +12.1%", "阿尔法 0.18", "贝塔 0.92", "最大回撤 -8.2%" ];
             var tagHtml = profitTags.map(function(t) { var cls = profitClass(t); return '<span class="metric-tag ' + cls + '">' + t + '</span>'; }).join('');
+            // ---- 阶段1：修改 stockRows 中的代码列 ---- 开始 ----  /* MODIFIED */
             var stockRows = tradeStockLibrary.map(function(t) {
-                return '<tr><td>' + t.time + '</td><td class="stock-code-link" data-code="' + t.code + '">' + t.code + '</td><td>' + t.shares + '</td><td>' + t.price + '</td><td>' + t.mktValue + '</td></tr>';
+                return '<tr><td>' + t.time + '</td><td class="stock-code-link" data-code="' + t.code + '">' + formatStockDisplay(t.code) + '</td><td>' + t.shares + '</td><td>' + t.price + '</td><td>' + t.mktValue + '</td></tr>';
             }).join('');
+            // ---- 阶段1：修改 stockRows 中的代码列 ---- 结束 ----
             container.innerHTML = `
                 <div class="card">
                     <div class="card-title">📊 策略详情 (双均线示例)</div>
