@@ -27,7 +27,6 @@ class Database:
         return '.SZ'
 
     def _query_kline(self, code, start_date, end_date):
-        """内部查询方法，返回DataFrame；若失败则抛出异常"""
         if start_date is None:
             start_date = "2010-01-01"
         if end_date is None:
@@ -44,11 +43,7 @@ class Database:
             df = pd.read_sql(
                 sql,
                 conn,
-                params={
-                    "code": code,
-                    "start": start_date,
-                    "end": end_date
-                }
+                params={"code": code, "start": start_date, "end": end_date}
             )
         return df
 
@@ -59,7 +54,6 @@ class Database:
             end_date = "2026-12-31"
         if self.engine is None:
             return self._generate_mock_data()
-
         original_code = code
         if '.' not in code:
             suffix = self._get_stock_suffix(code)
@@ -67,14 +61,12 @@ class Database:
         else:
             code_for_query = code
             suffix = '.' + code.split('.')[1]
-
         try:
             df = self._query_kline(code_for_query, start_date, end_date)
             if not df.empty:
                 return df
         except Exception as e:
             print("查询失败:", e)
-
         if '.' not in original_code:
             alt_suffix = None
             if suffix == '.SZ':
@@ -86,11 +78,10 @@ class Database:
                 try:
                     df = self._query_kline(alt_code, start_date, end_date)
                     if not df.empty:
-                        print(f"[DB] 查询成功，返回 {len(df)} 条数据，日期范围 {df['trade_date'].min()} 到 {df['trade_date'].max()}")
+                        print(f"[DB] 查询成功，返回 {len(df)} 条数据")
                         return df
                 except Exception as e:
                     print("备用查询失败:", e)
-
         return self._generate_mock_data()
 
     def _generate_mock_data(self):
@@ -112,7 +103,6 @@ class Database:
             'close': closes,
             'volume': volumes
         })
-        print(f"[DB] 使用模拟数据，生成 {len(df)} 条数据（{dates[0].strftime('%Y-%m-%d')} ~ {dates[-1].strftime('%Y-%m-%d')}）")
         return df
 
     def connection_status(self):
@@ -124,3 +114,27 @@ class Database:
             return {"connected": True, "message": "数据库连接正常"}
         except Exception as e:
             return {"connected": False, "message": f"数据库连接异常: {str(e)}"}
+
+    def search_stock(self, keyword):
+        if self.engine is None or not keyword:
+            return []
+        like = f"%{keyword}%"
+        sql = text("""
+            SELECT DISTINCT ts_code, name
+            FROM stock_daily_qfq_with_name
+            WHERE ts_code LIKE :like OR name LIKE :like
+            LIMIT 50
+        """)
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, {"like": like}).fetchall()
+            result = []
+            for row in rows:
+                ts_code = row[0]
+                name = row[1]
+                code = ts_code.split('.')[0]
+                result.append({"code": code, "name": name, "ts_code": ts_code})
+            return result
+        except Exception as e:
+            print("搜索股票失败:", e)
+            return []
