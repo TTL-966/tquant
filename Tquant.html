@@ -412,6 +412,23 @@
             height: 34px;
             box-sizing: border-box;
         }
+        /* ---------- 股票显示美化 ---------- */
+        .stock-display {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .stock-name {
+            display: block;
+            color: #ffffff;
+            font-size: 14px;
+            line-height: 1.2;
+        }
+        .stock-code {
+            display: block;
+            color: #9aa9cc;
+            font-size: 12px;
+            line-height: 1.2;
+        }
     </style>
 </head>
 <body>
@@ -478,6 +495,16 @@
     var stockNameMap = {}; // 缓存代码->名称
     function formatStockDisplay(code) {
         return stockNameMap[code] ? stockNameMap[code] + '(' + code + ')' : code;
+    }
+    // ---- 新增：只返回纯名称 ---- 开始 ----  /* NEW */
+    function formatStockNameOnly(code) {
+        return stockNameMap[code] || code;
+    }
+    // ---- 新增：返回美化 HTML ---- 开始 ----  /* NEW */
+    function formatStockDisplayHtml(code) {
+        var name = stockNameMap[code] || code;
+        var codeStr = code;
+        return '<div class="stock-display"><span class="stock-name">' + name + '</span><span class="stock-code">' + codeStr + '</span></div>';
     }
     // ---- 阶段1：股票名称显示 ---- 结束 ----
 
@@ -1172,14 +1199,15 @@
     function renderProfileWithData(data) {
         var container = document.getElementById('dynamicContent');
         // ---- 阶段1：修改持仓表格代码列 ---- 开始 ----  /* MODIFIED */
+        // 改用 formatStockDisplayHtml 并利用 innerHTML
         var holdingRows = data.holdings.map(function(h) {
             var profitCls = h.profit >= 0 ? 'profit-positive' : 'profit-negative';
-            return `<tr><td>${formatStockDisplay(h.code)}</td><td>${h.shares}</td><td>${h.cost.toFixed(2)}</td><td class="${profitCls}">${h.profit.toFixed(2)}</td></tr>`;
+            return '<tr><td>' + formatStockDisplayHtml(h.code) + '</td><td>' + h.shares + '</td><td>' + h.cost.toFixed(2) + '</td><td class="' + profitCls + '">' + h.profit.toFixed(2) + '</td></tr>';
         }).join('');
         // ---- 阶段1：修改交易记录表格代码列 ---- 开始 ----  /* MODIFIED */
         var tradeRows = data.history.map(function(t) {
             var typeCls = t.type === '买入' ? 'profit-positive' : 'profit-negative';
-            return `</tr><td>${t.date}</td><td class="${typeCls}">${t.type}</td><td>${formatStockDisplay(t.code)}</td><td>${t.price.toFixed(2)}</td><td>${t.shares}</td></tr>`;
+            return '<tr><td>' + t.date + '</td><td class="' + typeCls + '">' + t.type + '</td><td>' + formatStockDisplayHtml(t.code) + '</td><td>' + t.price.toFixed(2) + '</td><td>' + t.shares + '</td></tr>';
         }).join('');
         // ---- 阶段1：修改交易记录表格代码列 ---- 结束 ----
         var totalReturn = (data.total_assets - 1000000) / 1000000 * 100;
@@ -1187,8 +1215,9 @@
         var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
         // ---- 阶段1：修改模拟交易下拉框选项文本 ---- 开始 ----  /* MODIFIED */
         var tradeCodes = ['000001','000858','300750'];
+        // 修改为只显示名称
         var tradeOptionsHtml = tradeCodes.map(function(c) {
-            return '<option value="' + c + '">' + formatStockDisplay(c) + '</option>';
+            return '<option value="' + c + '">' + formatStockNameOnly(c) + '</option>';
         }).join('');
         // ---- 阶段1：修改模拟交易下拉框选项文本 ---- 结束 ----
         container.innerHTML = `
@@ -1251,9 +1280,9 @@
                 seen[c] = true;
                 var opt = document.createElement('option');
                 opt.value = c;
-                // ---- 阶段1：修改选项文本为 formatStockDisplay ---- 开始 ----  /* MODIFIED */
-                opt.textContent = formatStockDisplay(c);
-                // ---- 阶段1：修改选项文本为 formatStockDisplay ---- 结束 ----
+                // ---- 修改：option 文本只显示名称 ---- 开始 ----  /* MODIFIED */
+                opt.textContent = formatStockNameOnly(c);
+                // ---- 修改：option 文本只显示名称 ---- 结束 ----
                 sel.appendChild(opt);
             }
         });
@@ -1446,7 +1475,8 @@ def handle_bar(context, bar_dict):
             var tagHtml = profitTags.map(function(t) { var cls = profitClass(t); return '<span class="metric-tag ' + cls + '">' + t + '</span>'; }).join('');
             // ---- 阶段1：修改 stockRows 中的代码列 ---- 开始 ----  /* MODIFIED */
             var stockRows = tradeStockLibrary.map(function(t) {
-                return '<tr><td>' + t.time + '</td><td class="stock-code-link" data-code="' + t.code + '">' + formatStockDisplay(t.code) + '</td><td>' + t.shares + '</td><td>' + t.price + '</td><td>' + t.mktValue + '</td></tr>';
+                // 使用 formatStockDisplayHtml，保留 data-code 属性用于点击事件
+                return '<tr><td>' + t.time + '</td><td class="stock-code-link" data-code="' + t.code + '">' + formatStockDisplayHtml(t.code) + '</td><td>' + t.shares + '</td><td>' + t.price + '</td><td>' + t.mktValue + '</td></tr>';
             }).join('');
             // ---- 阶段1：修改 stockRows 中的代码列 ---- 结束 ----
             container.innerHTML = `
@@ -1468,8 +1498,11 @@ def handle_bar(context, bar_dict):
                 var contentPanel = document.getElementById('dynamicContent');
                 contentPanel.addEventListener('click', function(e) {
                     var target = e.target;
-                    if (target.classList.contains('stock-code-link')) {
-                        var code = target.getAttribute('data-code');
+                    // 点击事件需要能正确获取 data-code；因为现在 td 内是嵌套 div，所以事件目标可能是 .stock-code 或 .stock-name
+                    // 向上查找最近带 data-code 的父元素
+                    var link = target.closest('.stock-code-link');
+                    if (link) {
+                        var code = link.getAttribute('data-code');
                         if (code) navigateToKline(code);
                     }
                 });
