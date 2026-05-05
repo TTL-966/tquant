@@ -875,13 +875,13 @@
             },
             dataZoom: [
                 {
-                    type: 'inside',
-                    start: 80,
-                    end: 100,
-                    zoomOnMouseWheel: true,
-                    moveOnMouseMove: false,   // 修正：禁止松开鼠标后继续平移
-                    moveOnMouseWheel: false
-                }
+                    type: 'inside', 
+					start: 80, 
+					end: 100, 
+					zoomOnMouseWheel: true, // 改为 false，释放滚轮，防止滚轮冲突
+					moveOnMouseMove: true,
+					moveOnMouseWheel:false
+				}
             ]
         };
         
@@ -1013,7 +1013,7 @@
                 left: 'left'
             },
             grid: { containLabel: true, backgroundColor: '#0e1220' },
-            dataZoom: [{ type: 'inside', start: 80, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: false, moveOnMouseWheel: false }] // 修正：禁止松开鼠标后继续平移
+            dataZoom: [{ type: 'inside', start: 80, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }] // 修正：禁止松开鼠标后继续平移
         };
         chart.setOption(option, true);
         
