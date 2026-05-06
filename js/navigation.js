@@ -91,7 +91,7 @@ export function loadPage(pageId) {
                     <div id="stockInfoDisplay" style="margin: 12px 0; padding: 8px 16px; background: #1a2135; border-radius: 12px; min-height: 40px;"></div>
                     <div id="stockKlineChart" class="kline-container" style="height:460px;"></div>
                     <div style="margin-top:12px;">
-                        <span>支持日K/周K/月K切换，均线M5/M10等，点击股票显示K线图预览。</span>
+                        
                     </div>
                 </div>`;
         setTimeout(function() {
