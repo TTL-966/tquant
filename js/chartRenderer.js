@@ -269,113 +269,116 @@ export function renderStockKline(containerId, dates, values, retryCount) {
     var oldChart = echarts.getInstanceByDom(container);
     if (oldChart) oldChart.dispose();
 
-    var fixedValues = values.map(function(v) {
-        var open = parseFloat(v[0]),
-            close = parseFloat(v[1]);
-        var low = parseFloat(v[2]),
-            high = parseFloat(v[3]);
-        low = Math.min(low, open, close);
-        high = Math.max(high, open, close);
-        return [open, close, low, high];
-    });
+    // 延迟10ms执行，使UI保持响应
+    setTimeout(function() {
+        var fixedValues = values.map(function(v) {
+            var open = parseFloat(v[0]),
+                close = parseFloat(v[1]);
+            var low = parseFloat(v[2]),
+                high = parseFloat(v[3]);
+            low = Math.min(low, open, close);
+            high = Math.max(high, open, close);
+            return [open, close, low, high];
+        });
 
-    function calcMA(vals, period) {
-        var ma = [];
-        for (var i = 0; i < vals.length; i++) {
-            if (i < period - 1) {
-                ma.push(null);
-                continue;
+        function calcMA(vals, period) {
+            var ma = [];
+            for (var i = 0; i < vals.length; i++) {
+                if (i < period - 1) {
+                    ma.push(null);
+                    continue;
+                }
+                var sum = 0;
+                for (var j = 0; j < period; j++) {
+                    sum += vals[i - j][1];
+                }
+                ma.push(parseFloat((sum / period).toFixed(2)));
             }
-            var sum = 0;
-            for (var j = 0; j < period; j++) {
-                sum += vals[i - j][1];
-            }
-            ma.push(parseFloat((sum / period).toFixed(2)));
+            return ma;
         }
-        return ma;
-    }
 
-    var ma5Data = calcMA(values, 5);
-    var ma10Data = calcMA(values, 10);
-    var ma20Data = calcMA(values, 20);
-    var ma30Data = calcMA(values, 30);
+        var ma5Data = calcMA(values, 5);
+        var ma10Data = calcMA(values, 10);
+        var ma20Data = calcMA(values, 20);
+        var ma30Data = calcMA(values, 30);
 
-    var series = [
-        {
-            name: 'K线',
-            type: 'candlestick',
-            data: fixedValues,
-            itemStyle: {
-                color: '#ef5350',
-                color0: '#26a69a',
-                borderColor: '#ef5350',
-                borderColor0: '#26a69a'
+        var series = [
+            {
+                name: 'K线',
+                type: 'candlestick',
+                data: fixedValues,
+                itemStyle: {
+                    color: '#ef5350',
+                    color0: '#26a69a',
+                    borderColor: '#ef5350',
+                    borderColor0: '#26a69a'
+                }
+            },
+            {
+                name: 'MA5',
+                type: 'line',
+                data: ma5Data,
+                lineStyle: { width: 1, color: '#f2c94c' },
+                smooth: false,
+                showSymbol: false
+            },
+            {
+                name: 'MA10',
+                type: 'line',
+                data: ma10Data,
+                lineStyle: { width: 1, color: '#f2994a' },
+                showSymbol: false
+            },
+            {
+                name: 'MA20',
+                type: 'line',
+                data: ma20Data,
+                lineStyle: { width: 1, color: '#eb5757' },
+                showSymbol: false
+            },
+            {
+                name: 'MA30',
+                type: 'line',
+                data: ma30Data,
+                lineStyle: { width: 1, color: '#6fcf97' },
+                showSymbol: false
             }
-        },
-        {
-            name: 'MA5',
-            type: 'line',
-            data: ma5Data,
-            lineStyle: { width: 1, color: '#f2c94c' },
-            smooth: false,
-            showSymbol: false
-        },
-        {
-            name: 'MA10',
-            type: 'line',
-            data: ma10Data,
-            lineStyle: { width: 1, color: '#f2994a' },
-            showSymbol: false
-        },
-        {
-            name: 'MA20',
-            type: 'line',
-            data: ma20Data,
-            lineStyle: { width: 1, color: '#eb5757' },
-            showSymbol: false
-        },
-        {
-            name: 'MA30',
-            type: 'line',
-            data: ma30Data,
-            lineStyle: { width: 1, color: '#6fcf97' },
-            showSymbol: false
-        }
-    ];
+        ];
 
-    var chart = echarts.init(container);
-    var option = {
-        backgroundColor: 'transparent',
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        xAxis: {
-            type: 'category',
-            data: dates,
-            axisLabel: {
-                rotate: 0,
-                color: '#ffffff',
-                interval: 'auto',
-                formatter: function(v) { return v.slice(0, 7); }
-            }
-        },
-        yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
-        series: series,
-        legend: {
-            data: ['K线', 'MA5', 'MA10', 'MA20', 'MA30'],
-            textStyle: { color: '#ffffff' },
-            left: 'left'
-        },
-        grid: { containLabel: true, backgroundColor: '#0e1220' },
-        dataZoom: [{
-            type: 'inside',
-            start: 80,
-            end: 100,
-            zoomOnMouseWheel: true,
-            moveOnMouseMove: true,
-            moveOnMouseWheel: false
-        }]
-    };
-    chart.setOption(option, true);
-    setTimeout(function() { chart.resize(); }, 100);
+        var chart = echarts.init(container);
+        var option = {
+            backgroundColor: 'transparent',
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            xAxis: {
+                type: 'category',
+                data: dates,
+                axisLabel: {
+                    rotate: 0,
+                    color: '#ffffff',
+                    interval: 'auto',
+                    formatter: function(v) { return v.slice(0, 7); }
+                }
+            },
+            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
+            series: series,
+            legend: {
+                data: ['K线', 'MA5', 'MA10', 'MA20', 'MA30'],
+                textStyle: { color: '#ffffff' },
+                left: 'left'
+            },
+            grid: { containLabel: true, backgroundColor: '#0e1220' },
+            dataZoom: [{
+                type: 'inside',
+                start: 80,
+                end: 100,
+                zoomOnMouseWheel: true,
+                moveOnMouseMove: true,
+                moveOnMouseWheel: false
+            }]
+        };
+        chart.setOption(option, true);
+        setTimeout(function() { chart.resize(); }, 100);
+    }, 10);
 }
 
 // ---- 策略详情页曲线图 ----

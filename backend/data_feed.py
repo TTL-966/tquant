@@ -24,9 +24,9 @@ class DataFeed:
         # 兜底
         return s
 
-    def get_kline_json(self, code, start_date=None, end_date=None):
+    def get_kline_json(self, code, start_date=None, end_date=None, limit=0):
         """获取K线数据 JSON，支持自定义日期范围（默认使用 db 模块的默认值）"""
-        df = self.db.get_kline(code, start_date, end_date)
+        df = self.db.get_kline(code, start_date, end_date, limit)
 
         if df is None or df.empty:
             return self._mock_kline_json(code)

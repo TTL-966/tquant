@@ -26,28 +26,43 @@ class Database:
             return '.BJ'
         return '.SZ'
 
-    def _query_kline(self, code, start_date, end_date):
+    def _query_kline(self, code, start_date, end_date, limit=0):
         if start_date is None:
             start_date = "2010-01-01"
         if end_date is None:
             end_date = "2026-12-31"
-        sql = text("""
-            SELECT trade_date, open, high, low, close, vol AS volume
-            FROM stock_daily_qfq_with_name
-            WHERE ts_code = :code
-              AND trade_date >= :start
-              AND trade_date <= :end
-            ORDER BY trade_date ASC
-        """)
-        with self.engine.connect() as conn:
-            df = pd.read_sql(
-                sql,
-                conn,
-                params={"code": code, "start": start_date, "end": end_date}
-            )
-        return df
+        if limit > 0:
+            sql = text("""
+                SELECT trade_date, open, high, low, close, vol AS volume
+                FROM stock_daily_qfq_with_name
+                WHERE ts_code = :code
+                  AND trade_date >= :start
+                  AND trade_date <= :end
+                ORDER BY trade_date DESC LIMIT :limit
+            """)
+            with self.engine.connect() as conn:
+                df = pd.read_sql(
+                    sql,
+                    conn,
+                    params={"code": code, "start": start_date, "end": end_date, "limit": limit}
+                )
+            if not df.empty:
+                df = df.sort_values('trade_date', ascending=True).reset_index(drop=True)
+            return df
+        else:
+            sql = text("""
+                SELECT trade_date, open, high, low, close, vol AS volume
+                FROM stock_daily_qfq_with_name
+                WHERE ts_code = :code
+                  AND trade_date >= :start
+                  AND trade_date <= :end
+                ORDER BY trade_date ASC
+            """)
+            with self.engine.connect() as conn:
+                df = pd.read_sql(sql, conn, params={"code": code, "start": start_date, "end": end_date})
+            return df
 
-    def get_kline(self, code, start_date="2010-01-01", end_date="2026-12-31"):
+    def get_kline(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0):
         if start_date is None:
             start_date = "2010-01-01"
         if end_date is None:
@@ -62,7 +77,7 @@ class Database:
             code_for_query = code
             suffix = '.' + code.split('.')[1]
         try:
-            df = self._query_kline(code_for_query, start_date, end_date)
+            df = self._query_kline(code_for_query, start_date, end_date, limit)
             if not df.empty:
                 return df
         except Exception as e:
@@ -76,7 +91,7 @@ class Database:
             if alt_suffix:
                 alt_code = f"{original_code}{alt_suffix}"
                 try:
-                    df = self._query_kline(alt_code, start_date, end_date)
+                    df = self._query_kline(alt_code, start_date, end_date, limit)
                     if not df.empty:
                         print(f"[DB] 查询成功，返回 {len(df)} 条数据")
                         return df
@@ -140,14 +155,8 @@ class Database:
             return []
 
     def get_name_by_code(self, code):
-        """
-        根据股票代码（6位数字）返回 '名称 (代码)' 格式的字符串。
-        如果数据库不可用或未找到，则仅返回 '代码'。
-        """
         if self.engine is None:
             return code
-        # 构建可能的 ts_code 前缀
-        # 我们尝试第一个后缀，如果不行则尝试另一个
         for suffix in ('.SZ', '.SH', '.BJ'):
             ts_code_candidate = f"{code}{suffix}"
             sql = text("""
@@ -163,7 +172,6 @@ class Database:
                     return f"{name} ({code})"
             except Exception:
                 continue
-        # 若都失败，退一步进行模糊匹配（只匹配ts_code前缀）
         like = f"{code}%"
         sql = text("""
             SELECT name FROM stock_daily_qfq_with_name

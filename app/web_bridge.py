@@ -24,15 +24,12 @@ class WebBridge(QObject):
     @Slot(str, str, str, int, result=str)
     def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0):
         try:
-            raw = self.data_feed.get_kline_json(code, start_date, end_date)
+            raw = self.data_feed.get_kline_json(code, start_date, end_date, limit)
             if isinstance(raw, str):
                 parsed = json.loads(raw)
                 if 'dates' in parsed and 'values' in parsed:
                     data = {"dates": parsed["dates"], "values": parsed["values"]}
-                    # 截断
-                    if limit > 0 and len(data['dates']) > limit:
-                        data['dates'] = data['dates'][-limit:]
-                        data['values'] = data['values'][-limit:]
+                    # 数据库已经限定了行数，不需要再截断
                     return json.dumps(data)
                 return self._mock_kline_json(code)
             if hasattr(raw, 'to_dict'):
@@ -49,15 +46,7 @@ class WebBridge(QObject):
                     "closes": df['close'].tolist(),
                     "volumes": df['volume'].tolist()
                 }
-                # 截断
-                if limit > 0 and len(data['dates']) > limit:
-                    data['dates'] = data['dates'][-limit:]
-                    data['values'] = data['values'][-limit:]
-                    if 'opens' in data: data['opens'] = data['opens'][-limit:]
-                    if 'highs' in data: data['highs'] = data['highs'][-limit:]
-                    if 'lows' in data: data['lows'] = data['lows'][-limit:]
-                    if 'closes' in data: data['closes'] = data['closes'][-limit:]
-                    if 'volumes' in data: data['volumes'] = data['volumes'][-limit:]
+                # 数据库已经限定了行数，不需要再截断
                 return json.dumps(data)
             return self._mock_kline_json(code)
         except Exception as e:
@@ -116,7 +105,6 @@ class WebBridge(QObject):
     def get_portfolio(self):
         try:
             portfolio = self.trade.get_portfolio()
-            # 添加股票名称展示
             holdings = portfolio.get("holdings")
             if isinstance(holdings, dict):
                 enhanced_holdings = {}
@@ -126,7 +114,6 @@ class WebBridge(QObject):
                     if isinstance(enhanced_holdings[code], dict):
                         enhanced_holdings[code]["display"] = display
                     else:
-                        # 如果info不是dict，创建一个包裹
                         enhanced_holdings[code] = {"value": info, "display": display}
                 portfolio["holdings"] = enhanced_holdings
             elif isinstance(holdings, list):
@@ -176,7 +163,6 @@ class WebBridge(QObject):
     def search_stock(self, keyword):
         try:
             result = self.db.search_stock(keyword)
-            # 为每条记录添加 display 字段
             for item in result:
                 item["display"] = f"{item['name']} ({item['code']})"
             return json.dumps(result)
