@@ -10,7 +10,7 @@ export function debounceSuggestions() {
         var input = document.getElementById('stockCodeInput');
         if (!input) return;
         var keyword = input.value.trim();
-        if (keyword === '') {
+        if (keyword === '' || keyword.length < 1) {
             var container = document.getElementById('stockSuggestionsContainer');
             if (container) container.innerHTML = '';
             return;

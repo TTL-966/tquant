@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 class Database:
     def __init__(self):
@@ -31,36 +32,45 @@ class Database:
             start_date = "2010-01-01"
         if end_date is None:
             end_date = "2026-12-31"
-        if limit > 0:
-            sql = text("""
-                SELECT trade_date, open, high, low, close, vol AS volume
-                FROM stock_daily_qfq_with_name
-                WHERE ts_code = :code
-                  AND trade_date >= :start
-                  AND trade_date <= :end
-                ORDER BY trade_date DESC LIMIT :limit
-            """)
-            with self.engine.connect() as conn:
-                df = pd.read_sql(
-                    sql,
-                    conn,
-                    params={"code": code, "start": start_date, "end": end_date, "limit": limit}
-                )
-            if not df.empty:
-                df = df.sort_values('trade_date', ascending=True).reset_index(drop=True)
-            return df
-        else:
-            sql = text("""
-                SELECT trade_date, open, high, low, close, vol AS volume
-                FROM stock_daily_qfq_with_name
-                WHERE ts_code = :code
-                  AND trade_date >= :start
-                  AND trade_date <= :end
-                ORDER BY trade_date ASC
-            """)
-            with self.engine.connect() as conn:
-                df = pd.read_sql(sql, conn, params={"code": code, "start": start_date, "end": end_date})
-            return df
+
+        def do_query():
+            if limit > 0:
+                sql = text("""
+                    SELECT trade_date, open, high, low, close, vol AS volume
+                    FROM stock_daily_qfq_with_name
+                    WHERE ts_code = :code
+                      AND trade_date >= :start
+                      AND trade_date <= :end
+                    ORDER BY trade_date DESC LIMIT :limit
+                """)
+                with self.engine.connect() as conn:
+                    df = pd.read_sql(
+                        sql,
+                        conn,
+                        params={"code": code, "start": start_date, "end": end_date, "limit": limit}
+                    )
+                if not df.empty:
+                    df = df.sort_values('trade_date', ascending=True).reset_index(drop=True)
+                return df
+            else:
+                sql = text("""
+                    SELECT trade_date, open, high, low, close, vol AS volume
+                    FROM stock_daily_qfq_with_name
+                    WHERE ts_code = :code
+                      AND trade_date >= :start
+                      AND trade_date <= :end
+                    ORDER BY trade_date ASC
+                """)
+                with self.engine.connect() as conn:
+                    df = pd.read_sql(sql, conn, params={"code": code, "start": start_date, "end": end_date})
+                return df
+
+        try:
+            return do_query()
+        except OperationalError:
+            # 连接丢失，释放连接池后重试一次
+            self.engine.dispose()
+            return do_query()
 
     def get_kline(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0):
         if start_date is None:
@@ -135,24 +145,24 @@ class Database:
             return []
         like = f"%{keyword}%"
         sql = text("""
-            SELECT DISTINCT ts_code, name
-            FROM stock_daily_qfq_with_name
-            WHERE ts_code LIKE :like OR name LIKE :like
+            SELECT code, name FROM stock_basic
+            WHERE code LIKE :like OR name LIKE :like
             LIMIT 50
         """)
-        try:
+        def do_query():
             with self.engine.connect() as conn:
                 rows = conn.execute(sql, {"like": like}).fetchall()
             result = []
             for row in rows:
-                ts_code = row[0]
+                code = row[0]
                 name = row[1]
-                code = ts_code.split('.')[0]
-                result.append({"code": code, "name": name, "ts_code": ts_code})
+                result.append({"code": code, "name": name})
             return result
-        except Exception as e:
-            print("搜索股票失败:", e)
-            return []
+        try:
+            return do_query()
+        except OperationalError:
+            self.engine.dispose()
+            return do_query()
 
     def get_name_by_code(self, code):
         if self.engine is None:

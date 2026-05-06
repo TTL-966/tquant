@@ -163,6 +163,7 @@ class WebBridge(QObject):
     def search_stock(self, keyword):
         try:
             result = self.db.search_stock(keyword)
+            # stock_basic 返回的 code 已是不带后缀的纯代码，直接构建 display
             for item in result:
                 item["display"] = f"{item['name']} ({item['code']})"
             return json.dumps(result)
