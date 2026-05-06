@@ -42,3 +42,89 @@ export const dailyHoldings = [
 
 // stockNameMap 初始化为默认值的浅拷贝
 export var stockNameMap = Object.assign({}, defaultStockNames);
+
+// 内部降级函数
+function fallbackSearch(code, bridge) {
+    if (!bridge || typeof bridge.search_stock !== 'function') {
+        stockNameMap[code] = code;
+        return Promise.resolve(code);
+    }
+    return bridge.search_stock(code).then(function(jsonStr) {
+        var arr = JSON.parse(jsonStr);
+        if (Array.isArray(arr) && arr.length > 0) {
+            var matched = null;
+            for (var i = 0; i < arr.length; i++) {
+                if (arr[i].code === code) {
+                    matched = arr[i];
+                    break;
+                }
+            }
+            var item = matched || arr[0];
+            var name = item.name;
+            if (name) {
+                stockNameMap[code] = name;
+                return name;
+            }
+        }
+        stockNameMap[code] = code;
+        return code;
+    }).catch(function() {
+        stockNameMap[code] = code;
+        return code;
+    });
+}
+
+/**
+ * 异步获取股票名称并缓存到 stockNameMap
+ * 优先使用 bridge.get_stock_name 快速接口
+ * @param {string} code - 股票代码
+ * @param {object|null} bridge - Qt bridge 对象
+ * @returns {Promise<string>} 名称（失败时返回 code）
+ */
+export function fetchStockName(code, bridge) {
+    // 如果 stockNameMap 中已有且不是单纯取 code 自身（即已从后端获取）
+    var existing = stockNameMap[code];
+    if (existing && existing !== code) {
+        return Promise.resolve(existing);
+    }
+    // ---- 优先使用 get_stock_name（快速接口）----
+    if (bridge && typeof bridge.get_stock_name === 'function') {
+        return bridge.get_stock_name(code).then(function(jsonStr) {
+            var obj = JSON.parse(jsonStr);
+            var name = obj && obj.name;
+            if (name) {
+                stockNameMap[code] = name;
+                return name;
+            }
+            // 如果返回的名字为空，降级到 search_stock
+            return fallbackSearch(code, bridge);
+        }).catch(function(err) {
+            console.error("get_stock_name 失败:", err);
+            return fallbackSearch(code, bridge);
+        });
+    }
+    // ---- 降级：使用 search_stock（已改为查小表）----
+    return fallbackSearch(code, bridge);
+}
+
+/**
+ * 搜索建议
+ * @param {string} keyword
+ * @param {object|null} bridge
+ * @returns {Promise<Array<{code: string, name: string}>>}
+ */
+export function searchStockSuggestions(keyword, bridge) {
+    if (!bridge || typeof bridge.search_stock !== 'function') {
+        return Promise.resolve([]);
+    }
+    return bridge.search_stock(keyword).then(function(jsonStr) {
+        var arr = JSON.parse(jsonStr);
+        if (!Array.isArray(arr)) return [];
+        // 转换为统一格式
+        return arr.map(function(item) {
+            return { code: item.code, name: item.name || item.code };
+        });
+    }).catch(function() {
+        return [];
+    });
+}

@@ -1,26 +1,7 @@
 // js/main.js
-// js/main.js
 import { stockNameMap, tradeStockLibrary, backtestStrategies, dailyHoldings, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { renderKlineWithSignals, renderStockKline, drawDetailCurve, formatStockDisplayHtml } from './chartRenderer.js';
 import { initDatePicker, bindDatePicker } from './datepicker.js';
-
-// ---- 辅助函数：计算均线 ----
-function calcMA(values, period) {
-    var ma = [];
-    for (var i = 0; i < values.length; i++) {
-        if (i < period - 1) {
-            ma.push(0);
-            continue;
-        }
-        var sum = 0;
-        for (var j = 0; j < period; j++) {
-            sum += values[i - j][1]; // close 价格
-        }
-        ma.push(parseFloat((sum / period).toFixed(2)));
-    }
-    return ma;
-}
-
 // ---- Bridge 状态指示器更新 ----
 function updateBridgeStatus(text, color) {
     var el = document.getElementById('bridgeStatus');
@@ -70,6 +51,7 @@ document.addEventListener("DOMContentLoaded", function() {
             bridge = channel.objects.bridge;
             bridgeReady = true;
             log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
+            // 更新 bridge 状态为已连接
             updateBridgeStatus("🔌 Bridge: 已连接", "#4caf50");
             pendingCallbacks.forEach(function(cb) { cb(); });
             pendingCallbacks = [];
@@ -106,6 +88,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     } else {
         log("QWebChannel 环境不可用（qt.webChannelTransport 未定义），使用模拟数据。");
+        // 更新 bridge 状态为离线模拟模式
         updateBridgeStatus("🔌 Bridge: 离线模拟", "#ff9800");
     }
 });
@@ -155,54 +138,11 @@ function fetchAndRenderKline(code, startDate, endDate) {
         }
         currentKlineDates = data.dates;
         currentKlineValues = data.values;
-
-        // ---- 异步计算（含采样）避免卡顿 ----
-        setTimeout(function() {
-            // 采样函数
-            function sampleArray(arr, step) {
-                var res = [];
-                for (var i = 0; i < arr.length; i += step) {
-                    res.push(arr[i]);
-                }
-                return res;
-            }
-            var MAX_POINTS = 500;
-            var step = (data.dates.length > MAX_POINTS) ? Math.ceil(data.dates.length / MAX_POINTS) : 1;
-            // 如果数据被采样，清空买卖点（避免索引错乱）
-            if (step > 1) {
-                buyPoints = [];
-                sellPoints = [];
-            }
-            var sampledDates = sampleArray(data.dates, step);
-            var sampledValues = sampleArray(data.values, step);
-
-            // 基于原始 data.values 计算均线（全量）
-            var ma5 = calcMA(data.values, 5);
-            var ma10 = calcMA(data.values, 10);
-            var ma20 = calcMA(data.values, 20);
-            var ma30 = calcMA(data.values, 30);
-
-            // 采样均线
-            var ma5_sampled = sampleArray(ma5, step);
-            var ma10_sampled = sampleArray(ma10, step);
-            var ma20_sampled = sampleArray(ma20, step);
-            var ma30_sampled = sampleArray(ma30, step);
-
-            var maData_sampled = {
-                dates: sampledDates,
-                ma5: ma5_sampled,
-                ma10: ma10_sampled,
-                ma20: ma20_sampled,
-                ma30: ma30_sampled
-            };
-
-            renderKlineWithSignals(sampledDates, sampledValues, buyPoints, sellPoints, maData_sampled);
-
-            if (autoBacktestScheduled) {
-                autoBacktestScheduled = false;
-                runBacktest(code, startDate, endDate);
-            }
-        }, 10);
+        renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, null);
+        if (autoBacktestScheduled) {
+            autoBacktestScheduled = false;
+            runBacktest(code, startDate, endDate);
+        }
     }).catch(function(err) {
         log("请求失败: " + err);
         var container = document.getElementById('klineMainChart');
@@ -291,6 +231,7 @@ function renderProfileWithData(data) {
     var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
     var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
     var tradeCodes = ['000001', '000858', '300750'];
+    // 不再生成 tradeOptionsHtml
     container.innerHTML = `
             <div class="card">
                 <div class="card-title">📋 当前持仓</div>
@@ -307,7 +248,7 @@ function renderProfileWithData(data) {
                 <div class="account-cards">
                     <div class="account-card"><div class="label">总资产</div><div class="value">${data.total_assets.toLocaleString()}</div></div>
                     <div class="account-card"><div class="label">可用资金</div><div class="value">${data.cash.toLocaleString()}</div></div>
-                    <div class="account-card"><div class="label">总收益率</div><div class="value ${returnCls}" style="font-size:28px;">${returnStr}</div></div>
+                    <div class="account-card"><div class="label">总收益率</div><div class="value ${returnCls}">${returnStr}</div></div>
                 </div>
             </div>
             <div class="card">
@@ -465,10 +406,13 @@ function debounceSuggestions() {
                     input.value = item.code;
                     container.innerHTML = '';
                     container.style.display = 'none';
+                    // 触发加载
                     var stockCode = item.code;
+                    // 模拟 loadStock 逻辑
                     if (typeof loadStock === 'function') {
                         loadStock();
                     } else {
+                        // 手动触发按钮点击
                         var btn = document.getElementById('stockSearchBtn');
                         if (btn) btn.click();
                     }
@@ -503,6 +447,7 @@ function loadPage(pageId) {
                 </div>`;
         setTimeout(function() {
             var today = new Date().toISOString().slice(0, 10);
+
             var endDateInput = document.getElementById('endDateInput');
             if (endDateInput && !endDateInput.value) {
                 endDateInput.value = today;
@@ -510,9 +455,8 @@ function loadPage(pageId) {
             var startDateInput = document.getElementById('startDateInput');
             bindDatePicker(startDateInput);
             bindDatePicker(endDateInput);
-
-            // 按成交数量( shares )降序排序，取前6只不同的股票
-            var sorted = tradeStockLibrary.slice().sort(function(a,b) { return b.shares - a.shares; });
+            // 直接从 tradeStockLibrary 按市值降序取前6个代码
+            var sorted = tradeStockLibrary.slice().sort(function(a,b) { return b.mktValue - a.mktValue; });
             var topCodes = [];
             var seen = {};
             sorted.forEach(function(t) {
@@ -572,12 +516,15 @@ function loadPage(pageId) {
             var stockInfoDisplay = document.getElementById('stockInfoDisplay');
             var stockSuggestionsContainer = document.getElementById('stockSuggestionsContainer');
 
+            // 统一的更新函数：同时更新顶部小标签和中央大标题
             function updateStockInfo(code) {
+                // 更新顶部小标签
                 if (!code) {
                     stockInfoDisplay.innerHTML = '请输入股票代码查询';
                 } else {
                     stockInfoDisplay.innerHTML = formatStockDisplayHtml(code);
                 }
+                // 更新中央大标题
                 var mainTitle = document.getElementById('mainStockTitle');
                 if (mainTitle) {
                     if (!code) {
@@ -640,11 +587,16 @@ function loadPage(pageId) {
                 var stockCode = codeInput.value.trim();
                 if (stockCode === '') stockCode = '000001';
 
+                // 立即更新标题为当前查询的股票（先用代码占位）
                 updateStockInfo(stockCode);
+                // 顶部小标签显示加载中（大标题已保留最新股票）
                 stockInfoDisplay.innerHTML = '⏳ 加载中...';
 
+                // 先尝试获取名称，再加载K线
                 fetchStockName(stockCode, bridge).then(function() {
+                    // 名称已缓存到 stockNameMap，重新更新显示
                     updateStockInfo(stockCode);
+                    // 继续加载K线
                     if (!bridge) {
                         stockInfoDisplay.innerHTML = '⚠️ Bridge 未连接，无法查询';
                         return;
@@ -671,6 +623,7 @@ function loadPage(pageId) {
                         }
                     });
                 }).catch(function() {
+                    // 名称获取失败（不可能，因为 catch 中已降级）
                     updateStockInfo(stockCode);
                 });
             };
@@ -683,7 +636,9 @@ function loadPage(pageId) {
                         loadStock();
                     }
                 });
+                // 搜索建议监听
                 codeInput.addEventListener('input', debounceSuggestions);
+                // 点击外部隐藏建议
                 document.addEventListener('click', function(e) {
                     if (!e.target.closest('#stockSuggestionsContainer') && !e.target.closest('#stockCodeInput')) {
                         if (stockSuggestionsContainer) {
@@ -693,6 +648,7 @@ function loadPage(pageId) {
                     }
                 });
             }
+            // 初始显示默认股票
             updateStockInfo('000001');
             setTimeout(loadStock, 100);
         }, 50);
