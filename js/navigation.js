@@ -53,9 +53,29 @@ export function loadPage(pageId) {
             populateStockDatalist('stockListKline', top6);
             var selInput = document.getElementById('stockSelectorKline');
             if (selInput) {
-                selInput.value = currentStockCode;
+                // 设置初始值显示名称，并记录代码
+                selInput.value = formatStockNameOnly(currentStockCode);
+                selInput.setAttribute('data-current-code', currentStockCode);
+                // 输入事件：匹配选项后更新 data-current-code 并显示名称
+                selInput.addEventListener('input', function() {
+                    var val = this.value.trim();
+                    var dl = document.getElementById('stockListKline');
+                    if (dl) {
+                        for (var i = 0; i < dl.options.length; i++) {
+                            var opt = dl.options[i];
+                            if (opt.label === val || opt.value === val) {
+                                currentStockCode = opt.value;
+                                this.setAttribute('data-current-code', currentStockCode);
+                                this.value = opt.label; // 替换为名称
+                                break;
+                            }
+                        }
+                    }
+                });
+                // change 事件：使用 data-current-code 获取代码，并发起请求
                 selInput.addEventListener('change', function() {
-                    currentStockCode = this.value;
+                    var code = this.getAttribute('data-current-code') || this.value;
+                    currentStockCode = code;
                     buyPoints.length = 0;
                     sellPoints.length = 0;
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);

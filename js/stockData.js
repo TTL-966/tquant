@@ -9,7 +9,10 @@ export const defaultStockNames = {
 export const tradeStockLibrary = [
     { time: "2026-01-05 09:35", code: "000001", shares: 800, price: 12.35, mktValue: 9880 },
     { time: "2026-01-12 14:20", code: "000001", shares: 800, price: 13.68, mktValue: 10944 },
-    { time: "2026-02-14 10:05", code: "000858", shares: 200, price: 158.2, mktValue: 31640 }
+    { time: "2026-02-14 10:05", code: "000858", shares: 200, price: 158.2, mktValue: 31640 },
+    { time: "2026-03-01 10:00", code: "600519", shares: 10, price: 1850.0, mktValue: 18500 },
+    { time: "2026-03-05 11:00", code: "002297", shares: 500, price: 18.5, mktValue: 9250 },
+    { time: "2026-03-10 14:30", code: "000004", shares: 300, price: 22.0, mktValue: 6600 }
 ];
 
 export const backtestStrategies = [
