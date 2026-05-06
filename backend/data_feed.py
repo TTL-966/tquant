@@ -31,21 +31,23 @@ class DataFeed:
         if df is None or df.empty:
             return self._mock_kline_json(code)
 
+        # 强制最大行数保护
+        max_rows = limit if limit > 0 else 2000
+        if len(df) > max_rows:
+            df = df.tail(max_rows).reset_index(drop=True)
+
         # 统一日期格式
         dates = [self._format_date(d) for d in df['trade_date']]
         values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2)]
                   for o, c, l, h in zip(df['open'], df['close'], df['low'], df['high'])]
-        result = {
-            "dates": dates,
-            "values": values
-        }
+        result = {"dates": dates, "values": values}
         return json.dumps(result)
 
     def _mock_kline_json(self, code):
-        """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线JSON（与真实数据格式一致）"""
+        """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线JSON（周线，数据量可控）"""
         import numpy as np
         np.random.seed(42)
-        dates_all = pd.date_range("2010-01-01", "2026-12-31", freq='B')
+        dates_all = pd.date_range("2010-01-01", "2026-12-31", freq='W')
         n = len(dates_all)
         opens = 12.0 + np.cumsum(np.random.randn(n) * 0.5)
         closes = opens + np.random.randn(n) * 0.6

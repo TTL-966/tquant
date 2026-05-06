@@ -27,34 +27,33 @@ class WebBridge(QObject):
             raw = self.data_feed.get_kline_json(code, start_date, end_date, limit)
             if isinstance(raw, str):
                 parsed = json.loads(raw)
-                if 'dates' in parsed and 'values' in parsed:
-                    data = {"dates": parsed["dates"], "values": parsed["values"]}
-                    # 数据库已经限定了行数，不需要再截断
-                    return json.dumps(data)
-                return self._mock_kline_json(code)
-            if hasattr(raw, 'to_dict'):
+                data = {"dates": parsed.get("dates", []), "values": parsed.get("values", [])}
+            elif hasattr(raw, 'to_dict'):
                 df = raw
                 values = []
                 for _, row in df.iterrows():
                     values.append([float(row['open']), float(row['close']), float(row['low']), float(row['high'])])
                 data = {
                     "dates": df['trade_date'].dt.strftime('%Y-%m-%d').tolist(),
-                    "values": values,
-                    "opens": df['open'].tolist(),
-                    "highs": df['high'].tolist(),
-                    "lows": df['low'].tolist(),
-                    "closes": df['close'].tolist(),
-                    "volumes": df['volume'].tolist()
+                    "values": values
                 }
-                # 数据库已经限定了行数，不需要再截断
-                return json.dumps(data)
-            return self._mock_kline_json(code)
+            else:
+                return self._mock_kline_json(code)
+
+            # 强制截断
+            max_limit = limit if limit > 0 else 2000
+            if len(data['dates']) > max_limit:
+                data['dates'] = data['dates'][-max_limit:]
+                data['values'] = data['values'][-max_limit:]
+
+            return json.dumps(data)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return self._mock_kline_json(code)
 
     def _mock_kline_json(self, code):
-        n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='B')
+        # 生成周线数据（~885条），减少数据量
+        n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='W')
         n = len(n_dates)
         np.random.seed(42)
         base = 12.0
@@ -62,17 +61,15 @@ class WebBridge(QObject):
         closes = opens + np.random.randn(n) * 0.6
         highs = np.maximum(opens, closes) + np.random.rand(n) * 0.5
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
-        volumes = np.random.randint(100000, 500000, n)
         values = [[round(opens[i],2), round(closes[i],2), round(lows[i],2), round(highs[i],2)] for i in range(n)]
         data = {
             "dates": [d.strftime('%Y-%m-%d') for d in n_dates],
-            "values": values,
-            "opens": [round(o,2) for o in opens],
-            "highs": [round(h,2) for h in highs],
-            "lows": [round(l,2) for l in lows],
-            "closes": [round(c,2) for c in closes],
-            "volumes": [int(v) for v in volumes]
+            "values": values
         }
+        # 保证不超过2000
+        if len(data['dates']) > 2000:
+            data['dates'] = data['dates'][-2000:]
+            data['values'] = data['values'][-2000:]
         return json.dumps(data)
 
     @Slot(str, str, str, result=str)
@@ -163,7 +160,6 @@ class WebBridge(QObject):
     def search_stock(self, keyword):
         try:
             result = self.db.search_stock(keyword)
-            # stock_basic 返回的 code 已是不带后缀的纯代码，直接构建 display
             for item in result:
                 item["display"] = f"{item['name']} ({item['code']})"
             return json.dumps(result)

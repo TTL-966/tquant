@@ -17,7 +17,7 @@ export function fetchAndRenderKline(code, startDate, endDate) {
         return;
     }
     log("请求 K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
-    bridge.get_kline_data(code, startDate, endDate).then(function(jsonStr) {
+    bridge.get_kline_data(code, startDate, endDate, 2000).then(function(jsonStr) {
         var data = JSON.parse(jsonStr);
         if (data.error) {
             log("后端错误: " + data.error);
@@ -28,6 +28,7 @@ export function fetchAndRenderKline(code, startDate, endDate) {
             return;
         }
         if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
+            // 兼容旧格式（不再需要）
             data.values = data.dates.map(function(_, i) {
                 return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
             });
