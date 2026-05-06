@@ -4,6 +4,8 @@ import pandas as pd
 from backend.db import Database
 
 class DataFeed:
+    _kline_cache = {}   # key: 纯代码(不带后缀)，value: {"dates": [...], "values": [[o,c,l,h], ...]}
+
     def __init__(self):
         self.db = Database()
 
@@ -25,22 +27,54 @@ class DataFeed:
         return s
 
     def get_kline_json(self, code, start_date=None, end_date=None, limit=0):
-        """获取K线数据 JSON，支持自定义日期范围（默认使用 db 模块的默认值）"""
-        df = self.db.get_kline(code, start_date, end_date, limit)
+        """获取K线数据 JSON，支持缓存，根据日期范围过滤，并支持限制行数"""
+        code_pure = code.split('.')[0]
 
-        if df is None or df.empty:
-            return self._mock_kline_json(code)
+        # 如果缓存中没有，则从数据库加载全量数据
+        if code_pure not in self._kline_cache:
+            df = self.db.get_kline(code, start_date=None, end_date=None, limit=0)  # 全量
+            if df is None or df.empty:
+                # 无数据时，缓存设为空字典，后续直接返回错误
+                self._kline_cache[code_pure] = None
+                return json.dumps({"error": "无数据"})
 
-        # 强制最大行数保护
-        max_rows = limit if limit > 0 else 2000
-        if len(df) > max_rows:
-            df = df.tail(max_rows).reset_index(drop=True)
+            # 将 DataFrame 转换为缓存格式
+            dates = [self._format_date(d) for d in df['trade_date']]
+            values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2)]
+                      for o, c, l, h in zip(df['open'], df['close'], df['low'], df['high'])]
+            self._kline_cache[code_pure] = {"dates": dates, "values": values}
 
-        # 统一日期格式
-        dates = [self._format_date(d) for d in df['trade_date']]
-        values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2)]
-                  for o, c, l, h in zip(df['open'], df['close'], df['low'], df['high'])]
-        result = {"dates": dates, "values": values}
+        cached = self._kline_cache.get(code_pure)
+        if cached is None:
+            return json.dumps({"error": "无数据"})
+
+        # 获取全量 dates 和 values
+        all_dates = cached["dates"]
+        all_values = cached["values"]
+
+        # 根据日期范围过滤
+        if start_date is None and end_date is None:
+            filtered_dates = all_dates
+            filtered_values = all_values
+        else:
+            # 确保日期字符串可比较
+            if start_date is None:
+                start_date = "2010-01-01"
+            if end_date is None:
+                end_date = "2026-12-31"
+            filtered_dates = []
+            filtered_values = []
+            for i, d in enumerate(all_dates):
+                if start_date <= d <= end_date:
+                    filtered_dates.append(d)
+                    filtered_values.append(all_values[i])
+
+        # 如果 limit > 0，取尾部 limit 条
+        if limit > 0 and len(filtered_dates) > limit:
+            filtered_dates = filtered_dates[-limit:]
+            filtered_values = filtered_values[-limit:]
+
+        result = {"dates": filtered_dates, "values": filtered_values}
         return json.dumps(result)
 
     def _mock_kline_json(self, code):

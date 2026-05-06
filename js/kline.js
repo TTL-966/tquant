@@ -31,7 +31,8 @@ export function fetchAndRenderKline(code, startDate, endDate) {
         return;
     }
     log("请求 K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
-    bridge.get_kline_data(code, startDate, endDate, 2000).then(function(jsonStr) {
+    // limit=0 表示由后端根据日期范围返回，不额外截断（后端有缓存，按需返回）
+    bridge.get_kline_data(code, startDate, endDate, 0).then(function(jsonStr) {
         var data = JSON.parse(jsonStr);
         if (data.error) {
             log("后端错误: " + data.error);

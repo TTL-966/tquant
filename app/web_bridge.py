@@ -25,28 +25,12 @@ class WebBridge(QObject):
     def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0):
         try:
             raw = self.data_feed.get_kline_json(code, start_date, end_date, limit)
-            if isinstance(raw, str):
-                parsed = json.loads(raw)
-                data = {"dates": parsed.get("dates", []), "values": parsed.get("values", [])}
-            elif hasattr(raw, 'to_dict'):
-                df = raw
-                values = []
-                for _, row in df.iterrows():
-                    values.append([float(row['open']), float(row['close']), float(row['low']), float(row['high'])])
-                data = {
-                    "dates": df['trade_date'].dt.strftime('%Y-%m-%d').tolist(),
-                    "values": values
-                }
-            else:
-                return self._mock_kline_json(code)
-
-            # 强制截断
-            max_limit = limit if limit > 0 else 2000
-            if len(data['dates']) > max_limit:
-                data['dates'] = data['dates'][-max_limit:]
-                data['values'] = data['values'][-max_limit:]
-
-            return json.dumps(data)
+            # 检查返回的 JSON 是否有效（包含 dates 和 values）
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and 'dates' in parsed and 'values' in parsed:
+                return raw
+            # 无效数据，使用模拟数据
+            return self._mock_kline_json(code)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return self._mock_kline_json(code)
