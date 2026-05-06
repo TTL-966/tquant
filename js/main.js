@@ -1,6 +1,33 @@
 // js/main.js
-import { stockNameMap, defaultStockNames, tradeStockLibrary, backtestStrategies, dailyHoldings } from './stockData.js';
+import { stockNameMap, tradeStockLibrary, backtestStrategies, dailyHoldings, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { renderKlineWithSignals, renderStockKline, drawDetailCurve, formatStockDisplayHtml } from './chartRenderer.js';
+import { initDatePicker, bindDatePicker } from './datepicker.js';
+
+// ---- 辅助函数：计算均线 ----
+function calcMA(values, period) {
+    var ma = [];
+    for (var i = 0; i < values.length; i++) {
+        if (i < period - 1) {
+            ma.push(0);
+            continue;
+        }
+        var sum = 0;
+        for (var j = 0; j < period; j++) {
+            sum += values[i - j][1]; // close 价格
+        }
+        ma.push(parseFloat((sum / period).toFixed(2)));
+    }
+    return ma;
+}
+
+// ---- Bridge 状态指示器更新 ----
+function updateBridgeStatus(text, color) {
+    var el = document.getElementById('bridgeStatus');
+    if (el) {
+        el.innerHTML = text;
+        el.style.color = color || '#ffffff';
+    }
+}
 
 // ---- 全局变量 & 通信日志 ----
 var bridge = null;
@@ -42,6 +69,7 @@ document.addEventListener("DOMContentLoaded", function() {
             bridge = channel.objects.bridge;
             bridgeReady = true;
             log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
+            updateBridgeStatus("🔌 Bridge: 已连接", "#4caf50");
             pendingCallbacks.forEach(function(cb) { cb(); });
             pendingCallbacks = [];
 
@@ -77,6 +105,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     } else {
         log("QWebChannel 环境不可用（qt.webChannelTransport 未定义），使用模拟数据。");
+        updateBridgeStatus("🔌 Bridge: 离线模拟", "#ff9800");
     }
 });
 
@@ -93,35 +122,60 @@ export function navigateToKline(code) {
 // ---- K线数据获取与渲染（含买卖点），支持日期范围 ----
 function fetchAndRenderKline(code, startDate, endDate) {
     if (!bridge) {
-        log("bridge 未就绪，使用模拟数据");
-        var mock = generateMockKline(code);
-        currentKlineDates = mock.dates;
-        currentKlineValues = mock.values;
-        renderKlineWithSignals(mock.dates, mock.values, buyPoints, sellPoints, null);
-        if (autoBacktestScheduled) {
-            autoBacktestScheduled = false;
-            runBacktest(code, startDate, endDate);
+        var container = document.getElementById('klineMainChart');
+        if (container) {
+            container.innerHTML = '<div style="color:#aaa; padding:20px;">Bridge 未连接，无法获取数据</div>';
         }
         return;
     }
     log("请求 K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
     bridge.get_kline_data(code, startDate, endDate).then(function(jsonStr) {
         var data = JSON.parse(jsonStr);
-        if (data.error) { log("后端错误: " + data.error); return; }
+        if (data.error) {
+            log("后端错误: " + data.error);
+            var container = document.getElementById('klineMainChart');
+            if (container) {
+                container.innerHTML = '<div style="color:#ff6b6b;padding:20px;">错误: ' + data.error + '</div>';
+            }
+            return;
+        }
         if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
             data.values = data.dates.map(function(_, i) {
                 return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
             });
         }
-        if (!data.dates || !data.values) { log("数据格式错误"); return; }
+        if (!data.dates || !data.values) {
+            log("数据格式错误");
+            var container = document.getElementById('klineMainChart');
+            if (container) {
+                container.innerHTML = '<div style="color:#ff6b6b;padding:20px;">数据格式错误</div>';
+            }
+            return;
+        }
         currentKlineDates = data.dates;
         currentKlineValues = data.values;
-        renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, null);
-        if (autoBacktestScheduled) {
-            autoBacktestScheduled = false;
-            runBacktest(code, startDate, endDate);
+        // 异步计算均线，防止卡顿
+        setTimeout(function() {
+            var maData = {
+                dates: data.dates,
+                ma5: calcMA(data.values, 5),
+                ma10: calcMA(data.values, 10),
+                ma20: calcMA(data.values, 20),
+                ma30: calcMA(data.values, 30)
+            };
+            renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, maData);
+            if (autoBacktestScheduled) {
+                autoBacktestScheduled = false;
+                runBacktest(code, startDate, endDate);
+            }
+        }, 10);
+    }).catch(function(err) {
+        log("请求失败: " + err);
+        var container = document.getElementById('klineMainChart');
+        if (container) {
+            container.innerHTML = '<div style="color:#ff6b6b;padding:20px;">请求失败: ' + err + '</div>';
         }
-    }).catch(function(err) { log("请求失败: " + err); });
+    });
 }
 
 var currentKlineDates = [];
@@ -130,43 +184,16 @@ var currentKlineValues = [];
 // ---- 运行回测（支持日期范围）----
 function runBacktest(code, startDate, endDate) {
     if (!bridge) {
-        log("bridge 未连接，使用动态模拟信号");
-        if (currentKlineDates.length === 0) {
-            var mock = generateMockKline(code);
-            currentKlineDates = mock.dates;
-            currentKlineValues = mock.values;
-        }
-        var len = currentKlineDates.length;
-        if (len > 20) {
-            var buyDate = currentKlineDates[Math.floor(len * 0.3)];
-            var sellDate = currentKlineDates[Math.floor(len * 0.7)];
-            var buyIdx = currentKlineDates.indexOf(buyDate);
-            var sellIdx = currentKlineDates.indexOf(sellDate);
-            var buyPrice = currentKlineValues[buyIdx] ? currentKlineValues[buyIdx][1] : 12.35;
-            var sellPrice = currentKlineValues[sellIdx] ? currentKlineValues[sellIdx][1] : 13.68;
-            var mockSignals = [
-                { date: buyDate, code: code, type: 'buy', price: buyPrice, shares: 800 },
-                { date: sellDate, code: code, type: 'sell', price: sellPrice, shares: 800 }
-            ];
-            buyPoints = mockSignals.filter(s => s.type === 'buy');
-            sellPoints = mockSignals.filter(s => s.type === 'sell');
-            var mockMaData = {
-                dates: currentKlineDates,
-                ma5: new Array(currentKlineDates.length).fill(0),
-                ma10: new Array(currentKlineDates.length).fill(0),
-                ma20: new Array(currentKlineDates.length).fill(0),
-                ma30: new Array(currentKlineDates.length).fill(0)
-            };
-            renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints, mockMaData);
-        } else {
-            log("K线数据不足，无法生成模拟信号");
-        }
+        console.error("Bridge 未连接，无法运行回测");
         return;
     }
     log("运行回测: " + code + " 范围 " + startDate + " ~ " + endDate);
     bridge.run_backtest(code, startDate, endDate).then(function(jsonStr) {
         var res = JSON.parse(jsonStr);
-        if (res.error) { log("回测出错: " + res.error); return; }
+        if (res.error) {
+            log("回测出错: " + res.error);
+            return;
+        }
         if (res.success) {
             buyPoints = res.signals.filter(s => s.type === 'buy');
             sellPoints = res.signals.filter(s => s.type === 'sell');
@@ -178,36 +205,9 @@ function runBacktest(code, startDate, endDate) {
                 fetchAndRenderKline(code, startDate, endDate);
             }
         }
-    }).catch(function(err) { log("回测请求失败: " + err); });
-}
-
-// ---- 模拟K线数据生成（覆盖 2010-01-01 至 2026-12-31）----
-function generateMockKline(code) {
-    var startDate = new Date(2010, 0, 1);
-    var endDate = new Date(2026, 11, 31);
-    var dates = [],
-        values = [],
-        close = 12.0;
-    var cur = new Date(startDate);
-    while (cur <= endDate) {
-        var day = cur.getDay();
-        if (day !== 0 && day !== 6) {
-            var dateStr = cur.toISOString().slice(0, 10);
-            var open = close;
-            var change = (Math.random() - 0.5) * 1.2;
-            var newClose = open + change;
-            if (newClose < 8) newClose = 8.5;
-            if (newClose > 28) newClose = 27;
-            var high = Math.max(open, newClose) + Math.random() * 0.8;
-            var low = Math.min(open, newClose) - Math.random() * 0.6;
-            if (low < 7) low = 7.2;
-            close = newClose;
-            dates.push(dateStr);
-            values.push([parseFloat(open.toFixed(2)), parseFloat(close.toFixed(2)), parseFloat(low.toFixed(2)), parseFloat(high.toFixed(2))]);
-        }
-        cur.setDate(cur.getDate() + 1);
-    }
-    return { dates: dates, values: values };
+    }).catch(function(err) {
+        log("回测请求失败: " + err);
+    });
 }
 
 // ---- 个人中心页面 ----
@@ -257,9 +257,6 @@ function renderProfileWithData(data) {
     var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
     var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
     var tradeCodes = ['000001', '000858', '300750'];
-    var tradeOptionsHtml = tradeCodes.map(function(c) {
-        return '<option value="' + c + '">' + formatStockNameOnly(c) + '</option>';
-    }).join('');
     container.innerHTML = `
             <div class="card">
                 <div class="card-title">📋 当前持仓</div>
@@ -276,13 +273,14 @@ function renderProfileWithData(data) {
                 <div class="account-cards">
                     <div class="account-card"><div class="label">总资产</div><div class="value">${data.total_assets.toLocaleString()}</div></div>
                     <div class="account-card"><div class="label">可用资金</div><div class="value">${data.cash.toLocaleString()}</div></div>
-                    <div class="account-card"><div class="label">总收益率</div><div class="value ${returnCls}">${returnStr}</div></div>
+                    <div class="account-card"><div class="label">总收益率</div><div class="value ${returnCls}" style="font-size:28px;">${returnStr}</div></div>
                 </div>
             </div>
             <div class="card">
                 <div class="card-title">🛒 模拟交易(输入)</div>
                 <div class="trade-input-row">
-                    <select id="tradeStockSelect">${tradeOptionsHtml}</select>
+                    <input type="text" id="tradeStockSelect" list="tradeStockList" placeholder="选择股票" style="width:130px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#ffffff; padding:8px 14px; font-size:13px;">
+                    <datalist id="tradeStockList"></datalist>
                     <input type="number" id="tradeShares" placeholder="数量" value="100" min="1" step="1">
                     <input type="number" id="tradePrice" placeholder="价格" value="12.00" step="0.01">
                     <button id="tradeBuyBtn">买入</button>
@@ -291,6 +289,10 @@ function renderProfileWithData(data) {
                 <div id="tradeResult" style="margin-top:8px; font-size:13px;"></div>
             </div>
         `;
+    // 填充 datalist 并设置默认值
+    populateStockDatalist('tradeStockList', tradeCodes);
+    document.getElementById('tradeStockSelect').value = tradeCodes[0];
+
     document.getElementById('tradeBuyBtn').onclick = function() { doTrade('buy'); };
     document.getElementById('tradeSellBtn').onclick = function() { doTrade('sell'); };
 }
@@ -329,6 +331,29 @@ function populateStockSelector(selectorId, stocks) {
         opt.value = '000001';
         opt.textContent = formatStockNameOnly('000001');
         sel.appendChild(opt);
+    }
+}
+
+// ---- 填充买卖点成交图 datalist（新的 input+datalist 方案） ----
+function populateStockDatalist(datalistId, stocks) {
+    var dl = document.getElementById(datalistId);
+    if (!dl) return;
+    dl.innerHTML = '';
+    var seen = {};
+    stocks.forEach(function(c) {
+        if (!seen[c]) {
+            seen[c] = true;
+            var opt = document.createElement('option');
+            opt.value = c;
+            opt.label = formatStockNameOnly(c);
+            dl.appendChild(opt);
+        }
+    });
+    if (dl.options.length === 0) {
+        var opt = document.createElement('option');
+        opt.value = '000001';
+        opt.label = formatStockNameOnly('000001');
+        dl.appendChild(opt);
     }
 }
 
@@ -374,6 +399,52 @@ function saveAvatarToStorage(dataUrl) {
     if (icon) icon.innerHTML = '<img src="' + dataUrl + '" alt="头像">';
 }
 
+// ---- 搜索建议节流函数 ----
+var suggestionTimer = null;
+
+function debounceSuggestions() {
+    if (suggestionTimer) clearTimeout(suggestionTimer);
+    suggestionTimer = setTimeout(function() {
+        var input = document.getElementById('stockCodeInput');
+        if (!input) return;
+        var keyword = input.value.trim();
+        if (keyword === '') {
+            var container = document.getElementById('stockSuggestionsContainer');
+            if (container) container.innerHTML = '';
+            return;
+        }
+        searchStockSuggestions(keyword, bridge).then(function(list) {
+            var container = document.getElementById('stockSuggestionsContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            if (list.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+            list.forEach(function(item) {
+                var div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.style.cssText = 'padding:6px 12px; cursor:pointer; background:#1a2135; border-bottom:1px solid #2a314a; color:#ffffff;';
+                div.innerHTML = formatStockDisplayHtml(item.code) + ' <span style="color:#9aa9cc;">' + item.name + '</span>';
+                div.addEventListener('click', function() {
+                    input.value = item.code;
+                    container.innerHTML = '';
+                    container.style.display = 'none';
+                    var stockCode = item.code;
+                    if (typeof loadStock === 'function') {
+                        loadStock();
+                    } else {
+                        var btn = document.getElementById('stockSearchBtn');
+                        if (btn) btn.click();
+                    }
+                });
+                container.appendChild(div);
+            });
+        });
+    }, 300);
+}
+
 // ---- 页面导航 ----
 function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
@@ -384,11 +455,12 @@ function loadPage(pageId) {
                     <div class="legend-sign"><span><i class="buy-point"></i> 买入 (B)</span><span><i class="sell-point"></i> 卖出 (S)</span></div>
                     <div class="metric-row">
                         <span>当前股票:</span>
-                        <select id="stockSelectorKline"></select>
+                        <input type="text" id="stockSelectorKline" list="stockListKline" placeholder="输入或选择股票" style="width:130px;">
+                        <datalist id="stockListKline"></datalist>
                         <span>起始日期:</span>
-                        <input type="date" id="startDateInput" value="2010-01-01">
+                        <input type="text" class="datepicker-input" id="startDateInput" value="2010-01-01" readonly>
                         <span>结束日期:</span>
-                        <input type="date" id="endDateInput" value="2026-12-31">
+                        <input type="text" class="datepicker-input" id="endDateInput" value="" readonly>
                         <button id="runBacktestBtn">▶ 运行回测</button>
                         <button id="refreshKlineBtn">刷新K线</button>
                     </div>
@@ -396,41 +468,37 @@ function loadPage(pageId) {
                     <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成</p>
                 </div>`;
         setTimeout(function() {
-            var startDateInput = document.getElementById('startDateInput');
+            var today = new Date().toISOString().slice(0, 10);
             var endDateInput = document.getElementById('endDateInput');
-            var loadStockList = function(callback) {
-                if (bridge) {
-                    bridge.get_traded_stocks().then(function(jsonStr) {
-                        var data = JSON.parse(jsonStr);
-                        var list = data.stocks || [];
-                        if (list.length > 0) {
-                            callback(list.map(function(s) { return s.code; }));
-                        } else {
-                            callback(tradeStockLibrary.map(function(t) { return t.code; }));
-                        }
-                    }).catch(function() {
-                        callback(tradeStockLibrary.map(function(t) { return t.code; }));
-                    });
-                } else {
-                    callback(tradeStockLibrary.map(function(t) { return t.code; }));
-                }
-            };
-            loadStockList(function(stocks) {
-                populateStockSelector('stockSelectorKline', stocks);
-                var sel = document.getElementById('stockSelectorKline');
-                if (sel) {
-                    for (var i = 0; i < sel.options.length; i++) {
-                        if (sel.options[i].value === currentStockCode) {
-                            sel.selectedIndex = i;
-                            break;
-                        }
-                    }
-                    sel.onchange = function() { currentStockCode = sel.value;
-                        buyPoints = [];
-                        sellPoints = [];
-                        fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value); };
+            if (endDateInput && !endDateInput.value) {
+                endDateInput.value = today;
+            }
+            var startDateInput = document.getElementById('startDateInput');
+            bindDatePicker(startDateInput);
+            bindDatePicker(endDateInput);
+
+            // 按成交数量( shares )降序排序，取前6只不同的股票
+            var sorted = tradeStockLibrary.slice().sort(function(a,b) { return b.shares - a.shares; });
+            var topCodes = [];
+            var seen = {};
+            sorted.forEach(function(t) {
+                if (!seen[t.code]) {
+                    seen[t.code] = true;
+                    topCodes.push(t.code);
                 }
             });
+            var top6 = topCodes.slice(0,6);
+            populateStockDatalist('stockListKline', top6);
+            var selInput = document.getElementById('stockSelectorKline');
+            if (selInput) {
+                selInput.value = currentStockCode;
+                selInput.addEventListener('change', function() {
+                    currentStockCode = this.value;
+                    buyPoints = [];
+                    sellPoints = [];
+                    fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
+                });
+            }
             var runBtn = document.getElementById('runBacktestBtn');
             var refreshBtn = document.getElementById('refreshKlineBtn');
             if (runBtn) runBtn.onclick = function() {
@@ -452,11 +520,12 @@ function loadPage(pageId) {
     } else if (pageId === 'stock') {
         container.innerHTML = `
                 <div class="card">
-                    <div class="card-title">📉 个股详情</div>
-                    <div class="stock-search-row">
+                    <div class="card-title">📉 <span id="mainStockTitle">个股详情</span></div>
+                    <div class="stock-search-row" style="position: relative;">
                         <input type="text" id="stockCodeInput" placeholder="股票代码" value="000001" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; width:120px;">
                         <button id="stockSearchBtn">查询K线</button>
                     </div>
+                    <div id="stockSuggestionsContainer" style="position: absolute; z-index: 1000; width: 200px; max-height: 200px; overflow-y: auto; background: #1a2135; border:1px solid #2a314a; border-radius: 8px; display: none;"></div>
                     <div id="stockInfoDisplay" style="margin: 12px 0; padding: 8px 16px; background: #1a2135; border-radius: 12px; min-height: 40px;"></div>
                     <div id="stockKlineChart" class="kline-container" style="height:460px;"></div>
                     <div style="margin-top:12px;">
@@ -467,12 +536,21 @@ function loadPage(pageId) {
             var searchBtn = document.getElementById('stockSearchBtn');
             var codeInput = document.getElementById('stockCodeInput');
             var stockInfoDisplay = document.getElementById('stockInfoDisplay');
+            var stockSuggestionsContainer = document.getElementById('stockSuggestionsContainer');
 
             function updateStockInfo(code) {
                 if (!code) {
                     stockInfoDisplay.innerHTML = '请输入股票代码查询';
                 } else {
                     stockInfoDisplay.innerHTML = formatStockDisplayHtml(code);
+                }
+                var mainTitle = document.getElementById('mainStockTitle');
+                if (mainTitle) {
+                    if (!code) {
+                        mainTitle.innerHTML = '个股详情';
+                    } else {
+                        mainTitle.innerHTML = formatStockDisplayHtml(code);
+                    }
                 }
             }
 
@@ -527,31 +605,39 @@ function loadPage(pageId) {
             var loadStock = function() {
                 var stockCode = codeInput.value.trim();
                 if (stockCode === '') stockCode = '000001';
+
+                updateStockInfo(stockCode);
                 stockInfoDisplay.innerHTML = '⏳ 加载中...';
-                if (!bridge) {
-                    var mock = generateMockKline(stockCode);
+
+                fetchStockName(stockCode, bridge).then(function() {
                     updateStockInfo(stockCode);
-                    renderStockKline('stockKlineChart', mock.dates, mock.values);
-                    return;
-                }
-                var callPromise = bridge.get_kline_data(stockCode, "2010-01-01", "2026-12-31");
-                var raced = withTimeout(callPromise, 5000);
-                raced.then(function(jsonStr) {
-                    var parsed = parseKlineData(jsonStr);
-                    if (parsed) {
-                        updateStockInfo(stockCode);
-                        renderStockKline('stockKlineChart', parsed.dates, parsed.values);
-                    } else {
-                        console.warn("后端数据无效，使用模拟数据");
-                        var mock = generateMockKline(stockCode);
-                        updateStockInfo(stockCode);
-                        renderStockKline('stockKlineChart', mock.dates, mock.values);
+                    if (!bridge) {
+                        stockInfoDisplay.innerHTML = '⚠️ Bridge 未连接，无法查询';
+                        return;
                     }
-                }).catch(function(err) {
-                    console.error("获取K线失败或超时:", err);
-                    stockInfoDisplay.innerHTML = '⚠️ ' + err.message;
-                    var mock = generateMockKline(stockCode);
-                    renderStockKline('stockKlineChart', mock.dates, mock.values);
+                    var callPromise = bridge.get_kline_data(stockCode, "2010-01-01", "2026-12-31");
+                    var raced = withTimeout(callPromise, 5000);
+                    raced.then(function(jsonStr) {
+                        var parsed = parseKlineData(jsonStr);
+                        if (parsed) {
+                            renderStockKline('stockKlineChart', parsed.dates, parsed.values);
+                        } else {
+                            stockInfoDisplay.innerHTML = '⚠️ 股票代码不存在或无数据';
+                            var container = document.getElementById('stockKlineChart');
+                            if (container) {
+                                container.innerHTML = '<div style="color:#ff6b6b;">无数据</div>';
+                            }
+                        }
+                    }).catch(function(err) {
+                        console.error("获取K线失败或超时:", err);
+                        stockInfoDisplay.innerHTML = '⚠️ ' + err.message;
+                        var container = document.getElementById('stockKlineChart');
+                        if (container) {
+                            container.innerHTML = '<div style="color:#ff6b6b;">查询失败</div>';
+                        }
+                    });
+                }).catch(function() {
+                    updateStockInfo(stockCode);
                 });
             };
 
@@ -561,6 +647,15 @@ function loadPage(pageId) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         loadStock();
+                    }
+                });
+                codeInput.addEventListener('input', debounceSuggestions);
+                document.addEventListener('click', function(e) {
+                    if (!e.target.closest('#stockSuggestionsContainer') && !e.target.closest('#stockCodeInput')) {
+                        if (stockSuggestionsContainer) {
+                            stockSuggestionsContainer.innerHTML = '';
+                            stockSuggestionsContainer.style.display = 'none';
+                        }
                     }
                 });
             }
@@ -729,6 +824,7 @@ def handle_bar(context, bar_dict):
 
 // ---- 首次加载及导航绑定 ----
 document.addEventListener('DOMContentLoaded', function() {
+    initDatePicker();
     var saved = localStorage.getItem('user_avatar');
     if (saved) {
         var icon = document.getElementById('navAvatarIcon');
