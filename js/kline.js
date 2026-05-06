@@ -1,6 +1,20 @@
 import { bridge, log } from './bridge.js';
 import { renderKlineWithSignals } from './chartRenderer.js';
 
+function calcMA(values, period) {
+    var ma = [];
+    for (var i = 0; i < values.length; i++) {
+        if (i < period - 1) {
+            ma.push(0);
+        } else {
+            var sum = 0;
+            for (var j = 0; j < period; j++) sum += values[i - j][1];
+            ma.push(parseFloat((sum / period).toFixed(2)));
+        }
+    }
+    return ma;
+}
+
 export var currentKlineDates = [];
 export var currentKlineValues = [];
 export var buyPoints = [];
@@ -43,11 +57,21 @@ export function fetchAndRenderKline(code, startDate, endDate) {
         }
         currentKlineDates = data.dates;
         currentKlineValues = data.values;
-        renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, null);
-        if (autoBacktestScheduled) {
-            autoBacktestScheduled = false;
-            runBacktest(code, startDate, endDate);
-        }
+        // 异步计算均线，避免阻塞
+        setTimeout(function() {
+            var maData = {
+                dates: data.dates,
+                ma5: calcMA(data.values, 5),
+                ma10: calcMA(data.values, 10),
+                ma20: calcMA(data.values, 20),
+                ma30: calcMA(data.values, 30)
+            };
+            renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, maData);
+            if (autoBacktestScheduled) {
+                autoBacktestScheduled = false;
+                runBacktest(code, startDate, endDate);
+            }
+        }, 10);
     }).catch(function(err) {
         log("请求失败: " + err);
         var container = document.getElementById('klineMainChart');
