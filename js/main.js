@@ -1,4 +1,5 @@
 // js/main.js
+// js/main.js
 import { stockNameMap, tradeStockLibrary, backtestStrategies, dailyHoldings, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { renderKlineWithSignals, renderStockKline, drawDetailCurve, formatStockDisplayHtml } from './chartRenderer.js';
 import { initDatePicker, bindDatePicker } from './datepicker.js';
@@ -154,16 +155,49 @@ function fetchAndRenderKline(code, startDate, endDate) {
         }
         currentKlineDates = data.dates;
         currentKlineValues = data.values;
-        // 异步计算均线，防止卡顿
+
+        // ---- 异步计算（含采样）避免卡顿 ----
         setTimeout(function() {
-            var maData = {
-                dates: data.dates,
-                ma5: calcMA(data.values, 5),
-                ma10: calcMA(data.values, 10),
-                ma20: calcMA(data.values, 20),
-                ma30: calcMA(data.values, 30)
+            // 采样函数
+            function sampleArray(arr, step) {
+                var res = [];
+                for (var i = 0; i < arr.length; i += step) {
+                    res.push(arr[i]);
+                }
+                return res;
+            }
+            var MAX_POINTS = 500;
+            var step = (data.dates.length > MAX_POINTS) ? Math.ceil(data.dates.length / MAX_POINTS) : 1;
+            // 如果数据被采样，清空买卖点（避免索引错乱）
+            if (step > 1) {
+                buyPoints = [];
+                sellPoints = [];
+            }
+            var sampledDates = sampleArray(data.dates, step);
+            var sampledValues = sampleArray(data.values, step);
+
+            // 基于原始 data.values 计算均线（全量）
+            var ma5 = calcMA(data.values, 5);
+            var ma10 = calcMA(data.values, 10);
+            var ma20 = calcMA(data.values, 20);
+            var ma30 = calcMA(data.values, 30);
+
+            // 采样均线
+            var ma5_sampled = sampleArray(ma5, step);
+            var ma10_sampled = sampleArray(ma10, step);
+            var ma20_sampled = sampleArray(ma20, step);
+            var ma30_sampled = sampleArray(ma30, step);
+
+            var maData_sampled = {
+                dates: sampledDates,
+                ma5: ma5_sampled,
+                ma10: ma10_sampled,
+                ma20: ma20_sampled,
+                ma30: ma30_sampled
             };
-            renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, maData);
+
+            renderKlineWithSignals(sampledDates, sampledValues, buyPoints, sellPoints, maData_sampled);
+
             if (autoBacktestScheduled) {
                 autoBacktestScheduled = false;
                 runBacktest(code, startDate, endDate);
