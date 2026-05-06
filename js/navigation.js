@@ -58,7 +58,6 @@ export function loadPage(pageId) {
                 selInput.value = formatStockNameOnly(currentStockCode);
                 selInput.setAttribute('data-current-code', currentStockCode);
 
-                // 移除之前的 input 事件（避免干扰），只保留 change 事件
                 // 输入事件：不做主动替换，但为了兼容，依然保留空函数
                 selInput.addEventListener('input', function() {
                     // 不做任何操作
@@ -84,6 +83,19 @@ export function loadPage(pageId) {
                     buyPoints.length = 0;
                     sellPoints.length = 0;
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
+                });
+
+                // focus 事件：输入框获得焦点时清空值，让 datalist 显示所有选项
+                selInput.addEventListener('focus', function() {
+                    this.value = '';
+                });
+
+                // blur 事件：失去焦点且用户未选择时恢复显示当前股票名称
+                selInput.addEventListener('blur', function() {
+                    if (this.value.trim() === '') {
+                        this.value = formatStockNameOnly(currentStockCode);
+                        this.setAttribute('data-current-code', currentStockCode);
+                    }
                 });
             }
             var runBtn = document.getElementById('runBacktestBtn');
