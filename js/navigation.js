@@ -40,7 +40,8 @@ export function loadPage(pageId) {
             bindDatePicker(startDateInput);
             bindDatePicker(endDateInput);
 
-            var sorted = tradeStockLibrary.slice().sort(function(a,b) { return b.mktValue - a.mktValue; });
+            // 按成交数量（shares）降序排序，去重取前6
+            var sorted = tradeStockLibrary.slice().sort(function(a,b) { return b.shares - a.shares; });
             var topCodes = [];
             var seen = {};
             sorted.forEach(function(t) {
@@ -56,26 +57,30 @@ export function loadPage(pageId) {
                 // 设置初始值显示名称，并记录代码
                 selInput.value = formatStockNameOnly(currentStockCode);
                 selInput.setAttribute('data-current-code', currentStockCode);
-                // 输入事件：匹配选项后更新 data-current-code 并显示名称
+
+                // 移除之前的 input 事件（避免干扰），只保留 change 事件
+                // 输入事件：不做主动替换，但为了兼容，依然保留空函数
                 selInput.addEventListener('input', function() {
-                    var val = this.value.trim();
+                    // 不做任何操作
+                });
+
+                // change 事件：从 datalist 中获取代码，并显示名称
+                selInput.addEventListener('change', function() {
+                    var code = this.value;
                     var dl = document.getElementById('stockListKline');
                     if (dl) {
                         for (var i = 0; i < dl.options.length; i++) {
-                            var opt = dl.options[i];
-                            if (opt.label === val || opt.value === val) {
-                                currentStockCode = opt.value;
-                                this.setAttribute('data-current-code', currentStockCode);
-                                this.value = opt.label; // 替换为名称
+                            if (dl.options[i].label === this.value || dl.options[i].value === this.value) {
+                                code = dl.options[i].value;
                                 break;
                             }
                         }
                     }
-                });
-                // change 事件：使用 data-current-code 获取代码，并发起请求
-                selInput.addEventListener('change', function() {
-                    var code = this.getAttribute('data-current-code') || this.value;
                     currentStockCode = code;
+                    this.setAttribute('data-current-code', code);
+                    // 保证输入框显示名称
+                    var displayName = formatStockNameOnly(code);
+                    if (this.value !== displayName) this.value = displayName;
                     buyPoints.length = 0;
                     sellPoints.length = 0;
                     fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
