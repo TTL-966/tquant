@@ -21,14 +21,19 @@ class WebBridge(QObject):
     def ping(self):
         return "pong"
 
-    @Slot(str, str, str, result=str)
-    def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31"):
+    @Slot(str, str, str, int, result=str)
+    def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0):
         try:
             raw = self.data_feed.get_kline_json(code, start_date, end_date)
             if isinstance(raw, str):
                 parsed = json.loads(raw)
                 if 'dates' in parsed and 'values' in parsed:
-                    return raw
+                    data = {"dates": parsed["dates"], "values": parsed["values"]}
+                    # 截断
+                    if limit > 0 and len(data['dates']) > limit:
+                        data['dates'] = data['dates'][-limit:]
+                        data['values'] = data['values'][-limit:]
+                    return json.dumps(data)
                 return self._mock_kline_json(code)
             if hasattr(raw, 'to_dict'):
                 df = raw
@@ -44,6 +49,15 @@ class WebBridge(QObject):
                     "closes": df['close'].tolist(),
                     "volumes": df['volume'].tolist()
                 }
+                # 截断
+                if limit > 0 and len(data['dates']) > limit:
+                    data['dates'] = data['dates'][-limit:]
+                    data['values'] = data['values'][-limit:]
+                    if 'opens' in data: data['opens'] = data['opens'][-limit:]
+                    if 'highs' in data: data['highs'] = data['highs'][-limit:]
+                    if 'lows' in data: data['lows'] = data['lows'][-limit:]
+                    if 'closes' in data: data['closes'] = data['closes'][-limit:]
+                    if 'volumes' in data: data['volumes'] = data['volumes'][-limit:]
                 return json.dumps(data)
             return self._mock_kline_json(code)
         except Exception as e:

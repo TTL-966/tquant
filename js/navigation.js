@@ -177,7 +177,7 @@ export function loadPage(pageId) {
                         stockInfoDisplay.innerHTML = '⚠️ Bridge 未连接，无法查询';
                         return;
                     }
-                    var callPromise = bridge.get_kline_data(stockCode, "2010-01-01", "2026-12-31");
+                    var callPromise = bridge.get_kline_data(stockCode, "2010-01-01", "2026-12-31", 500);
                     var raced = withTimeout(callPromise, 5000);
                     raced.then(function(jsonStr) {
                         var parsed = parseKlineData(jsonStr);
