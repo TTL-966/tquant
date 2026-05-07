@@ -1,258 +1,149 @@
 # backend/backtest_executor.py
 
 import json
-import math
+import types
+import functools
 import numpy as np
 import pandas as pd
 
-class Context:
-    def __init__(self):
-        self.stock = None
-        self.cash = 0.0
-        self.holdings = 0         # 当前持仓股数
-        self.short_win = 5
-        self.long_win = 20
-        self.portfolio_value = 0.0
-
-
-class Logger:
-    def __init__(self):
-        self.messages = []
-
-    def info(self, msg):
-        self.messages.append(msg)
-        print("[Strategy Log]", msg)
-
-
 class BacktestExecutor:
-    def __init__(self, data_feed):
-        self.data_feed = data_feed
-        self.signals = []          # 记录买卖信号
-        self.equity_curve = []     # 每个交易日的账户总值
-        self.trades = []           # 成交记录 (用于计算胜率)
+    """基础回测执行器，提供沙箱运行、主循环框架。"""
 
-    def run(self, user_code, stock_code, start_date, end_date,
-            initial_cash=1000000, shares_per_trade=100):
-        # 1) 获取 K 线数据
-        kline_json = self.data_feed.get_kline_json(stock_code, start_date, end_date)
-        try:
-            data = json.loads(kline_json)
-        except Exception as e:
-            return {"error": f"解析K线数据失败: {str(e)}"}
+    def __init__(self, data_source):
+        """
+        :param data_source: 数据源对象，需提供 get_kline_data 方法。
+        """
+        self.data_source = data_source
 
-        dates = data.get("dates", [])
-        values = data.get("values", [])
-        if not dates or not values:
-            return {"error": "K线数据为空"}
-
-        # 2) 转换为 DataFrame (open, close, low, high)
-        df = pd.DataFrame(values, columns=["open", "close", "low", "high"])
-        df["trade_date"] = dates
-        df = df[["trade_date", "open", "close", "low", "high"]]   # 调整列序
-        df[["open", "close", "low", "high"]] = df[["open", "close", "low", "high"]].astype(float)
-        total_bars = len(df)
-
-        if total_bars < 20:
-            return {"error": "K线数据不足20根，无法运行策略"}
-
-        # 3) 创建上下文对象
-        ctx = Context()
-        ctx.stock = stock_code
-        ctx.cash = initial_cash
-        ctx.holdings = 0
-
-        # 4) 信号收集器
-        signals = self.signals = []
-
-        # 5) history_bars 闭包
-        def history_bars(security, count, unit, field):
-            """
-            security 参数保留，但只针对 context.stock 一只股票
-            count: 需要的 bar 数量
-            unit: 暂不处理，按日线
-            field: 'close', 'open', 'high', 'low'
-            """
-            nonlocal df, total_bars, current_idx
-            if field not in ["open", "close", "low", "high"]:
-                field = "close"
-            if current_idx < count:
-                return np.array([])   # 数据不足
-            start = current_idx - count
-            end = current_idx
-            return df[field].iloc[start:end].values
-
-        # 6) order_target_percent 闭包
-        def order_target_percent(security, percent):
-            nonlocal ctx, current_idx, signals
-            close_price = df["close"].iloc[current_idx]
-            if percent > 0:
-                # 买入
-                target_value = ctx.cash * percent
-                if target_value <= 0:
-                    return
-                shares_to_buy = int(target_value / close_price)
-                if shares_to_buy <= 0:
-                    shares_to_buy = 1
-                cost = shares_to_buy * close_price
-                if cost > ctx.cash:
-                    shares_to_buy = int(ctx.cash / close_price)
-                    cost = shares_to_buy * close_price
-                if shares_to_buy > 0:
-                    ctx.holdings += shares_to_buy
-                    ctx.cash -= cost
-                    signal = {
-                        "date": df["trade_date"].iloc[current_idx],
-                        "type": "buy",
-                        "price": round(close_price, 2),
-                        "shares": shares_to_buy,
-                        "action": "买入"
-                    }
-                    signals.append(signal)
-                    self.trades.append({"profit": 0, "is_win": None})  # 卖出时才确定盈亏
-            else:
-                # 卖出 (percent <= 0)
-                if ctx.holdings <= 0:
-                    return
-                # 记录卖出前的持仓成本价 (用于计算盈亏)
-                prev_holdings = ctx.holdings
-                ctx.cash += ctx.holdings * close_price
-                ctx.holdings = 0
-                signal = {
-                    "date": df["trade_date"].iloc[current_idx],
-                    "type": "sell",
-                    "price": round(close_price, 2),
-                    "shares": prev_holdings,
-                    "action": "卖出"
-                }
-                signals.append(signal)
-                # 计算该笔交易盈亏 (假设之前的买入持股成本为平均成本，这里简化：用持仓市值变化)
-                # 更精确的计算需要记录每笔买入成本，暂时简单处理
-                # 在循环外部统计胜率时再计算
-
-        # 7) Logger
-        logger = Logger()
-
-        # 8) 受限制的全局命名空间
-        sandbox_globals = {
-            "__builtins__": __builtins__,
-            "pd": pd,
-            "np": np,
-            "context": ctx,
-            "history_bars": history_bars,
-            "order_target_percent": order_target_percent,
-            "log": logger
+    # ---------- 沙箱构建 ----------
+    def _build_sandbox(self, context, history_bars, order_target_percent, log):
+        """返回安全的 sandbox_globals 字典。"""
+        # 白名单内置函数
+        safe_builtins = {
+            k: v for k, v in __builtins__.items()
+            if k in {
+                'abs', 'all', 'any', 'bool', 'dict', 'enumerate', 'float',
+                'getattr', 'hasattr', 'int', 'isinstance', 'len', 'list',
+                'map', 'max', 'min', 'print', 'range', 'reversed',
+                'round', 'set', 'sorted', 'str', 'sum', 'tuple', 'type',
+                'vars', 'zip'
+            }
         }
 
-        # 9) 执行用户代码
+        sandbox = {
+            '__builtins__': safe_builtins,
+            'pd': pd,
+            'np': np,
+            'context': context,
+            'history_bars': history_bars,
+            'order_target_percent': order_target_percent,
+            'log': log,
+        }
+        return sandbox
+
+    # ---------- 主执行方法 ----------
+    def run(self, user_code_str, params_json):
+        """
+        :param user_code_str: 用户策略代码字符串
+        :param params_json: JSON 字符串，包含股票代码、日期范围等
+        :return: JSON 字符串（状态和日志）
+        """
+        # 1. 解析参数
         try:
-            exec(user_code, sandbox_globals)
-        except Exception as e:
-            return {"error": f"策略代码编译/执行失败: {str(e)}"}
+            params = json.loads(params_json)
+        except json.JSONDecodeError:
+            return json.dumps({"status": "error", "logs": ["参数 JSON 解析失败"]})
 
-        if "initialize" not in sandbox_globals:
-            return {"error": "用户代码缺少 initialize 函数"}
-        if "handle_bar" not in sandbox_globals:
-            return {"error": "用户代码缺少 handle_bar 函数"}
+        stock_code = params.get("stock", "000001")
+        start_date = params.get("start", "2010-01-01")
+        end_date = params.get("end", "2026-12-31")
+        initial_cash = params.get("cash", 1000000)
 
-        initialize = sandbox_globals["initialize"]
-        handle_bar = sandbox_globals["handle_bar"]
-
-        # 10) 调用 initialize
+        # 2. 获取 K 线数据，构建 DataFrame（索引为日期）
         try:
-            initialize(ctx)
+            raw_data = self.data_source.get_kline_data(stock_code, start_date, end_date)
+            # 假设 raw_data 是 {"dates": [...], "values": [[o,c,l,h], ...]}
+            if isinstance(raw_data, str):
+                raw_data = json.loads(raw_data)
+            dates = raw_data.get("dates", [])
+            values = raw_data.get("values", [])
+            if not dates or not values:
+                return json.dumps({"status": "error", "logs": ["K线数据为空"]})
+            df = pd.DataFrame(values, columns=["open", "close", "low", "high"])
+            df.index = pd.to_datetime(dates)
+            df.index.name = "date"
         except Exception as e:
-            return {"error": f"initialize 执行出错: {str(e)}"}
+            return json.dumps({"status": "error", "logs": [f"获取K线数据失败: {str(e)}"]})
 
-        # 11) 遍历每个交易日（从第20天开始，确保有足够均线数据）
-        equity_curve = self.equity_curve = []
-        current_idx = 20   # 初始索引，history_bars 会用它
-        for idx in range(20, total_bars):
-            current_idx = idx
+        # 3. 创建上下文
+        context = types.SimpleNamespace()
+        context.portfolio = {"cash": initial_cash, "holdings": {}}   # holdings: {code: shares}
+        context.current_dt = None
+
+        # 4. 占位函数（简单输出日志）
+        logs = []
+
+        def history_bars(security, count, unit, field):
+            logs.append(f"[模拟] history_bars 被调用: security={security}, count={count}, unit={unit}, field={field}")
+            # 实际应返回数据，这里只做占位
+            return np.array([])
+
+        def order_target_percent(security, percent):
+            logs.append(f"[模拟] order_target_percent 被调用: security={security}, percent={percent}")
+            # 假设总是成功
+
+        def log(msg):
+            logs.append(f"[策略Log] {msg}")
+
+        sandbox = self._build_sandbox(context, history_bars, order_target_percent, log)
+
+        # 5. 编译并执行用户代码
+        try:
+            code_obj = compile(user_code_str, '<user_strategy>', 'exec')
+        except SyntaxError as e:
+            return json.dumps({"status": "error", "logs": [f"语法错误: {str(e)}"]})
+
+        try:
+            exec(code_obj, sandbox)
+        except Exception as e:
+            return json.dumps({"status": "error", "logs": [f"策略执行失败: {str(e)}"]})
+
+        # 6. 检查必需函数
+        initialize = sandbox.get("initialize")
+        handle_bar = sandbox.get("handle_bar")
+        if initialize is None:
+            return json.dumps({"status": "error", "logs": ["缺少 initialize 函数"]})
+        if handle_bar is None:
+            return json.dumps({"status": "error", "logs": ["缺少 handle_bar 函数"]})
+
+        # 7. 执行 initialize
+        try:
+            initialize(context)
+        except Exception as e:
+            return json.dumps({"status": "error", "logs": [f"initialize 执行出错: {str(e)}"]})
+
+        # 8. 主循环（占位）
+        logs.append("模拟: 回测开始...")
+        for idx in range(min(len(df), 30)):   # 仅取前30根做演示
+            bar = df.iloc[idx]
+            context.current_dt = df.index[idx]
             bar_dict = {
-                "stock": ctx.stock,
-                "open": df["open"].iloc[idx],
-                "close": df["close"].iloc[idx],
-                "high": df["high"].iloc[idx],
-                "low": df["low"].iloc[idx]
+                "open": bar["open"],
+                "high": bar["high"],
+                "low": bar["low"],
+                "close": bar["close"],
+                "volume": 0    # 暂缺
             }
             try:
-                handle_bar(ctx, bar_dict)
+                handle_bar(context, bar_dict)
             except Exception as e:
-                return {"error": f"第 {idx} 根 bar 执行 handle_bar 出错: {str(e)}"}
+                logs.append(f"第 {idx} 根K线 handle_bar 出错: {str(e)}")
+                # 继续，不中断
+        logs.append("模拟: 回测结束。")
 
-            # 记录每日权益
-            close_price = df["close"].iloc[idx]
-            total_value = ctx.cash + ctx.holdings * close_price
-            equity_curve.append({
-                "date": df["trade_date"].iloc[idx],
-                "value": round(total_value, 2)
-            })
-
-        # 12) 计算绩效指标
-        metrics = self._calc_metrics(initial_cash, equity_curve, self.trades, dates, df)
-
-        return {
-            "signals": self.signals,
-            "equity_curve": self.equity_curve,
-            "metrics": metrics
+        # 9. 返回结果
+        result = {
+            "status": "success",
+            "logs": logs
         }
-
-    def _calc_metrics(self, initial_cash, equity_curve, trades, all_dates, df):
-        if not equity_curve:
-            return {}
-
-        end_value = equity_curve[-1]["value"]
-        total_return = (end_value - initial_cash) / initial_cash * 100.0
-
-        # 年数（大约）
-        start_date = pd.to_datetime(equity_curve[0]["date"])
-        end_date = pd.to_datetime(equity_curve[-1]["date"])
-        years = max((end_date - start_date).days / 365.0, 1.0 / 365.0)
-        annual_return = ((end_value / initial_cash) ** (1.0 / years) - 1.0) * 100.0
-
-        # 最大回撤
-        values = [e["value"] for e in equity_curve]
-        peak = values[0]
-        max_drawdown = 0.0
-        for v in values:
-            if v > peak:
-                peak = v
-            drawdown = (peak - v) / peak * 100.0
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-
-        # 夏普比率（简化）
-        returns = []
-        for i in range(1, len(values)):
-            daily_ret = (values[i] - values[i-1]) / values[i-1]
-            returns.append(daily_ret)
-        if len(returns) > 1:
-            avg_return = np.mean(returns)
-            std_return = np.std(returns, ddof=1)
-            if std_return > 0:
-                sharpe = (avg_return / std_return) * math.sqrt(252)
-            else:
-                sharpe = 0.0
-        else:
-            sharpe = 0.0
-
-        # 胜率：需要从信号中获取成交记录，简化：根据 trade 列表中记录
-        # 由于我们没有跟踪每笔买入的成本，无法精确计算每笔盈亏，此处返回 0
-        win_rate = 0.0
-        total_trades = len(self.signals) // 2  # 每对买卖
-        if total_trades > 0:
-            # 简单模拟：通过 equity_curve 首尾判断方向
-            if end_value > initial_cash:
-                win_rate = 100.0
-            else:
-                win_rate = 0.0
-
-        metrics = {
-            "total_return": round(total_return, 2),
-            "annual_return": round(annual_return, 2),
-            "max_drawdown": round(max_drawdown, 2),
-            "sharpe_ratio": round(sharpe, 2),
-            "win_rate": round(win_rate, 2),
-            "total_trades": total_trades
-        }
-        return metrics
+        return json.dumps(result)
