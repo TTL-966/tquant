@@ -117,9 +117,7 @@ class WebBridge(QObject):
                         shares = h['shares']
                         cost = h['cost']
                         market_value = round(price * shares, 2)
-                        h['market_value'] = market_value
-                        profit = round(market_value - cost * shares, 2)
-                        h['profit'] = profit
+                        h['profit'] = round(market_value - cost * shares, 2)
                 except Exception:
                     pass
                 total_market += h.get('market_value', h.get('price', h['cost']) * h['shares'])

@@ -119,14 +119,16 @@ export function loadPage(pageId) {
     } else if (pageId === 'stock') {
         container.innerHTML = `
                 <div class="card">
-                    <div class="card-title">📉 <span id="mainStockTitle">个股详情</span></div>
+                    <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>📉 <span id="mainStockTitle">个股详情</span></span>
+                        <span id="stockPriceBar" style="font-size:14px; padding-right:4px;"></span>
+                    </div>
                     <div class="stock-search-row" style="position: relative;">
                         <input type="text" id="stockCodeInput" placeholder="股票代码" value="000001" style="background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; width:120px;">
                         <button id="stockSearchBtn">查询K线</button>
                     </div>
                     <div id="stockSuggestionsContainer" style="position: absolute; z-index: 1000; width: 200px; max-height: 200px; overflow-y: auto; background: #1a2135; border:1px solid #2a314a; border-radius: 8px; display: none;"></div>
                     <div id="stockInfoDisplay" style="margin: 12px 0; padding: 8px 16px; background: #1a2135; border-radius: 12px; min-height: 40px;"></div>
-                    <div id="stockPriceBar" style="margin: 4px 0 12px 0; padding: 6px 16px; background: #1a2135; border-radius: 12px; min-height: 24px; font-size: 14px; display: flex; align-items: center;"></div>
                     <div id="stockKlineChart" class="kline-container" style="height:460px;"></div>
                     <div style="margin-top:12px;">
                         
@@ -228,7 +230,7 @@ export function loadPage(pageId) {
                         var changePct = data.change_pct;
                         var color = change >= 0 ? '#ff4c4c' : '#4cff4c';
                         var sign = change >= 0 ? '+' : '';
-                        bar.innerHTML = '最新价: <span style="font-weight:bold;color:' + color + ';">' + price.toFixed(2) + '</span>  ' +
+                        bar.innerHTML = '最新价: <b style="color:' + color + ';">' + price.toFixed(2) + '</b> ' +
                                         sign + change.toFixed(2) + ' (' + sign + changePct.toFixed(2) + '%)';
                     }).catch(function() {
                         var bar = document.getElementById('stockPriceBar');

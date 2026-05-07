@@ -103,6 +103,26 @@ export function saveAvatarToStorage(dataUrl) {
     if (icon) icon.innerHTML = '<img src="' + dataUrl + '" alt="头像">';
 }
 
+// ---- 窗口 resize 自适应图表 ----
+(function() {
+    var resizeTimer = null;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            var chartDom = document.getElementById('stockKlineChart');
+            if (chartDom) {
+                var instance = echarts.getInstanceByDom(chartDom);
+                if (instance) instance.resize();
+            }
+            var mainDom = document.getElementById('klineMainChart');
+            if (mainDom) {
+                var mainInstance = echarts.getInstanceByDom(mainDom);
+                if (mainInstance) mainInstance.resize();
+            }
+        }, 500);
+    });
+})();
+
 // ---- 首次加载及导航绑定 ----
 document.addEventListener('DOMContentLoaded', function() {
     initDatePicker();
