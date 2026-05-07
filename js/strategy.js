@@ -100,8 +100,8 @@ def handle_bar(context, bar_dict):
     var currentId = null;          // 当前加载的策略 ID
     var previousSelectorValue = ''; // 策略选择器上次的值（用于 blur 恢复）
 
-    // ---------- 填充股票 datalist（前6只） ----------
-    var top6Codes = tradeStockLibrary.slice(0, 6);
+    // ---------- 填充股票 datalist（前6只，提取 code 字符串） ----------
+    var top6Codes = tradeStockLibrary.slice(0, 6).map(function(item) { return item.code; });
     populateStockDatalist('strategyStockList', top6Codes);
 
     // ---------- 刷新策略列表 ----------

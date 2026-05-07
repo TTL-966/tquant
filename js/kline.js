@@ -31,7 +31,6 @@ export function fetchAndRenderKline(code, startDate, endDate) {
         return;
     }
     log("请求 K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
-    // limit=0 表示由后端根据日期范围返回，不额外截断（后端有缓存，按需返回）
     bridge.get_kline_data(code, startDate, endDate, 0).then(function(jsonStr) {
         var data = JSON.parse(jsonStr);
         if (data.error) {
@@ -43,7 +42,6 @@ export function fetchAndRenderKline(code, startDate, endDate) {
             return;
         }
         if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
-            // 兼容旧格式（不再需要）
             data.values = data.dates.map(function(_, i) {
                 return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
             });
@@ -58,7 +56,6 @@ export function fetchAndRenderKline(code, startDate, endDate) {
         }
         currentKlineDates = data.dates;
         currentKlineValues = data.values;
-        // 异步计算均线，避免阻塞
         setTimeout(function() {
             var maData = {
                 dates: data.dates,
