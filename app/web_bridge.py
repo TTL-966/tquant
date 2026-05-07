@@ -99,8 +99,8 @@ class WebBridge(QObject):
         """
         接收 JSON 字符串，格式:
         {
-            "user_code": "...",
-            "stock_code": "000001",
+            "code": "...",          # 策略代码
+            "stock": "000001",     # 股票代码
             "start": "2010-01-01",
             "end": "2026-12-31",
             "cash": 1000000
@@ -115,8 +115,8 @@ class WebBridge(QObject):
         """
         try:
             params = json.loads(params_json)
-            user_code = params.get("user_code", "")
-            stock_code = params.get("stock_code", "000001")
+            user_code = params.get("code", "")
+            stock_code = params.get("stock", "000001")
             start = params.get("start", "2010-01-01")
             end = params.get("end", "2026-12-31")
             cash = params.get("cash", 1000000)
@@ -127,7 +127,8 @@ class WebBridge(QObject):
                 "success": True,
                 "signals": result.get("signals", []),
                 "equity_curve": result.get("equity_curve", []),
-                "metrics": result.get("metrics", {})
+                "metrics": result.get("metrics", {}),
+                "logs": result.get("logs", [])
             })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)

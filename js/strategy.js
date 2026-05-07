@@ -200,9 +200,10 @@ def handle_bar(context, bar_dict):
         var startDate = startDateInput.value || '2010-01-01';
         var endDate = endDateInput.value || today;
         var cash = 1000000;
+        // 按照前端新接口规范，使用 code / stock 作为参数名
         var paramsJson = JSON.stringify({
-            user_code: userCode,
-            stock_code: stockCode,
+            code: userCode,
+            stock: stockCode,
             start: startDate,
             end: endDate,
             cash: cash
@@ -219,7 +220,13 @@ def handle_bar(context, bar_dict):
             var equityCurve = res.equity_curve || [];
             var metrics = res.metrics || {};
 
-            // 更新买卖点
+            // 更新全局回测结果存储
+            window._lastBacktestResult = res;
+
+            // 更新全局股票代码，便于其他页面访问
+            window.currentStockCode = stockCode;
+
+            // 更新买卖点全局数组
             // 清空原有买卖点（注意保留原有引用对象）
             buyPoints.length = 0;
             sellPoints.length = 0;
