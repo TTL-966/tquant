@@ -390,36 +390,140 @@ export function loadPage(pageId) {
         container.innerHTML = '';
         renderStrategyPage(container);
     } else if (pageId === 'detail') {
-        var profitTags = ["策略收益 +23.5%", "基准收益 +12.1%", "阿尔法 0.18", "贝塔 0.92", "最大回撤 -8.2%"];
-        var tagHtml = profitTags.map(function(t) { var cls = profitClass(t); return '<span class="metric-tag ' + cls + '">' + t + '</span>'; }).join('');
-        var stockRows = tradeStockLibrary.map(function(t) {
-            return '<tr><td>' + t.time + '</td><td class="stock-code-link" data-code="' + t.code + '">' + formatStockDisplayHtml(t.code) + '</td><td>' + t.shares + '</td><td>' + t.price + '</td><td>' + t.mktValue + '</td></tr>';
+        // ---------- 动态回测结果展示 ----------
+        var result = window._lastBacktestResult;
+        var hasResult = result && (result.status === 'success' || result.signals) && (result.equity_curve && result.equity_curve.length > 0);
+
+        var metrics, signals, equityCurve;
+        if (hasResult) {
+            metrics = result.metrics || {};
+            signals = result.signals || [];
+            equityCurve = result.equity_curve || [];
+        } else {
+            // 默认静态示例
+            metrics = {
+                winRate: '66.7%',
+                annualReturn: '18.5%',
+                maxDrawdown: '-8.2%',
+                sharpeRatio: '1.35',
+                totalTrades: 2
+            };
+            signals = [
+                { date: '2026-01-05', code: '000001', type: 'buy', price: 12.35, shares: 800 },
+                { date: '2026-01-12', code: '000001', type: 'sell', price: 13.68, shares: 800 }
+            ];
+            equityCurve = [
+                { date: '2026-01-01', value: 1000000 },
+                { date: '2026-01-08', value: 1023500 },
+                { date: '2026-01-15', value: 1018000 },
+                { date: '2026-01-22', value: 1052000 },
+                { date: '2026-01-29', value: 1089000 }
+            ];
+        }
+
+        // 构建指标标签
+        var tagsHtml = '';
+        if (hasResult) {
+            var tr = metrics.total_return != null ? metrics.total_return + '%' : '--';
+            var ar = metrics.annual_return != null ? metrics.annual_return + '%' : '--';
+            var md = metrics.max_drawdown != null ? metrics.max_drawdown + '%' : '--';
+            var sr = metrics.sharpe_ratio != null ? metrics.sharpe_ratio : '--';
+            var tt = metrics.total_trades != null ? metrics.total_trades : '--';
+            tagsHtml = '<span class="metric-tag">累计收益 ' + tr + '</span>' +
+                       '<span class="metric-tag">年化收益 ' + ar + '</span>' +
+                       '<span class="metric-tag">最大回撤 ' + md + '</span>' +
+                       '<span class="metric-tag">夏普比率 ' + sr + '</span>' +
+                       '<span class="metric-tag">交易次数 ' + tt + '</span>';
+        } else {
+            tagsHtml = '<span class="metric-tag">策略收益 +23.5%</span>' +
+                       '<span class="metric-tag">基准收益 +12.1%</span>' +
+                       '<span class="metric-tag">阿尔法 0.18</span>' +
+                       '<span class="metric-tag">贝塔 0.92</span>' +
+                       '<span class="metric-tag">最大回撤 -8.2%</span>';
+        }
+
+        // 构建信号表格行
+        var signalRows = signals.map(function(sig) {
+            var typeText = sig.type === 'buy' ? '买入' : '卖出';
+            return '<tr class="signal-row" data-code="' + sig.code + '" style="cursor:pointer;">' +
+                   '<td>' + sig.date + '</td>' +
+                   '<td>' + typeText + '</td>' +
+                   '<td>' + (sig.price != null ? sig.price.toFixed(2) : '--') + '</td>' +
+                   '<td>' + (sig.shares != null ? sig.shares : '--') + '</td></tr>';
         }).join('');
+
+        var clearBtnHtml = hasResult ? '<button id="clearBacktestResultBtn" style="margin-top:12px;">🗑 清除结果</button>' : '';
+
         container.innerHTML = `
-                <div class="card">
-                    <div class="card-title">📊 策略详情 (双均线示例)</div>
-                    <div class="metric-row">${tagHtml}</div>
-                    <div id="detailCurveContainer" style="height: 240px; width:100%; margin-bottom: 24px;"></div>
-                    <div style="margin-top: 20px;"><h4 style="color:#ffffff;">📋 成交股票库 (成交时间+代码+数量+价格+市值)</h4>
+            <div class="card">
+                <div class="card-title">📊 策略详情</div>
+                <div class="metric-row">${tagsHtml}</div>
+                <div id="detailCurveContainer" style="height: 240px; width:100%; margin-bottom: 24px;"></div>
+                <div style="margin-top: 20px;">
+                    <h4 style="color:#ffffff;">📋 交易信号列表</h4>
                     <div class="scrollable-table">
-                    <table><thead><tr><th>成交时间</th><th>股票代码</th><th>成交数量</th><th>成交价格</th><th>当前市值(元)</th></tr></thead>
-                    <tbody>${stockRows}</tbody></table>
-                    </div></div>
-                    <button id="gotoKlineBtn" style="margin-top: 16px;">🔍 查看买卖点成交图(K线)</button>
-                </div>`;
+                        <table>
+                            <thead><tr><th>日期</th><th>类型</th><th>价格</th><th>数量</th></tr></thead>
+                            <tbody>${signalRows}</tbody>
+                        </table>
+                    </div>
+                </div>
+                <button id="gotoKlineBtn" style="margin-top: 16px;">🔍 查看买卖点成交图(K线)</button>
+                ${clearBtnHtml}
+            </div>`;
+
         setTimeout(function() {
-            drawDetailCurve();
-            var gotoBtn = document.getElementById('gotoKlineBtn');
-            if (gotoBtn) gotoBtn.onclick = function() { document.querySelector('.nav-item[data-page="kchart"]').click(); };
-            var contentPanel = document.getElementById('dynamicContent');
-            contentPanel.addEventListener('click', function(e) {
-                var target = e.target;
-                var link = target.closest('.stock-code-link');
-                if (link) {
-                    var code = link.getAttribute('data-code');
+            // 绘制收益曲线
+            var chartDom = document.getElementById('detailCurveContainer');
+            if (chartDom && equityCurve.length > 0 && typeof echarts !== 'undefined') {
+                var myChart = echarts.init(chartDom);
+                var option = {
+                    tooltip: { trigger: 'axis' },
+                    xAxis: {
+                        type: 'category',
+                        data: equityCurve.map(function(e) { return e.date; }),
+                        axisLabel: { color: '#9aa9cc' }
+                    },
+                    yAxis: {
+                        type: 'value',
+                        name: '账户价值(元)',
+                        axisLabel: { color: '#9aa9cc' }
+                    },
+                    series: [{
+                        type: 'line',
+                        data: equityCurve.map(function(e) { return e.value; }),
+                        smooth: true,
+                        lineStyle: { color: '#4f7eff' },
+                        areaStyle: { color: 'rgba(79,126,255,0.2)' }
+                    }]
+                };
+                myChart.setOption(option);
+            }
+
+            // 绑定信号行点击事件（跳转到K线图）
+            document.querySelectorAll('.signal-row').forEach(function(tr) {
+                tr.addEventListener('click', function() {
+                    var code = this.getAttribute('data-code');
                     if (code) navigateToKline(code);
-                }
+                });
             });
+
+            // 绑定“查看买卖点成交图”按钮
+            var gotoBtn = document.getElementById('gotoKlineBtn');
+            if (gotoBtn) {
+                gotoBtn.onclick = function() {
+                    document.querySelector('.nav-item[data-page="kchart"]').click();
+                };
+            }
+
+            // 绑定清除结果按钮
+            var clearBtn = document.getElementById('clearBacktestResultBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    window._lastBacktestResult = null;
+                    loadPage('detail');
+                });
+            }
         }, 50);
     } else if (pageId === 'daily') {
         var rows = dailyHoldings.map(function(d) {
