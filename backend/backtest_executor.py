@@ -2,11 +2,27 @@
 
 import json
 import types
+import traceback
 import numpy as np
 import pandas as pd
 
+class Logger:
+    """简单的日志输出器，同时支持 log(msg) 和 log.info(msg) 调用。"""
+    def __init__(self, executor):
+        self._executor = executor
+
+    def info(self, msg):
+        self._executor.logs.append(f"[INFO] {msg}")
+
+    def error(self, msg):
+        self._executor.logs.append(f"[ERROR] {msg}")
+
+    def __call__(self, msg):
+        self.info(msg)
+
+
 class BacktestExecutor:
-    """基础回测执行器，支持attribute_history、order_target_value等API。"""
+    """基础回测执行器，支持 attribute_history、order_target_value 等 API。"""
 
     def __init__(self, data_source):
         """
@@ -16,9 +32,11 @@ class BacktestExecutor:
         self.df = None                # 全量K线DataFrame，由run方法赋值
         self.current_idx = -1         # 当前循环的索引
         self.trade_signals = []       # 交易信号列表
+        self.logs = []                # 日志列表
+        self.daily_functions = []     # run_daily 注册的函数列表
 
     # ---------- 沙箱构建 ----------
-    def _build_sandbox(self, context, log):
+    def _build_sandbox(self, context, logger):
         """返回安全的 sandbox_globals 字典。"""
         # 白名单内置函数
         safe_builtins = {
@@ -37,19 +55,20 @@ class BacktestExecutor:
             'pd': pd,
             'np': np,
             'context': context,
-            'log': log,
+            'log': logger,
             'attribute_history': self._attribute_history_wrapper,
             'history_bars': self._history_bars_wrapper,
             'order_target_value': self._order_target_value_wrapper,
             'order_target_percent': self._order_target_percent_wrapper,
             'get_current_data': self._get_current_data_wrapper,
+            'run_daily': self._run_daily_wrapper,
         }
         return sandbox
 
     # ---------- 内部辅助函数（注入沙箱） ----------
     def _attribute_history_wrapper(self, security, count, fields=None):
         """
-        返回 Dataframe，包含过去 count 根K线的请求字段。
+        返回 DataFrame，包含过去 count 根K线的请求字段。
         fields: list of fields, 如 ['close','open']；若为 None 则返回所有。
         """
         if self.df is None or self.current_idx < 0:
@@ -128,10 +147,16 @@ class BacktestExecutor:
             'close': bar['close'],
         }
 
+    def _run_daily_wrapper(self, func, time='every_bar'):
+        """
+        注册一个每天（每根K线）执行的函数。
+        参数 time 当前未使用，保留做扩展。
+        """
+        self.daily_functions.append(func)
+
     # ---------- 持仓/现金 操作封装 ----------
     def _get_portfolio_cash(self):
         """从 context 中获取现金。"""
-        import types
         if hasattr(self._context, 'portfolio'):
             return self._context.portfolio.get('cash', 0.0)
         return 0.0
@@ -182,9 +207,13 @@ class BacktestExecutor:
         :param initial_cash: 初始资金
         :return: dict 包含 status, signals, equity_curve, metrics, logs
         """
-        logs = []
-        self.trade_signals = []
+        # 重置状态
+        self.trade_signals.clear()
+        self.logs.clear()
+        self.daily_functions.clear()
         self.current_idx = -1
+        self.df = None
+
         # 1. 获取K线数据
         try:
             raw_str = self.data_source.get_kline_json(stock_code, start_date, end_date, limit=0)
@@ -210,22 +239,27 @@ class BacktestExecutor:
         context.current_dt = None
         self._context = context   # 给内部方法访问
 
-        # 3. 日志函数
-        def log(msg):
-            logs.append(f"[策略Log] {msg}")
+        # 3. 日志模块
+        logger = Logger(self)
 
-        sandbox = self._build_sandbox(context, log)
+        sandbox = self._build_sandbox(context, logger)
 
-        # 4. 编译并执行用户代码
+        # 4. 编译并执行用户代码（捕获具体语法错误）
         try:
             code_obj = compile(user_code, '<user_strategy>', 'exec')
         except SyntaxError as e:
-            return self._error_result(f"语法错误: {str(e)}")
+            return self._error_result(f"语法错误 (行 {e.lineno}): {e.msg}")
+        except Exception as e:
+            return self._error_result(f"编译失败: {str(e)}")
 
         try:
             exec(code_obj, sandbox)
+        except NameError as e:
+            return self._error_result(f"变量未定义: {str(e)}")
+        except AttributeError as e:
+            return self._error_result(f"属性错误: {str(e)}")
         except Exception as e:
-            return self._error_result(f"策略执行失败: {str(e)}")
+            return self._error_result(f"策略执行失败: {str(e)}\n{traceback.format_exc()}")
 
         # 5. 检查必需函数
         initialize = sandbox.get('initialize')
@@ -235,14 +269,19 @@ class BacktestExecutor:
         if handle_bar is None:
             return self._error_result("缺少 handle_bar 函数")
 
-        # 6. 执行 initialize
+        # 6. 执行 initialize（捕获运行时错误）
         try:
             initialize(context)
+        except NameError as e:
+            return self._error_result(f"initialize 中变量未定义: {str(e)}")
+        except AttributeError as e:
+            return self._error_result(f"initialize 中属性错误: {str(e)}")
         except Exception as e:
-            return self._error_result(f"initialize 执行出错: {str(e)}")
+            return self._error_result(f"initialize 执行出错: {str(e)}\n{traceback.format_exc()}")
 
         # 7. 主循环 & 记录权益曲线
         equity_curve = []
+        logs = self.logs
         logs.append("模拟: 回测开始...")
         total_rows = len(df)
         for idx in range(total_rows):
@@ -258,9 +297,21 @@ class BacktestExecutor:
             }
             try:
                 handle_bar(context, bar_dict)
+            except NameError as e:
+                logs.append(f"第 {idx} 根K线 handle_bar 中变量未定义: {str(e)}")
+            except AttributeError as e:
+                logs.append(f"第 {idx} 根K线 handle_bar 中属性错误: {str(e)}")
             except Exception as e:
-                logs.append(f"第 {idx} 根K线 handle_bar 出错: {str(e)}")
-                # 继续
+                logs.append(f"第 {idx} 根K线 handle_bar 出错: {str(e)}\n{traceback.format_exc()}")
+                # 继续，不中断
+
+            # 执行 run_daily 注册的函数
+            for dfunc in self.daily_functions:
+                try:
+                    dfunc(context)
+                except Exception as e:
+                    logs.append(f"第 {idx} 根K线 run_daily 函数出错: {str(e)}")
+
             # 计算当前总资产 = 现金 + 持仓市值
             cash = context.portfolio['cash']
             holdings_value = 0.0
@@ -330,7 +381,6 @@ class BacktestExecutor:
             sharpe = 0.0
         # 胜率（简化为盈利交易比例，这里未记录单笔盈亏，暂设0）
         win_rate = 0.0
-        # 计算每个信号的盈亏？跳过，设0
         # 总交易次数
         total_trades = len(self.trade_signals)
         metrics = {
