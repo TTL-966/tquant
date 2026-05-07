@@ -65,6 +65,26 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
 
+    # ---------- 新增行业相关 slot ----------
+    @Slot(str, result=str)
+    def get_industry(self, code):
+        try:
+            industry = self.db.get_industry_by_code(code)
+            return json.dumps({"industry": industry if industry else "未知"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"industry": "未知"})
+
+    @Slot(str, result=str)
+    def get_stocks_by_industry(self, industry_name):
+        try:
+            stocks = self.db.get_stocks_by_industry(industry_name)
+            return json.dumps(stocks)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps([])
+    # -------------------------------------
+
     @Slot(str, str, str, result=str)
     def run_backtest(self, code, start_date="2010-01-01", end_date="2026-12-31"):
         try:

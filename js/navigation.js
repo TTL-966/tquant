@@ -9,6 +9,44 @@ import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, lo
 
 var currentStockCode = "000001";
 
+// ---- 新增行业浮层函数 ----
+function showIndustryPopup(jsonStr, industry) {
+    var data = JSON.parse(jsonStr);
+    if (!Array.isArray(data) || data.length === 0) {
+        return;
+    }
+    // 遮罩
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1999;';
+    overlay.onclick = function() {
+        overlay.remove();
+        content.remove();
+    };
+    // 内容框
+    var content = document.createElement('div');
+    content.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#1a2135; border:1px solid #4f7eff; border-radius:12px; padding:10px; z-index:2500; max-height:300px; overflow-y:auto; min-width:300px;';
+    var title = document.createElement('div');
+    title.style.cssText = 'margin-bottom:10px; color:#fff; font-weight:600;';
+    title.textContent = '同行业股票 - ' + industry;
+    content.appendChild(title);
+    data.forEach(function(item) {
+        var row = document.createElement('div');
+        row.style.cssText = 'padding:6px; margin:4px 0; background:#0e1220; border-radius:6px; cursor:pointer; color:#fff;';
+        row.textContent = item.name + ' (' + item.code + ')';
+        row.onclick = function(e) {
+            e.stopPropagation();
+            var codeInput = document.getElementById('stockCodeInput');
+            if (codeInput) codeInput.value = item.code;
+            if (window._loadStockRef) window._loadStockRef(item.code);
+            overlay.remove();
+            content.remove();
+        };
+        content.appendChild(row);
+    });
+    document.body.appendChild(overlay);
+    document.body.appendChild(content);
+}
+
 export function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
     if (pageId === 'profile') { renderProfile(); } else if (pageId === 'kchart') {
@@ -232,6 +270,24 @@ export function loadPage(pageId) {
                         var sign = change >= 0 ? '+' : '';
                         bar.innerHTML = '最新价: <b style="color:' + color + ';">' + price.toFixed(2) + '</b> ' +
                                         sign + change.toFixed(2) + ' (' + sign + changePct.toFixed(2) + '%)';
+
+                        // 获取行业信息并追加
+                        bridge.get_industry(code).then(function(indJson) {
+                            var indData = JSON.parse(indJson);
+                            var industry = indData.industry || '未知';
+                            var indSpan = document.createElement('span');
+                            indSpan.style.cssText = 'color:#9aa9cc; margin-left:12px; cursor:pointer; text-decoration:underline;';
+                            indSpan.textContent = '行业: ' + industry;
+                            indSpan.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                bridge.get_stocks_by_industry(industry).then(function(stkJson) {
+                                    showIndustryPopup(stkJson, industry);
+                                });
+                            });
+                            bar.appendChild(indSpan);
+                        }).catch(function() {
+                            // 行业获取失败，忽略
+                        });
                     }).catch(function() {
                         var bar = document.getElementById('stockPriceBar');
                         if (bar) bar.innerHTML = '最新价: 获取失败';
@@ -270,6 +326,8 @@ export function loadPage(pageId) {
                     updateStockInfo(stockCode);
                 });
             };
+            // 暴露 loadStock 引用，供浮层点击切换股票使用
+            window._loadStockRef = loadStock;
 
             if (searchBtn) searchBtn.onclick = loadStock;
             if (codeInput) {
