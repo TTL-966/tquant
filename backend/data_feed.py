@@ -81,6 +81,33 @@ class DataFeed:
         result = {"dates": filtered_dates, "values": filtered_values}
         return json.dumps(result)
 
+    def get_latest_price(self, code):
+        """返回最新价、日期、前一收盘价及涨跌幅"""
+        code_pure = code.split('.')[0]
+        # 若缓存缺失则利用 get_kline_json 加载全量数据
+        if code_pure not in self._kline_cache:
+            self.get_kline_json(code)  # 加载并缓存
+        cached = self._kline_cache.get(code_pure)
+        if cached is None:
+            return {"error": "无数据"}
+        dates = cached["dates"]
+        values = cached["values"]
+        if len(dates) < 2:
+            return {"error": "数据不足两个交易日"}
+        last_date = dates[-1]
+        last_close = values[-1][1]      # close index 1
+        prev_close = values[-2][1]
+        price = last_close
+        change = round(last_close - prev_close, 2)
+        change_pct = round((change / prev_close) * 100, 2) if prev_close != 0 else 0.0
+        return {
+            "price": price,
+            "date": last_date,
+            "prev_close": prev_close,
+            "change": change,
+            "change_pct": change_pct
+        }
+
     def _mock_kline_json(self, code):
         """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线JSON（周线，数据量可控）"""
         import numpy as np

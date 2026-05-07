@@ -56,6 +56,15 @@ class WebBridge(QObject):
             data['values'] = data['values'][-2000:]
         return json.dumps(data)
 
+    @Slot(str, result=str)
+    def get_latest_price(self, code):
+        try:
+            result = self.data_feed.get_latest_price(code)
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
+
     @Slot(str, str, str, result=str)
     def run_backtest(self, code, start_date="2010-01-01", end_date="2026-12-31"):
         try:
@@ -87,6 +96,35 @@ class WebBridge(QObject):
         try:
             portfolio = self.trade.get_portfolio()
             holdings = portfolio.get("holdings")
+            # 确保 holdings 为列表
+            if isinstance(holdings, dict):
+                holdings_list = []
+                for code, info in holdings.items():
+                    item = info.copy()
+                    item['code'] = code
+                    holdings_list.append(item)
+                holdings = holdings_list
+                portfolio['holdings'] = holdings
+            # 遍历每个持仓，替换为真实最新价
+            total_market = portfolio.get('cash', 0.0)
+            for h in holdings:
+                code = h['code']
+                try:
+                    latest = self.data_feed.get_latest_price(code)
+                    if 'error' not in latest:
+                        price = latest['price']
+                        h['price'] = price
+                        shares = h['shares']
+                        cost = h['cost']
+                        market_value = round(price * shares, 2)
+                        h['market_value'] = market_value
+                        profit = round(market_value - cost * shares, 2)
+                        h['profit'] = profit
+                except Exception:
+                    pass
+                total_market += h.get('market_value', h.get('price', h['cost']) * h['shares'])
+            portfolio['total_assets'] = round(total_market, 2)
+            # 原 display 增强逻辑（保持不变）
             if isinstance(holdings, dict):
                 enhanced_holdings = {}
                 for code, info in holdings.items():

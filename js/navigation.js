@@ -126,6 +126,7 @@ export function loadPage(pageId) {
                     </div>
                     <div id="stockSuggestionsContainer" style="position: absolute; z-index: 1000; width: 200px; max-height: 200px; overflow-y: auto; background: #1a2135; border:1px solid #2a314a; border-radius: 8px; display: none;"></div>
                     <div id="stockInfoDisplay" style="margin: 12px 0; padding: 8px 16px; background: #1a2135; border-radius: 12px; min-height: 40px;"></div>
+                    <div id="stockPriceBar" style="margin: 4px 0 12px 0; padding: 6px 16px; background: #1a2135; border-radius: 12px; min-height: 24px; font-size: 14px; display: flex; align-items: center;"></div>
                     <div id="stockKlineChart" class="kline-container" style="height:460px;"></div>
                     <div style="margin-top:12px;">
                         
@@ -207,9 +208,37 @@ export function loadPage(pageId) {
 
                 updateStockInfo(stockCode);
                 stockInfoDisplay.innerHTML = '⏳ 加载中...';
+                // 获取最新价与涨跌幅
+                function updatePriceBar(code) {
+                    if (!bridge || typeof bridge.get_latest_price !== 'function') {
+                        var bar = document.getElementById('stockPriceBar');
+                        if (bar) bar.innerHTML = '最新价: 暂无数据';
+                        return;
+                    }
+                    bridge.get_latest_price(code).then(function(jsonStr) {
+                        var data = JSON.parse(jsonStr);
+                        var bar = document.getElementById('stockPriceBar');
+                        if (!bar) return;
+                        if (data.error) {
+                            bar.innerHTML = '最新价: ' + data.error;
+                            return;
+                        }
+                        var price = data.price;
+                        var change = data.change;
+                        var changePct = data.change_pct;
+                        var color = change >= 0 ? '#ff4c4c' : '#4cff4c';
+                        var sign = change >= 0 ? '+' : '';
+                        bar.innerHTML = '最新价: <span style="font-weight:bold;color:' + color + ';">' + price.toFixed(2) + '</span>  ' +
+                                        sign + change.toFixed(2) + ' (' + sign + changePct.toFixed(2) + '%)';
+                    }).catch(function() {
+                        var bar = document.getElementById('stockPriceBar');
+                        if (bar) bar.innerHTML = '最新价: 获取失败';
+                    });
+                }
 
                 fetchStockName(stockCode, bridge).then(function() {
                     updateStockInfo(stockCode);
+                    updatePriceBar(stockCode);
                     if (!bridge) {
                         stockInfoDisplay.innerHTML = '⚠️ Bridge 未连接，无法查询';
                         return;
