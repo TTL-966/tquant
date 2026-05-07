@@ -2,21 +2,23 @@
 
 import json
 import types
-import functools
 import numpy as np
 import pandas as pd
 
 class BacktestExecutor:
-    """基础回测执行器，提供沙箱运行、主循环框架。"""
+    """基础回测执行器，支持attribute_history、order_target_value等API。"""
 
     def __init__(self, data_source):
         """
-        :param data_source: 数据源对象，需提供 get_kline_data 方法。
+        :param data_source: 数据源对象，需提供 get_kline_json 方法。
         """
         self.data_source = data_source
+        self.df = None                # 全量K线DataFrame，由run方法赋值
+        self.current_idx = -1         # 当前循环的索引
+        self.trade_signals = []       # 交易信号列表
 
     # ---------- 沙箱构建 ----------
-    def _build_sandbox(self, context, history_bars, order_target_percent, log):
+    def _build_sandbox(self, context, log):
         """返回安全的 sandbox_globals 字典。"""
         # 白名单内置函数
         safe_builtins = {
@@ -35,115 +37,318 @@ class BacktestExecutor:
             'pd': pd,
             'np': np,
             'context': context,
-            'history_bars': history_bars,
-            'order_target_percent': order_target_percent,
             'log': log,
+            'attribute_history': self._attribute_history_wrapper,
+            'history_bars': self._history_bars_wrapper,
+            'order_target_value': self._order_target_value_wrapper,
+            'order_target_percent': self._order_target_percent_wrapper,
+            'get_current_data': self._get_current_data_wrapper,
         }
         return sandbox
 
-    # ---------- 主执行方法 ----------
-    def run(self, user_code_str, params_json):
+    # ---------- 内部辅助函数（注入沙箱） ----------
+    def _attribute_history_wrapper(self, security, count, fields=None):
         """
-        :param user_code_str: 用户策略代码字符串
-        :param params_json: JSON 字符串，包含股票代码、日期范围等
-        :return: JSON 字符串（状态和日志）
+        返回 Dataframe，包含过去 count 根K线的请求字段。
+        fields: list of fields, 如 ['close','open']；若为 None 则返回所有。
         """
-        # 1. 解析参数
-        try:
-            params = json.loads(params_json)
-        except json.JSONDecodeError:
-            return json.dumps({"status": "error", "logs": ["参数 JSON 解析失败"]})
+        if self.df is None or self.current_idx < 0:
+            return pd.DataFrame()
+        start = max(0, self.current_idx - count)
+        end = self.current_idx   # 不包含当前 bar
+        slice_df = self.df.iloc[start:end]
+        if fields is not None and isinstance(fields, (list, tuple)):
+            # 确保 date 列总是存在
+            cols = ['date'] if 'date' in slice_df.columns else []
+            for f in fields:
+                if f in slice_df.columns:
+                    cols.append(f)
+            if not cols:
+                return pd.DataFrame()
+            slice_df = slice_df[cols]
+        # 重置索引以便前端处理
+        return slice_df.reset_index(drop=True)
 
-        stock_code = params.get("stock", "000001")
-        start_date = params.get("start", "2010-01-01")
-        end_date = params.get("end", "2026-12-31")
-        initial_cash = params.get("cash", 1000000)
-
-        # 2. 获取 K 线数据，构建 DataFrame（索引为日期）
-        try:
-            raw_data = self.data_source.get_kline_data(stock_code, start_date, end_date)
-            # 假设 raw_data 是 {"dates": [...], "values": [[o,c,l,h], ...]}
-            if isinstance(raw_data, str):
-                raw_data = json.loads(raw_data)
-            dates = raw_data.get("dates", [])
-            values = raw_data.get("values", [])
-            if not dates or not values:
-                return json.dumps({"status": "error", "logs": ["K线数据为空"]})
-            df = pd.DataFrame(values, columns=["open", "close", "low", "high"])
-            df.index = pd.to_datetime(dates)
-            df.index.name = "date"
-        except Exception as e:
-            return json.dumps({"status": "error", "logs": [f"获取K线数据失败: {str(e)}"]})
-
-        # 3. 创建上下文
-        context = types.SimpleNamespace()
-        context.portfolio = {"cash": initial_cash, "holdings": {}}   # holdings: {code: shares}
-        context.current_dt = None
-
-        # 4. 占位函数（简单输出日志）
-        logs = []
-
-        def history_bars(security, count, unit, field):
-            logs.append(f"[模拟] history_bars 被调用: security={security}, count={count}, unit={unit}, field={field}")
-            # 实际应返回数据，这里只做占位
+    def _history_bars_wrapper(self, security, count, unit, field):
+        """
+        返回 numpy array，仅包含 field 列的过去 count 个值。
+        兼容旧策略。
+        """
+        df = self._attribute_history_wrapper(security, count, fields=[field])
+        if df.empty or field not in df.columns:
             return np.array([])
+        return df[field].values
 
-        def order_target_percent(security, percent):
-            logs.append(f"[模拟] order_target_percent 被调用: security={security}, percent={percent}")
-            # 假设总是成功
+    def _order_target_value_wrapper(self, security, value):
+        """
+        目标市值下单，记录信号。
+        """
+        if self.df is None or self.current_idx < 0:
+            return
+        bar = self.df.iloc[self.current_idx]
+        current_price = bar['close']
+        current_shares = self._get_portfolio_holdings().get(security, 0)
+        current_value = current_shares * current_price
+        diff_value = value - current_value
+        if abs(diff_value) < 0.01:
+            return
+        shares_to_trade = diff_value / current_price
+        # 允许小数股数（为简化）
+        self._record_trade(security, shares_to_trade, current_price)
 
+    def _order_target_percent_wrapper(self, security, percent):
+        """
+        目标仓位百分比下单。
+        percent: 0~1 之间的数值，表示目标仓位占比。
+        """
+        if self.df is None or self.current_idx < 0:
+            return
+        # 计算当前总资产
+        cash = self._get_portfolio_cash()
+        holdings = self._get_portfolio_holdings()
+        trade_shares = holdings.get(security, 0)
+        current_price = self.df.iloc[self.current_idx]['close']
+        holding_value = trade_shares * current_price
+        total_assets = cash + holding_value   # 简化，忽略其他持仓
+        target_value = total_assets * percent
+        self._order_target_value_wrapper(security, target_value)
+
+    def _get_current_data_wrapper(self, security):
+        """
+        返回包含当前 bar 信息的字典。
+        """
+        if self.df is None or self.current_idx < 0:
+            return {'last_price': 0.0}
+        bar = self.df.iloc[self.current_idx]
+        return {
+            'last_price': bar['close'],
+            'open': bar['open'],
+            'high': bar['high'],
+            'low': bar['low'],
+            'close': bar['close'],
+        }
+
+    # ---------- 持仓/现金 操作封装 ----------
+    def _get_portfolio_cash(self):
+        """从 context 中获取现金。"""
+        import types
+        if hasattr(self._context, 'portfolio'):
+            return self._context.portfolio.get('cash', 0.0)
+        return 0.0
+
+    def _get_portfolio_holdings(self):
+        if hasattr(self._context, 'portfolio'):
+            return self._context.portfolio.get('holdings', {})
+        return {}
+
+    def _record_trade(self, security, shares, price):
+        """
+        更新持仓和现金，并记录信号。
+        shares 正数为买入，负数为卖出。
+        """
+        ctx = self._context
+        cash = ctx.portfolio['cash']
+        holdings = ctx.portfolio['holdings']
+        # 更新现金
+        cost = shares * price
+        cash -= cost
+        ctx.portfolio['cash'] = cash
+        # 更新持仓
+        current_shares = holdings.get(security, 0)
+        new_shares = current_shares + shares
+        if abs(new_shares) < 1e-8:
+            if security in holdings:
+                del holdings[security]
+        else:
+            holdings[security] = new_shares
+        # 记录交易信号
+        trade_type = 'buy' if shares > 0 else 'sell'
+        date_str = self.df.index[self.current_idx].strftime('%Y-%m-%d')
+        self.trade_signals.append({
+            'date': date_str,
+            'code': security,
+            'type': trade_type,
+            'price': round(price, 2),
+            'shares': round(abs(shares), 2)   # 保留两位小数
+        })
+
+    # ---------- 主执行方法 ----------
+    def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000):
+        """
+        :param user_code: 用户策略代码字符串
+        :param stock_code: 股票代码，如 "000001"
+        :param start_date: 起始日期字符串 "YYYY-MM-DD"
+        :param end_date: 结束日期字符串
+        :param initial_cash: 初始资金
+        :return: dict 包含 status, signals, equity_curve, metrics, logs
+        """
+        logs = []
+        self.trade_signals = []
+        self.current_idx = -1
+        # 1. 获取K线数据
+        try:
+            raw_str = self.data_source.get_kline_json(stock_code, start_date, end_date, limit=0)
+            raw = json.loads(raw_str)
+            dates = raw.get('dates', [])
+            values = raw.get('values', [])
+            if not dates or not values:
+                return self._error_result("K线数据为空")
+            # values 格式：[[open, close, low, high], ...]
+            df = pd.DataFrame(values, columns=['open', 'close', 'low', 'high'])
+            df.index = pd.to_datetime(dates)
+            df.index.name = 'date'
+            self.df = df
+        except Exception as e:
+            return self._error_result(f"获取K线数据失败: {str(e)}")
+
+        # 2. 创建上下文
+        context = types.SimpleNamespace()
+        context.portfolio = {
+            'cash': initial_cash,
+            'holdings': {}   # code -> shares
+        }
+        context.current_dt = None
+        self._context = context   # 给内部方法访问
+
+        # 3. 日志函数
         def log(msg):
             logs.append(f"[策略Log] {msg}")
 
-        sandbox = self._build_sandbox(context, history_bars, order_target_percent, log)
+        sandbox = self._build_sandbox(context, log)
 
-        # 5. 编译并执行用户代码
+        # 4. 编译并执行用户代码
         try:
-            code_obj = compile(user_code_str, '<user_strategy>', 'exec')
+            code_obj = compile(user_code, '<user_strategy>', 'exec')
         except SyntaxError as e:
-            return json.dumps({"status": "error", "logs": [f"语法错误: {str(e)}"]})
+            return self._error_result(f"语法错误: {str(e)}")
 
         try:
             exec(code_obj, sandbox)
         except Exception as e:
-            return json.dumps({"status": "error", "logs": [f"策略执行失败: {str(e)}"]})
+            return self._error_result(f"策略执行失败: {str(e)}")
 
-        # 6. 检查必需函数
-        initialize = sandbox.get("initialize")
-        handle_bar = sandbox.get("handle_bar")
+        # 5. 检查必需函数
+        initialize = sandbox.get('initialize')
+        handle_bar = sandbox.get('handle_bar')
         if initialize is None:
-            return json.dumps({"status": "error", "logs": ["缺少 initialize 函数"]})
+            return self._error_result("缺少 initialize 函数")
         if handle_bar is None:
-            return json.dumps({"status": "error", "logs": ["缺少 handle_bar 函数"]})
+            return self._error_result("缺少 handle_bar 函数")
 
-        # 7. 执行 initialize
+        # 6. 执行 initialize
         try:
             initialize(context)
         except Exception as e:
-            return json.dumps({"status": "error", "logs": [f"initialize 执行出错: {str(e)}"]})
+            return self._error_result(f"initialize 执行出错: {str(e)}")
 
-        # 8. 主循环（占位）
+        # 7. 主循环 & 记录权益曲线
+        equity_curve = []
         logs.append("模拟: 回测开始...")
-        for idx in range(min(len(df), 30)):   # 仅取前30根做演示
+        total_rows = len(df)
+        for idx in range(total_rows):
             bar = df.iloc[idx]
             context.current_dt = df.index[idx]
+            self.current_idx = idx
             bar_dict = {
-                "open": bar["open"],
-                "high": bar["high"],
-                "low": bar["low"],
-                "close": bar["close"],
-                "volume": 0    # 暂缺
+                'open': bar['open'],
+                'high': bar['high'],
+                'low': bar['low'],
+                'close': bar['close'],
+                'volume': 0   # 暂缺
             }
             try:
                 handle_bar(context, bar_dict)
             except Exception as e:
                 logs.append(f"第 {idx} 根K线 handle_bar 出错: {str(e)}")
-                # 继续，不中断
+                # 继续
+            # 计算当前总资产 = 现金 + 持仓市值
+            cash = context.portfolio['cash']
+            holdings_value = 0.0
+            for code, shares in context.portfolio['holdings'].items():
+                close_price = bar['close']  # 用当前 bar 的价格估算
+                holdings_value += shares * close_price
+            total_assets = cash + holdings_value
+            equity_curve.append({
+                'date': df.index[idx].strftime('%Y-%m-%d'),
+                'value': round(total_assets, 2)
+            })
         logs.append("模拟: 回测结束。")
 
-        # 9. 返回结果
+        # 8. 计算简单的绩效指标
+        metrics = self._compute_metrics(equity_curve, initial_cash)
+
+        # 9. 构建返回结果
         result = {
-            "status": "success",
-            "logs": logs
+            'status': 'success',
+            'signals': self.trade_signals,
+            'equity_curve': equity_curve,
+            'metrics': metrics,
+            'logs': logs
         }
-        return json.dumps(result)
+        return result
+
+    # ---------- 辅助方法 ----------
+    def _compute_metrics(self, equity_curve, initial_cash):
+        if not equity_curve:
+            return {}
+        # 提取最终权益
+        final_value = equity_curve[-1]['value']
+        total_ret = (final_value / initial_cash - 1) * 100.0
+
+        # 日收益率序列
+        returns = []
+        for i in range(1, len(equity_curve)):
+            prev = equity_curve[i-1]['value']
+            cur = equity_curve[i]['value']
+            if prev > 0:
+                returns.append((cur - prev)/prev)
+        if not returns:
+            return {'total_return': round(total_ret,2), 'total_trades': len(self.trade_signals)}
+
+        total_return = round(total_ret, 2)
+        # 年化收益率（假设一年250个交易日）
+        n_days = len(returns)
+        if n_days > 0:
+            annual_ret = ( (1 + total_ret/100.0) ** (250.0/n_days) - 1) * 100.0
+        else:
+            annual_ret = 0.0
+        # 最大回撤
+        peak = initial_cash
+        max_drawdown = 0.0
+        for pt in equity_curve:
+            if pt['value'] > peak:
+                peak = pt['value']
+            dd = (peak - pt['value']) / peak * 100.0
+            if dd > max_drawdown:
+                max_drawdown = dd
+        # 夏普比率（无风险利率=0）
+        if len(returns) > 0:
+            mean_ret = np.mean(returns)
+            std_ret = np.std(returns, ddof=1)
+            sharpe = (mean_ret / std_ret) * np.sqrt(250.0) if std_ret > 0 else 0.0
+        else:
+            sharpe = 0.0
+        # 胜率（简化为盈利交易比例，这里未记录单笔盈亏，暂设0）
+        win_rate = 0.0
+        # 计算每个信号的盈亏？跳过，设0
+        # 总交易次数
+        total_trades = len(self.trade_signals)
+        metrics = {
+            'total_return': round(total_return,2),
+            'annual_return': round(annual_ret,2),
+            'max_drawdown': round(max_drawdown,2),
+            'sharpe_ratio': round(sharpe,2),
+            'win_rate': round(win_rate,2),
+            'total_trades': total_trades
+        }
+        return metrics
+
+    def _error_result(self, msg):
+        return {
+            'status': 'error',
+            'error': msg,
+            'signals': [],
+            'equity_curve': [],
+            'metrics': {},
+            'logs': [msg]
+        }
