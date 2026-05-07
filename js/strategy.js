@@ -7,19 +7,21 @@ export function renderStrategyPage(container) {
             <div class="card-title">✍️ 策略编辑器</div>
             <div class="metric-row">
                 <span>策略名称:</span>
-                <input type="text" id="strategyNameInput" value="新策略">
-                <span>策略列表:</span>
-                <select id="strategyList">
-                    <option value="">-- 选择策略 --</option>
-                </select>
+                <input type="text" id="strategyNameInput" value="新策略"
+                       style="width:200px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 12px;">
+                <span>选择策略:</span>
+                <input type="text" id="strategySelectorInput" list="strategyList"
+                       placeholder="选择策略"
+                       style="width:160px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; box-sizing:border-box;">
+                <datalist id="strategyList"></datalist>
             </div>
-            <div>
+            <div style="margin:12px 0;">
                 <button id="newStrategyBtn">📄 新建</button>
                 <button id="saveStrategyBtn">💾 保存</button>
                 <button id="deleteStrategyBtn">🗑 删除</button>
                 <button id="runStrategyBtn">▶ 运行回测 (模拟)</button>
             </div>
-            <textarea id="strategyTextArea" rows="9">def initialize(context):
+            <textarea id="strategyTextArea" rows="12">def initialize(context):
     context.stock = "000001.SZ"
     context.short_win = 5
     context.long_win = 20
@@ -39,7 +41,8 @@ def handle_bar(context, bar_dict):
         </div>
     `;
 
-    var strategyList = document.getElementById('strategyList');
+    var strategyListDL = document.getElementById('strategyList');
+    var selectorInput = document.getElementById('strategySelectorInput');
     var nameInput = document.getElementById('strategyNameInput');
     var textarea = document.getElementById('strategyTextArea');
     var newBtn = document.getElementById('newStrategyBtn');
@@ -49,48 +52,64 @@ def handle_bar(context, bar_dict):
     var logDiv = document.getElementById('runLogConsole');
     var currentId = 0;
 
+    // 加载策略列表（填充 datalist）
     function loadStrategyList() {
         bridge.list_strategies().then(function(jsonStr) {
             var strategies = JSON.parse(jsonStr);
-            strategyList.innerHTML = '<option value="">-- 选择策略 --</option>';
+            strategyListDL.innerHTML = '';
             strategies.forEach(function(s) {
                 var opt = document.createElement('option');
                 opt.value = s.id;
-                opt.textContent = s.name;
-                strategyList.appendChild(opt);
+                opt.label = s.name + ' (' + s.id + ')';
+                strategyListDL.appendChild(opt);
             });
         }).catch(function(err) {
             console.error('获取策略列表失败', err);
         });
     }
 
-    strategyList.addEventListener('change', function() {
-        var id = parseInt(this.value);
-        if (!id) {
+    // 选择策略（change 事件）
+    selectorInput.addEventListener('change', function() {
+        var val = this.value;
+        var options = strategyListDL.options;
+        var foundId = null;
+        for (var i = 0; i < options.length; i++) {
+            var opt = options[i];
+            if (opt.label === val || opt.value === val) {
+                foundId = parseInt(opt.value);
+                break;
+            }
+        }
+        if (foundId) {
+            bridge.load_strategy(foundId).then(function(jsonStr) {
+                var obj = JSON.parse(jsonStr);
+                if (obj && obj.id) {
+                    currentId = obj.id;
+                    nameInput.value = obj.name;
+                    textarea.value = obj.code;
+                    // 将输入框内容设为对应的 label，方便用户看到
+                    selectorInput.value = obj.name + ' (' + obj.id + ')';
+                }
+            }).catch(function(err) {
+                console.error('加载策略失败', err);
+            });
+        } else {
+            // 未匹配到已知策略，清空编辑器
             currentId = 0;
             nameInput.value = '新策略';
             textarea.value = '';
-            return;
         }
-        bridge.load_strategy(id).then(function(jsonStr) {
-            var obj = JSON.parse(jsonStr);
-            if (obj && obj.id) {
-                currentId = obj.id;
-                nameInput.value = obj.name;
-                textarea.value = obj.code;
-            }
-        }).catch(function(err) {
-            console.error('加载策略失败', err);
-        });
     });
 
+    // 新建
     newBtn.addEventListener('click', function() {
         currentId = 0;
         nameInput.value = '新策略';
         textarea.value = '';
-        strategyList.value = '';
+        selectorInput.value = '';
     });
 
+    // 保存
     saveBtn.addEventListener('click', function() {
         var name = nameInput.value.trim();
         var code = textarea.value;
@@ -107,7 +126,8 @@ def handle_bar(context, bar_dict):
                 currentId = result.id;
                 logDiv.innerHTML += '<div>✅ 保存策略成功 ID=' + result.id + '</div>';
                 loadStrategyList();
-                strategyList.value = result.id;
+                // 更新输入框显示
+                selectorInput.value = name + ' (' + result.id + ')';
             } else {
                 logDiv.innerHTML += '<div>❌ 保存失败: ' + (result.message || '') + '</div>';
             }
@@ -117,6 +137,7 @@ def handle_bar(context, bar_dict):
         });
     });
 
+    // 删除
     deleteBtn.addEventListener('click', function() {
         if (!currentId) {
             alert('请先选择要删除的策略');
@@ -130,6 +151,7 @@ def handle_bar(context, bar_dict):
                 currentId = 0;
                 nameInput.value = '新策略';
                 textarea.value = '';
+                selectorInput.value = '';
                 loadStrategyList();
             } else {
                 logDiv.innerHTML += '<div>❌ 删除失败: ' + (result.message || '') + '</div>';
@@ -139,11 +161,13 @@ def handle_bar(context, bar_dict):
         });
     });
 
+    // 运行回测（模拟）
     runBtn.addEventListener('click', function() {
-        logDiv.innerHTML += '<div>🚀 回测运行中... 基于当前策略产生买卖信号: 2026-01-05 买入 000001 800股@12.35, 2026-01-12 卖出 @13.68</div>';
+        logDiv.innerHTML += '<div>🚀 回测模拟运行中……（阶段二将接入真实执行引擎）</div>';
         logDiv.scrollTop = logDiv.scrollHeight;
-        alert("回测模拟完成，买卖点已记录，可前往买卖点成交图查看最新K线标识。");
+        alert("回测功能将在阶段二实现。");
     });
 
+    // 首次加载列表
     loadStrategyList();
 }
