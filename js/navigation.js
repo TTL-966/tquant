@@ -6,6 +6,7 @@ import { initDatePicker, bindDatePicker } from './datepicker.js';
 import { stockNameMap, tradeStockLibrary, backtestStrategies, dailyHoldings, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { debounceSuggestions } from './suggestions.js';
 import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
+import { renderStrategyPage } from './strategy.js';   // 新增导入
 
 var currentStockCode = "000001";
 
@@ -386,39 +387,8 @@ export function loadPage(pageId) {
             if (demoBtn) demoBtn.onclick = function() { document.querySelector('.nav-item[data-page="detail"]').click(); };
         }, 50);
     } else if (pageId === 'strategy') {
-        container.innerHTML = `
-                <div class="card">
-                    <div class="card-title">✍️ 策略代码编写区</div>
-                    <div style="margin-bottom: 12px;"><button id="runCodeBtn">▶ 运行回测 (模拟)</button></div>
-                    <textarea id="strategyTextArea" rows="9">def initialize(context):
-    context.stock = "000001.SZ"
-    context.short_win = 5
-    context.long_win = 20
-
-def handle_bar(context, bar_dict):
-    short_ma = history_bars(context.stock, context.short_win, '1d', 'close').mean()
-    long_ma = history_bars(context.stock, context.long_win, '1d', 'close').mean()
-    if short_ma > long_ma:
-        order_target_percent(context.stock, 1.0)
-        log.info("买入信号")
-    elif short_ma < long_ma:
-        order_target_percent(context.stock, 0)</textarea>
-                    <div class="log-box" id="runLogConsole">
-                        [系统] 就绪，点击运行回测或从左侧历史回测加载策略代码。<br>
-                    </div>
-                </div>`;
-        setTimeout(function() {
-            var runBtn = document.getElementById('runCodeBtn');
-            var logDiv = document.getElementById('runLogConsole');
-            if (runBtn && logDiv) {
-                runBtn.onclick = function() {
-                    logDiv.innerHTML += '<div>🚀 回测运行中... 基于当前策略产生买卖信号: 2026-01-05 买入 000001 800股@12.35, 2026-01-12 卖出 @13.68</div>';
-                    logDiv.scrollTop = logDiv.scrollHeight;
-                    currentTradeSignals.push({ date: '2026-01-20', code: '000001', type: 'buy', price: 13.20, shares: 1000 });
-                    alert("回测模拟完成，买卖点已记录，可前往买卖点成交图查看最新K线标识。");
-                };
-            }
-        }, 50);
+        container.innerHTML = '';
+        renderStrategyPage(container);
     } else if (pageId === 'detail') {
         var profitTags = ["策略收益 +23.5%", "基准收益 +12.1%", "阿尔法 0.18", "贝塔 0.92", "最大回撤 -8.2%"];
         var tagHtml = profitTags.map(function(t) { var cls = profitClass(t); return '<span class="metric-tag ' + cls + '">' + t + '</span>'; }).join('');
