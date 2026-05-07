@@ -197,3 +197,39 @@ class Database:
         except Exception:
             pass
         return code
+
+    # ---------- 新增行业相关方法 ----------
+    def get_industry_by_code(self, code):
+        """根据股票代码（纯数字）查询行业名称"""
+        if self.engine is None:
+            return None
+        suffix = self._get_stock_suffix(code)
+        ts_code = f"{code}{suffix}"
+        sql = text("SELECT industry FROM stock_industry WHERE ts_code = :ts_code LIMIT 1")
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, {"ts_code": ts_code}).fetchall()
+            if rows:
+                return rows[0][0]
+            return None
+        except Exception:
+            return None
+
+    def get_stocks_by_industry(self, industry_name):
+        """根据行业名称查询同行业股票列表"""
+        if self.engine is None:
+            return []
+        like = f"%{industry_name}%"
+        sql = text("SELECT ts_code, stock_name FROM stock_industry WHERE industry LIKE :industry LIMIT 20")
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, {"industry": like}).fetchall()
+            result = []
+            for row in rows:
+                ts_code = row[0]  # e.g. "000001.SZ"
+                name = row[1]
+                pure_code = ts_code.split('.')[0] if '.' in ts_code else ts_code
+                result.append({"code": pure_code, "name": name})
+            return result
+        except Exception:
+            return []
