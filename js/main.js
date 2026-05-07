@@ -1,9 +1,14 @@
+window._lastBacktestResult = null;
+var buyPoints = [];
+var sellPoints = [];
+var currentStockCode = '000001';
+
 import { stockNameMap, tradeStockLibrary, backtestStrategies, dailyHoldings, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { formatStockDisplayHtml, renderStockKline, drawDetailCurve } from './chartRenderer.js';
 import { initDatePicker } from './datepicker.js';
 import { bridge, updateBridgeStatus } from './bridge.js';
 import { renderProfile } from './profile.js';
-import { loadPage, navigateToKline } from './navigation.js';
+import { loadPage as originalLoadPage, navigateToKline } from './navigation.js';
 import { debounceSuggestions } from './suggestions.js';
 
 // ---- 股票名称显示辅助（纯名称）----
@@ -122,6 +127,193 @@ export function saveAvatarToStorage(dataUrl) {
         }, 500);
     });
 })();
+
+// ========== 自定义 loadPage 包装 ==========
+
+function loadPage(pageId) {
+    if (pageId === 'detail') {
+        originalLoadPage(pageId);
+        setTimeout(function() {
+            renderDetailPage();
+        }, 0);
+    } else if (pageId === 'strategy') {
+        originalLoadPage(pageId);
+        setTimeout(function() {
+            enhanceStrategyPage();
+        }, 0);
+    } else {
+        originalLoadPage(pageId);
+    }
+}
+
+// ---- 策略详情页渲染 ----
+function renderDetailPage() {
+    var container = document.getElementById('detailContent');
+    if (!container) {
+        container = document.getElementById('dynamicContent');
+        if (!container) return;
+    }
+    var result = window._lastBacktestResult;
+    if (!result) {
+        // 使用默认模拟示例
+        result = {
+            equityCurve: {
+                dates: ['2026-01-01','2026-01-08','2026-01-15','2026-01-22','2026-01-29'],
+                values: [1000000, 1023500, 1018000, 1052000, 1089000]
+            },
+            signals: [
+                { date: '2026-01-05', code: '000001', type: 'buy', price: 12.35, shares: 800 },
+                { date: '2026-01-12', code: '000001', type: 'sell', price: 13.68, shares: 800 }
+            ],
+            metrics: {
+                winRate: '66.7%',
+                annualReturn: '18.5%',
+                maxDrawdown: '-8.2%',
+                sharpeRatio: '1.35'
+            }
+        };
+    }
+    container.innerHTML = '';
+    // 曲线图
+    var chartDiv = document.createElement('div');
+    chartDiv.id = 'detailCurveChart';
+    chartDiv.style.height = '300px';
+    chartDiv.style.width = '100%';
+    container.appendChild(chartDiv);
+    drawDetailCurve(result.equityCurve);
+    // 绩效指标表格
+    var metrics = result.metrics || {};
+    var metricsTable = document.createElement('table');
+    metricsTable.className = 'metrics-table';
+    var metricRow = function(label, value) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + label + '</td><td>' + (value || '--') + '</td>';
+        return tr;
+    };
+    metricsTable.appendChild(metricRow('胜率', metrics.winRate));
+    metricsTable.appendChild(metricRow('年化收益率', metrics.annualReturn));
+    metricsTable.appendChild(metricRow('最大回撤', metrics.maxDrawdown));
+    metricsTable.appendChild(metricRow('夏普比率', metrics.sharpeRatio));
+    container.appendChild(metricsTable);
+    // 信号表格
+    var signalTitle = document.createElement('h3');
+    signalTitle.textContent = '交易信号列表';
+    container.appendChild(signalTitle);
+    var signalTable = document.createElement('table');
+    signalTable.className = 'signal-table';
+    signalTable.innerHTML = '<thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>数量</th></tr></thead><tbody></tbody>';
+    var tbody = signalTable.querySelector('tbody');
+    var signals = result.signals || [];
+    signals.forEach(function(sig) {
+        var tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', function() {
+            navigateToKline(sig.code);
+        });
+        tr.innerHTML = '<td>' + sig.date + '</td>' +
+            '<td>' + formatStockNameOnly(sig.code) + '</td>' +
+            '<td>' + (sig.type === 'buy' ? '买入' : '卖出') + '</td>' +
+            '<td>' + sig.price.toFixed(2) + '</td>' +
+            '<td>' + sig.shares + '</td>';
+        tbody.appendChild(tr);
+    });
+    container.appendChild(signalTable);
+}
+
+// ---- 策略页面增强 ----
+function enhanceStrategyPage() {
+    var strategyContainer = document.getElementById('strategyPage');
+    if (!strategyContainer) {
+        strategyContainer = document.getElementById('dynamicContent');
+        if (!strategyContainer) return;
+    }
+    // 查找代码编辑器（假定 id="strategyCodeEditor"）
+    var editor = document.getElementById('strategyCodeEditor');
+    if (!editor) return;
+    // 向上查找父容器，用于插入股票代码输入框
+    var parent = editor.parentElement;
+    if (!parent) return;
+    // 检查是否已经添加过输入框
+    if (document.getElementById('strategyStockInput')) return;
+    // 创建输入框
+    var inputGroup = document.createElement('div');
+    inputGroup.style.marginBottom = '8px';
+    inputGroup.innerHTML = '<label>股票代码：</label><input type="text" id="strategyStockInput" list="stockListKline" value="' + currentStockCode + '">';
+    parent.insertBefore(inputGroup, editor);
+    // 聚焦行为
+    var stockInput = document.getElementById('strategyStockInput');
+    stockInput.addEventListener('focus', function() {
+        this.value = '';
+    });
+    stockInput.addEventListener('blur', function() {
+        if (this.value === '') {
+            this.value = currentStockCode;
+        } else {
+            currentStockCode = this.value;
+        }
+    });
+    // 找到运行按钮（假定 id="runBacktestBtn"）
+    var runBtn = document.getElementById('runBacktestBtn');
+    if (runBtn) {
+        // 移除旧的事件（用新的替代）
+        var newBtn = runBtn.cloneNode(true);
+        runBtn.parentNode.replaceChild(newBtn, runBtn);
+        newBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            // 获取参数
+            var stockCode = document.getElementById('strategyStockInput').value.trim() || currentStockCode;
+            var strategyCode = editor.value;
+            if (!stockCode) {
+                alert('请输入股票代码');
+                return;
+            }
+            if (!strategyCode) {
+                alert('请输入策略代码');
+                return;
+            }
+            // 显示日志
+            var logArea = document.getElementById('strategyLog');
+            if (logArea) logArea.textContent = '回测运行中...';
+            // 模拟后端调用（实际应替换为真实API）
+            runBacktest(stockCode, strategyCode).then(function(res) {
+                window._lastBacktestResult = res;
+                // 更新买卖点全局变量
+                buyPoints = (res.signals || []).filter(function(s) { return s.type === 'buy'; });
+                sellPoints = (res.signals || []).filter(function(s) { return s.type === 'sell'; });
+                currentStockCode = stockCode;
+                if (logArea) logArea.textContent = '回测完成，请前往【策略详情】查看结果';
+            }).catch(function(err) {
+                if (logArea) logArea.textContent = '回测失败: ' + err.message;
+            });
+        });
+    }
+}
+
+// ---- 模拟后端回测接口（应替换为真实API） ----
+function runBacktest(stockCode, strategyCode) {
+    return new Promise(function(resolve, reject) {
+        setTimeout(function() {
+            // 模拟返回数据，生产环境替换为 fetch
+            var mockResult = {
+                equityCurve: {
+                    dates: ['2026-01-01','2026-01-08','2026-01-15','2026-01-22','2026-01-29'],
+                    values: [1000000, 1023500, 1018000, 1052000, 1089000]
+                },
+                signals: [
+                    { date: '2026-01-05', code: stockCode, type: 'buy', price: 12.35, shares: 800 },
+                    { date: '2026-01-12', code: stockCode, type: 'sell', price: 13.68, shares: 800 }
+                ],
+                metrics: {
+                    winRate: '66.7%',
+                    annualReturn: '18.5%',
+                    maxDrawdown: '-8.2%',
+                    sharpeRatio: '1.35'
+                }
+            };
+            resolve(mockResult);
+        }, 500);
+    });
+}
 
 // ---- 首次加载及导航绑定 ----
 document.addEventListener('DOMContentLoaded', function() {
