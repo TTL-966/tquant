@@ -1,5 +1,6 @@
 import json
 import datetime
+import bisect
 import pandas as pd
 from backend.db import Database
 
@@ -26,6 +27,19 @@ class DataFeed:
         # 兜底
         return s
 
+    def _slice_by_date_range(self, cached, start, end):
+        """
+        在已排序的日期数组上，用二分查找定位 [start, end] 区间，避免全量表遍历。
+        返回 (dates_sub, values_sub)
+        """
+        dates = cached["dates"]
+        values = cached["values"]
+        if not dates:
+            return [], []
+        lo = bisect.bisect_left(dates, start)
+        hi = bisect.bisect_right(dates, end)
+        return dates[lo:hi], values[lo:hi]
+
     def get_kline_json(self, code, start_date=None, end_date=None, limit=0):
         """获取K线数据 JSON，支持缓存，根据日期范围过滤，并支持限制行数"""
         code_pure = code.split('.')[0]
@@ -48,26 +62,16 @@ class DataFeed:
         if cached is None:
             return json.dumps({"error": "无数据"})
 
-        # 获取全量 dates 和 values
-        all_dates = cached["dates"]
-        all_values = cached["values"]
-
-        # 根据日期范围过滤
+        # 使用二分查找进行日期范围过滤
         if start_date is None and end_date is None:
-            filtered_dates = all_dates
-            filtered_values = all_values
+            filtered_dates = cached["dates"]
+            filtered_values = cached["values"]
         else:
-            # 确保日期字符串可比较
             if start_date is None:
                 start_date = "2010-01-01"
             if end_date is None:
                 end_date = "2026-12-31"
-            filtered_dates = []
-            filtered_values = []
-            for i, d in enumerate(all_dates):
-                if start_date <= d <= end_date:
-                    filtered_dates.append(d)
-                    filtered_values.append(all_values[i])
+            filtered_dates, filtered_values = self._slice_by_date_range(cached, start_date, end_date)
 
         # 如果 limit > 0，取尾部 limit 条
         if limit > 0 and len(filtered_dates) > limit:
