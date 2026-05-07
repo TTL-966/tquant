@@ -52,8 +52,9 @@ def handle_bar(context, bar_dict):
     var logDiv = document.getElementById('runLogConsole');
     var currentId = 0;
 
-    // 加载策略列表（填充 datalist）
-    function loadStrategyList() {
+    // -----------------------------------------------------------------
+    // 1) 刷新策略列表（填充 datalist）
+    function refreshStrategyList() {
         bridge.list_strategies().then(function(jsonStr) {
             var strategies = JSON.parse(jsonStr);
             strategyListDL.innerHTML = '';
@@ -68,14 +69,14 @@ def handle_bar(context, bar_dict):
         });
     }
 
-    // 选择策略（change 事件）
+    // 2) 选择策略（change 事件）
     selectorInput.addEventListener('change', function() {
         var val = this.value;
         var options = strategyListDL.options;
         var foundId = null;
         for (var i = 0; i < options.length; i++) {
             var opt = options[i];
-            if (opt.label === val || opt.value === val) {
+            if (opt.label === val || opt.value == val) {
                 foundId = parseInt(opt.value);
                 break;
             }
@@ -101,15 +102,16 @@ def handle_bar(context, bar_dict):
         }
     });
 
-    // 新建
+    // 3) 新建
     newBtn.addEventListener('click', function() {
         currentId = 0;
         nameInput.value = '新策略';
         textarea.value = '';
         selectorInput.value = '';
+        refreshStrategyList();   // 刷新列表（以便下次立即看到新策略）
     });
 
-    // 保存
+    // 4) 保存
     saveBtn.addEventListener('click', function() {
         var name = nameInput.value.trim();
         var code = textarea.value;
@@ -125,7 +127,7 @@ def handle_bar(context, bar_dict):
             if (result.success) {
                 currentId = result.id;
                 logDiv.innerHTML += '<div>✅ 保存策略成功 ID=' + result.id + '</div>';
-                loadStrategyList();
+                refreshStrategyList();   // 刷新下拉列表
                 // 更新输入框显示
                 selectorInput.value = name + ' (' + result.id + ')';
             } else {
@@ -137,7 +139,7 @@ def handle_bar(context, bar_dict):
         });
     });
 
-    // 删除
+    // 5) 删除
     deleteBtn.addEventListener('click', function() {
         if (!currentId) {
             alert('请先选择要删除的策略');
@@ -152,7 +154,7 @@ def handle_bar(context, bar_dict):
                 nameInput.value = '新策略';
                 textarea.value = '';
                 selectorInput.value = '';
-                loadStrategyList();
+                refreshStrategyList();   // 刷新下拉列表
             } else {
                 logDiv.innerHTML += '<div>❌ 删除失败: ' + (result.message || '') + '</div>';
             }
@@ -161,13 +163,13 @@ def handle_bar(context, bar_dict):
         });
     });
 
-    // 运行回测（模拟）
+    // 6) 运行回测（模拟）
     runBtn.addEventListener('click', function() {
         logDiv.innerHTML += '<div>🚀 回测模拟运行中……（阶段二将接入真实执行引擎）</div>';
         logDiv.scrollTop = logDiv.scrollHeight;
         alert("回测功能将在阶段二实现。");
     });
 
-    // 首次加载列表
-    loadStrategyList();
+    // 7) 页面初始化时立即加载策略列表
+    refreshStrategyList();
 }
