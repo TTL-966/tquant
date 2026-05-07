@@ -8,7 +8,8 @@ from backend.data_feed import DataFeed
 from backend.strategy_engine import StrategyEngine
 from backend.trade_simulation import TradeSimulation
 from backend.db import Database
-from backend.strategy_storage import StrategyStorage   # 新增导入
+from backend.strategy_storage import StrategyStorage
+from backend.backtest_executor import BacktestExecutor   # 新增导入
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
@@ -17,7 +18,8 @@ class WebBridge(QObject):
         self.strategy_engine = StrategyEngine()
         self.trade = TradeSimulation()
         self.db = Database()
-        self.strategy_storage = StrategyStorage()      # 初始化
+        self.strategy_storage = StrategyStorage()
+        self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
 
     @Slot(result=str)
     def ping(self):
@@ -87,6 +89,46 @@ class WebBridge(QObject):
             signals, ma_data = self.strategy_engine.run_backtest(code, start_date, end_date)
             equity_curve = self._get_equity_curve(code)
             return json.dumps({"success": True, "signals": signals, "ma_data": ma_data, "equity_curve": equity_curve})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    # ---- 新增自定义策略回测槽 ----
+    @Slot(str, result=str)
+    def run_custom_backtest(self, params_json):
+        """
+        接收 JSON 字符串，格式:
+        {
+            "user_code": "...",
+            "stock_code": "000001",
+            "start": "2010-01-01",
+            "end": "2026-12-31",
+            "cash": 1000000
+        }
+        返回 JSON:
+        {
+            "success": True,
+            "signals": [...],
+            "equity_curve": [...],
+            "metrics": {...}
+        }
+        """
+        try:
+            params = json.loads(params_json)
+            user_code = params.get("user_code", "")
+            stock_code = params.get("stock_code", "000001")
+            start = params.get("start", "2010-01-01")
+            end = params.get("end", "2026-12-31")
+            cash = params.get("cash", 1000000)
+            result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash)
+            if "error" in result:
+                return json.dumps({"success": False, "error": result["error"]})
+            return json.dumps({
+                "success": True,
+                "signals": result.get("signals", []),
+                "equity_curve": result.get("equity_curve", []),
+                "metrics": result.get("metrics", {})
+            })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
@@ -200,7 +242,7 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps([])
 
-    # ---------- 新增策略相关 Slot ----------
+    # ---------- 策略相关 Slot ----------
     @Slot(result=str)
     def list_strategies(self):
         try:
