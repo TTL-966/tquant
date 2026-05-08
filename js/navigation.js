@@ -392,7 +392,7 @@ export function loadPage(pageId) {
     } else if (pageId === 'detail') {
         // ---------- 动态回测结果展示 ----------
         var result = window._lastBacktestResult;
-        if (result && result.success && result.equity_curve && result.equity_curve.length > 0) {
+        if (result && result.success) {
             renderBacktestDetail(container, result);
         } else {
             renderStaticDetail(container);
