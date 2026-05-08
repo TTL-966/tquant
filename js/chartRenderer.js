@@ -381,7 +381,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
     }, 10);
 }
 
-// ---- 策略详情页曲线图 ----
+// ---- 策略详情页曲线图（静态）----
 export function drawDetailCurve() {
     var dom = document.getElementById('detailCurveContainer');
     if (dom && typeof echarts !== 'undefined') {
@@ -398,4 +398,52 @@ export function drawDetailCurve() {
             }]
         });
     }
+}
+
+// ---- 收益曲线（动态数据）----
+export function drawEquityCurve(containerId, equityCurve) {
+    var dom = document.getElementById(containerId);
+    if (!dom) {
+        console.error("drawEquityCurve: 容器不存在", containerId);
+        return;
+    }
+    if (typeof echarts === 'undefined') {
+        console.error("ECharts 未加载");
+        return;
+    }
+    var chart = echarts.init(dom);
+    var dates = equityCurve.map(function(item) { return item.date; });
+    var values = equityCurve.map(function(item) { return item.value; });
+
+    var option = {
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+            type: 'category',
+            data: dates,
+            axisLabel: { color: '#9aa9cc' }
+        },
+        yAxis: {
+            type: 'value',
+            name: '账户价值 (元)',
+            axisLabel: { color: '#9aa9cc' }
+        },
+        series: [{
+            type: 'line',
+            data: values,
+            smooth: true,
+            lineStyle: { color: '#4f7eff' },
+            areaStyle: {
+                color: {
+                    type: 'linear',
+                    x: 0, y: 0, x2: 0, y2: 1,
+                    colorStops: [
+                        { offset: 0, color: 'rgba(79,126,255,0.5)' },
+                        { offset: 1, color: 'rgba(79,126,255,0.05)' }
+                    ]
+                }
+            }
+        }],
+        grid: { containLabel: true, backgroundColor: '#0e1220' }
+    };
+    chart.setOption(option);
 }
