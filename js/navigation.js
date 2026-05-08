@@ -54,6 +54,10 @@ export function loadPage(pageId) {
         container.innerHTML = `
                 <div class="card">
                     <div class="card-title">📈 买卖点成交图 (策略回测生成买卖点)</div>
+                    <div id="currentStrategyDisplay" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span style="color:#9aa9cc;">📋 当前回测策略：</span>
+                        <span id="currentStrategyName" style="color:#ffffff; font-weight:600;">无</span>
+                    </div>
                     <div class="legend-sign"><span><i class="buy-point"></i> 买入 (B)</span><span><i class="sell-point"></i> 卖出 (S)</span></div>
                     <div class="metric-row">
                         <span>当前股票:</span>
@@ -63,12 +67,12 @@ export function loadPage(pageId) {
                         <input type="text" class="datepicker-input" id="startDateInput" value="2010-01-01" readonly>
                         <span>结束日期:</span>
                         <input type="text" class="datepicker-input" id="endDateInput" value="" readonly>
+                        <button id="runBacktestDemoBtn">▶ 运行回测（双均线）</button>
+                        <button id="gotoStrategyBtn">📝 跳转到策略页</button>
                         <button id="refreshKlineBtn">刷新K线</button>
                     </div>
-                    <!-- 策略名称显示（移除日志区） -->
-                    <div id="currentStrategyName" style="color:#9aa9cc; margin-top:8px;">当前策略：无</div>
                     <div id="klineMainChart" class="kline-container"></div>
-                    <p style="margin-top:12px; color:#ffffff;">买卖点由自定义策略回测生成</p>
+                    <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成，也可在策略页运行自定义回测</p>
                 </div>`;
         setTimeout(function() {
             var today = new Date().toISOString().slice(0, 10);
@@ -81,9 +85,9 @@ export function loadPage(pageId) {
             bindDatePicker(endDateInput);
 
             // 更新策略名称显示
-            var nameDiv = document.getElementById('currentStrategyName');
-            if (nameDiv) {
-                nameDiv.innerText = '当前策略：' + (window.currentStrategyName || '无');
+            var nameSpan = document.getElementById('currentStrategyName');
+            if (nameSpan) {
+                nameSpan.innerText = window.currentStrategyName || '无';
             }
 
             // 按成交数量（shares）降序排序，去重取前6
@@ -145,10 +149,26 @@ export function loadPage(pageId) {
                 });
             }
             var refreshBtn = document.getElementById('refreshKlineBtn');
-            // 移除 runBacktestBtn 及其点击绑定
             if (refreshBtn) refreshBtn.onclick = function() {
                 fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
             };
+
+            // 运行回测演示（双均线）
+            var demoBtn = document.getElementById('runBacktestDemoBtn');
+            if (demoBtn) {
+                demoBtn.onclick = function() {
+                    runBacktest(currentStockCode, startDateInput.value, endDateInput.value);
+                };
+            }
+
+            // 跳转到策略页按钮
+            var gotoBtn = document.getElementById('gotoStrategyBtn');
+            if (gotoBtn) {
+                gotoBtn.onclick = function() {
+                    document.querySelector('.nav-item[data-page="strategy"]').click();
+                };
+            }
+
             buyPoints.length = 0;
             sellPoints.length = 0;
             var startDate = startDateInput.value;
