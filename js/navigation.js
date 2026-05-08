@@ -1,12 +1,12 @@
 import { bridge } from './bridge.js';
-import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled } from './kline.js';
+import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, runCustomBacktest } from './kline.js';
 import { renderProfile } from './profile.js';
 import { renderStockKline, drawDetailCurve, formatStockDisplayHtml, drawEquityCurve } from './chartRenderer.js';
 import { initDatePicker, bindDatePicker } from './datepicker.js';
 import { stockNameMap, tradeStockLibrary, backtestStrategies, dailyHoldings, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { debounceSuggestions } from './suggestions.js';
 import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
-import { renderStrategyPage } from './strategy.js';   // 新增导入
+import { renderStrategyPage } from './strategy.js';
 
 var currentStockCode = "000001";
 
@@ -66,8 +66,11 @@ export function loadPage(pageId) {
                         <button id="runBacktestBtn">▶ 运行回测</button>
                         <button id="refreshKlineBtn">刷新K线</button>
                     </div>
+                    <!-- 新增策略名称与日志区域 -->
+                    <div id="currentStrategyName" style="color:#9aa9cc; margin-top:8px;">当前策略：无</div>
+                    <div id="backtestLogBox" class="log-box" style="height:120px; margin-top:8px; overflow-y:auto;"></div>
                     <div id="klineMainChart" class="kline-container"></div>
-                    <p style="margin-top:12px; color:#ffffff;">买卖点由双均线策略(MA5, MA20)自动生成</p>
+                    <p style="margin-top:12px; color:#ffffff;">买卖点由自定义策略回测生成</p>
                 </div>`;
         setTimeout(function() {
             var today = new Date().toISOString().slice(0, 10);
@@ -78,6 +81,12 @@ export function loadPage(pageId) {
             var startDateInput = document.getElementById('startDateInput');
             bindDatePicker(startDateInput);
             bindDatePicker(endDateInput);
+
+            // 更新策略名称显示
+            var nameDiv = document.getElementById('currentStrategyName');
+            if (nameDiv) {
+                nameDiv.innerText = '当前策略：' + (window.currentStrategyName || '无');
+            }
 
             // 按成交数量（shares）降序排序，去重取前6
             var sorted = tradeStockLibrary.slice().sort(function(a,b) { return b.shares - a.shares; });
@@ -139,9 +148,17 @@ export function loadPage(pageId) {
             }
             var runBtn = document.getElementById('runBacktestBtn');
             var refreshBtn = document.getElementById('refreshKlineBtn');
-            if (runBtn) runBtn.onclick = function() {
-                runBacktest(currentStockCode, startDateInput.value, endDateInput.value);
-            };
+            if (runBtn) {
+                runBtn.onclick = function() {
+                    var stock = currentStockCode;
+                    var start = startDateInput.value;
+                    var end = endDateInput.value;
+                    var strategyName = window.currentStrategyName || '未命名策略';
+                    document.getElementById('currentStrategyName').innerText = '当前策略：' + strategyName;
+                    var logDom = document.getElementById('backtestLogBox');
+                    runCustomBacktest(stock, start, end, strategyName, logDom);
+                };
+            }
             if (refreshBtn) refreshBtn.onclick = function() {
                 fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
             };
@@ -149,8 +166,9 @@ export function loadPage(pageId) {
             sellPoints.length = 0;
             var startDate = startDateInput.value;
             var endDate = endDateInput.value;
-            autoBacktestScheduled = true;
-            autoRunBacktest = false;
+            // 注释掉自动回测，改为手动触发
+            // autoBacktestScheduled = true;
+            // autoRunBacktest = false;
             setTimeout(function() {
                 fetchAndRenderKline(currentStockCode, startDate, endDate);
             }, 200);
