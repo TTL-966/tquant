@@ -538,7 +538,10 @@ function renderBacktestDetail(container, result) {
     document.querySelectorAll('#signalTableBody tr').forEach(function(tr) {
         tr.addEventListener('click', function() {
             var code = this.getAttribute('data-code');
-            if (code) navigateToKline(code);
+            if (code) {
+                var pureCode = code.split('.')[0];
+                navigateToKline(pureCode);
+            }
         });
     });
 
@@ -639,7 +642,10 @@ function renderStaticDetail(container) {
         document.querySelectorAll('.signal-row').forEach(function(tr) {
             tr.addEventListener('click', function() {
                 var code = this.getAttribute('data-code');
-                if (code) navigateToKline(code);
+                if (code) {
+                    var pureCode = code.split('.')[0];
+                    navigateToKline(pureCode);
+                }
             });
         });
 
