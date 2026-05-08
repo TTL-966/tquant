@@ -1,6 +1,7 @@
 // js/strategy.js
 import { bridge } from './bridge.js';
 import { bindDatePicker } from './datepicker.js';
+import { escapeHtml } from './main.js';
 
 let logContainer = null;
 let backtestStartTime = null;
@@ -343,9 +344,17 @@ def handle_bar(context, bar_dict):
             var start = startDateInput.value;
             var end = endDateInput.value;
             var strategyName = window.currentStrategyName || '未命名策略';
-            var code = window.currentStrategyCode;
-            if (!code) {
+            var userCode = window.currentStrategyCode;
+            if (!userCode) {
                 addLog('error', '请先在策略页面保存代码');
+                runBtn.disabled = false;
+                runBtn.textContent = '▶ 运行回测';
+                return;
+            }
+
+            // 检查 handle_bar 是否存在
+            if (!/def\s+handle_bar\s*\(/.test(userCode)) {
+                addLog('warn', '策略缺少 handle_bar 函数，不会产生交易信号');
                 runBtn.disabled = false;
                 runBtn.textContent = '▶ 运行回测';
                 return;
@@ -356,7 +365,7 @@ def handle_bar(context, bar_dict):
 
             var promises = codes.map(function(stock) {
                 var params = {
-                    code: code,
+                    code: userCode,
                     stock: stock,
                     start: start,
                     end: end,
@@ -430,6 +439,8 @@ def handle_bar(context, bar_dict):
                 }
 
                 window._lastBacktestResult = mergedResult;
+                // 存储全局信号供K线页加载
+                window.strategySignals = mergedSignals;
 
                 addLog('success', '✅ 全部回测完成，总信号数 '+mergedSignals.length);
                 addLog('info', '💡 请前往【策略详情】查看详细结果。');
@@ -445,5 +456,3 @@ def handle_bar(context, bar_dict):
         });
     }
 }
-
-// 辅助 escapeHtml 已在全局可用，此处不再重复定义

@@ -411,6 +411,13 @@ export function drawEquityCurve(containerId, equityCurve) {
         console.error("ECharts 未加载");
         return;
     }
+
+    // 如果数据为空，显示提示
+    if (!equityCurve || equityCurve.length === 0) {
+        dom.innerHTML = '<div style="color:#9aa9cc; padding:40px; text-align:center;">暂无收益数据</div>';
+        return;
+    }
+
     var chart = echarts.init(dom);
     var dates = equityCurve.map(function(item) { return item.date; });
     var values = equityCurve.map(function(item) { return item.value; });
