@@ -63,12 +63,10 @@ export function loadPage(pageId) {
                         <input type="text" class="datepicker-input" id="startDateInput" value="2010-01-01" readonly>
                         <span>结束日期:</span>
                         <input type="text" class="datepicker-input" id="endDateInput" value="" readonly>
-                        <button id="runBacktestBtn">▶ 运行回测</button>
                         <button id="refreshKlineBtn">刷新K线</button>
                     </div>
-                    <!-- 新增策略名称与日志区域 -->
+                    <!-- 策略名称显示（移除日志区） -->
                     <div id="currentStrategyName" style="color:#9aa9cc; margin-top:8px;">当前策略：无</div>
-                    <div id="backtestLogBox" class="log-box" style="height:120px; margin-top:8px; overflow-y:auto;"></div>
                     <div id="klineMainChart" class="kline-container"></div>
                     <p style="margin-top:12px; color:#ffffff;">买卖点由自定义策略回测生成</p>
                 </div>`;
@@ -146,19 +144,8 @@ export function loadPage(pageId) {
                     }
                 });
             }
-            var runBtn = document.getElementById('runBacktestBtn');
             var refreshBtn = document.getElementById('refreshKlineBtn');
-            if (runBtn) {
-                runBtn.onclick = function() {
-                    var stock = currentStockCode;
-                    var start = startDateInput.value;
-                    var end = endDateInput.value;
-                    var strategyName = window.currentStrategyName || '未命名策略';
-                    document.getElementById('currentStrategyName').innerText = '当前策略：' + strategyName;
-                    var logDom = document.getElementById('backtestLogBox');
-                    runCustomBacktest(stock, start, end, strategyName, logDom);
-                };
-            }
+            // 移除 runBacktestBtn 及其点击绑定
             if (refreshBtn) refreshBtn.onclick = function() {
                 fetchAndRenderKline(currentStockCode, startDateInput.value, endDateInput.value);
             };
@@ -166,9 +153,6 @@ export function loadPage(pageId) {
             sellPoints.length = 0;
             var startDate = startDateInput.value;
             var endDate = endDateInput.value;
-            // 注释掉自动回测，改为手动触发
-            // autoBacktestScheduled = true;
-            // autoRunBacktest = false;
             setTimeout(function() {
                 fetchAndRenderKline(currentStockCode, startDate, endDate);
             }, 200);
@@ -506,6 +490,19 @@ function buildMetricCards(metrics) {
     }
     var tt = metrics.total_trades;
     add('交易次数', (tt != null ? tt : 'N/A'));
+    // 新增指标（如果有）
+    var av = metrics.annual_volatility;
+    if (av != null) {
+        add('年化波动率', av.toFixed(2)+'%');
+    }
+    var ir = metrics.information_ratio;
+    if (ir != null) {
+        add('信息比率', ir.toFixed(2));
+    }
+    var mdd_dur = metrics.max_drawdown_duration;
+    if (mdd_dur != null) {
+        add('最长回撤期', mdd_dur + '天');
+    }
     return arr.join('');
 }
 

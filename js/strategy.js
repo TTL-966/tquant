@@ -3,6 +3,7 @@ import { bridge } from './bridge.js';
 import { bindDatePicker } from './datepicker.js';
 
 let logContainer = null;
+let backtestStartTime = null;
 
 function nowTimestamp() {
     var d = new Date();
@@ -131,11 +132,11 @@ export function renderStrategyPage(container) {
             <!-- 策略名称 -->
             <div class="metric-row" style="margin-top:4px;">
                 <span>策略名称：</span>
-                <input type="text" id="strategyNameInput" value="新策略"
+                <input type="text" id="strategyNameInput" placeholder="请输入策略名称"
                        style="width:200px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px;">
             </div>
 
-            <!-- 代码编辑器 -->
+            <!-- 代码编辑器（Tab 转4空格） -->
             <textarea id="strategyTextArea" rows="10" style="width:100%; margin-top:8px; background:#0e1220; border:1px solid #323d5a; border-radius:16px; color:#fff; padding:12px; box-sizing:border-box; font-family:monospace;">def initialize(context):
     context.stock = "000001.SZ"
     context.short_win = 5
@@ -176,11 +177,14 @@ def handle_bar(context, bar_dict):
                 <button id="runMultiBacktestBtn" style="margin-left:12px;">▶ 运行回测</button>
             </div>
 
-            <!-- 日志区域 -->
+            <!-- 日志区域（含折叠/展开按钮） -->
             <div style="margin-top:12px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <h4 style="color:#ffffff;margin:0;">📋 回测日志</h4>
-                    <button id="clearLogBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;">清除</button>
+                    <div>
+                        <button id="toggleLogBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;margin-right:8px;">🔼 折叠</button>
+                        <button id="clearLogBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;">清除</button>
+                    </div>
                 </div>
                 <div id="strategyLogArea" style="height:200px;overflow-y:auto;background:#0e1220;border:1px solid #323d5a;border-radius:12px;padding:8px;margin-top:4px;color:#ffffff;"></div>
             </div>
@@ -200,6 +204,7 @@ def handle_bar(context, bar_dict):
     var endDateInput = document.getElementById('strategyEndDate');
     var stockPoolInput = document.getElementById('stockPoolInput');
     var clearLogBtn = document.getElementById('clearLogBtn');
+    var toggleLogBtn = document.getElementById('toggleLogBtn');
 
     logContainer = document.getElementById('strategyLogArea');
 
@@ -211,11 +216,22 @@ def handle_bar(context, bar_dict):
         bindDatePicker(endDateInput);
     }
 
+    // Tab 键替换为4个空格
+    textarea.addEventListener('keydown', function(e) {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            var start = this.selectionStart;
+            var end = this.selectionEnd;
+            this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+            this.selectionStart = this.selectionEnd = start + 4;
+        }
+    });
+
     // ---------- 新建 ----------
     var currentId = null;
     newBtn.addEventListener('click', function() {
         currentId = null;
-        nameInput.value = '新策略';
+        nameInput.value = '';
         textarea.value = '';
         window.currentStrategyName = undefined;
         window.currentStrategyCode = undefined;
@@ -226,7 +242,9 @@ def handle_bar(context, bar_dict):
         var name = nameInput.value.trim();
         var code = textarea.value;
         if (!name) {
-            alert('请输入策略名称');
+            // placeholder 已提示
+            nameInput.classList.add('error');
+            setTimeout(function() { nameInput.classList.remove('error'); }, 2000);
             return;
         }
         if (!code) {
@@ -239,6 +257,12 @@ def handle_bar(context, bar_dict):
                 window.currentStrategyName = name;
                 window.currentStrategyCode = code;
                 addLog('success', '保存成功 ID=' + result.id);
+                // 短暂提示
+                var tip = document.createElement('div');
+                tip.style.cssText = 'position:fixed;top:20%;left:50%;transform:translateX(-50%);background:#4cff4c;color:#000;padding:10px 20px;border-radius:8px;z-index:99999;';
+                tip.textContent = '✅ 已保存';
+                document.body.appendChild(tip);
+                setTimeout(function() { tip.remove(); }, 1500);
             } else {
                 addLog('error', '保存失败: ' + (result.message || ''));
             }
@@ -259,7 +283,7 @@ def handle_bar(context, bar_dict):
             if (result.success) {
                 addLog('success', '删除成功');
                 currentId = null;
-                nameInput.value = '新策略';
+                nameInput.value = '';
                 textarea.value = '';
                 window.currentStrategyName = undefined;
                 window.currentStrategyCode = undefined;
@@ -281,9 +305,25 @@ def handle_bar(context, bar_dict):
         clearLogBtn.addEventListener('click', clearLog);
     }
 
+    // ---------- 折叠/展开日志 ----------
+    var logExpanded = true;
+    if (toggleLogBtn) {
+        toggleLogBtn.addEventListener('click', function() {
+            logExpanded = !logExpanded;
+            logContainer.style.height = logExpanded ? '200px' : '0px';
+            toggleLogBtn.textContent = logExpanded ? '🔼 折叠' : '🔽 展开';
+        });
+    }
+
     // ---------- 运行回测 ----------
     if (runBtn) {
         runBtn.addEventListener('click', function() {
+            // 防止重复点击
+            if (runBtn.disabled) return;
+            runBtn.disabled = true;
+            runBtn.textContent = '⏳ 运行中...';
+            backtestStartTime = Date.now();
+
             // 读取股票池
             var raw = stockPoolInput.value || '';
             var codes = [];
@@ -293,6 +333,8 @@ def handle_bar(context, bar_dict):
             });
             if (codes.length === 0) {
                 addLog('error', '请输入至少一个股票代码');
+                runBtn.disabled = false;
+                runBtn.textContent = '▶ 运行回测';
                 return;
             }
             // 去重
@@ -304,6 +346,8 @@ def handle_bar(context, bar_dict):
             var code = window.currentStrategyCode;
             if (!code) {
                 addLog('error', '请先在策略页面保存代码');
+                runBtn.disabled = false;
+                runBtn.textContent = '▶ 运行回测';
                 return;
             }
 
@@ -334,9 +378,11 @@ def handle_bar(context, bar_dict):
 
             // 使用Promise.all等待所有完成
             Promise.all(promises).then(function(results) {
+                var elapsed = ((Date.now() - backtestStartTime) / 1000).toFixed(1);
+                addLog('info', '⏱ 回测耗时：' + elapsed + ' 秒');
+
                 var mergedSignals = [];
                 var equityMap = {};  // {date: value}
-                var totalCash = codes.length * 1000000;
 
                 results.forEach(function(r) {
                     if (!r) return;
@@ -375,7 +421,7 @@ def handle_bar(context, bar_dict):
                     metrics: {}  // 暂时不填充指标
                 };
 
-                // 尝试从第一个成功的result获取metrics（TODO: 后续可计算合并指标）
+                // 尝试从第一个成功的result获取metrics
                 for (var i=0; i<results.length; i++) {
                     if (results[i] && results[i].metrics) {
                         mergedResult.metrics = results[i].metrics;
@@ -387,9 +433,17 @@ def handle_bar(context, bar_dict):
 
                 addLog('success', '✅ 全部回测完成，总信号数 '+mergedSignals.length);
                 addLog('info', '💡 请前往【策略详情】查看详细结果。');
+
+                // 恢复按钮
+                runBtn.disabled = false;
+                runBtn.textContent = '▶ 运行回测';
             }).catch(function(err) {
                 addLog('error', '回测整体失败: ' + err.message);
+                runBtn.disabled = false;
+                runBtn.textContent = '▶ 运行回测';
             });
         });
     }
 }
+
+// 辅助 escapeHtml 已在全局可用，此处不再重复定义

@@ -325,7 +325,7 @@ class BacktestExecutor:
             })
         logs.append("模拟: 回测结束。")
 
-        # 8. 计算简单的绩效指标
+        # 8. 计算绩效指标（增强版）
         metrics = self._compute_metrics(equity_curve, initial_cash)
 
         # 9. 构建返回结果
@@ -366,12 +366,22 @@ class BacktestExecutor:
         # 最大回撤
         peak = initial_cash
         max_drawdown = 0.0
-        for pt in equity_curve:
+        max_drawdown_start = 0
+        max_drawdown_end = 0
+        drawdown_duration = 0
+        current_peak_idx = 0
+        for idx, pt in enumerate(equity_curve):
             if pt['value'] > peak:
                 peak = pt['value']
+                current_peak_idx = idx
             dd = (peak - pt['value']) / peak * 100.0
             if dd > max_drawdown:
                 max_drawdown = dd
+                max_drawdown_start = current_peak_idx
+                max_drawdown_end = idx
+        # 最长回撤期（天数）
+        if max_drawdown_end > max_drawdown_start:
+            drawdown_duration = max_drawdown_end - max_drawdown_start
         # 夏普比率（无风险利率=0）
         if len(returns) > 0:
             mean_ret = np.mean(returns)
@@ -379,6 +389,13 @@ class BacktestExecutor:
             sharpe = (mean_ret / std_ret) * np.sqrt(250.0) if std_ret > 0 else 0.0
         else:
             sharpe = 0.0
+        # 年化波动率
+        if len(returns) > 0:
+            annual_vol = np.std(returns, ddof=1) * np.sqrt(250.0) * 100.0
+        else:
+            annual_vol = 0.0
+        # 信息比率（无基准时设为0）
+        information_ratio = 0.0
         # 胜率（简化为盈利交易比例，这里未记录单笔盈亏，暂设0）
         win_rate = 0.0
         # 总交易次数
@@ -387,7 +404,10 @@ class BacktestExecutor:
             'total_return': round(total_return,2),
             'annual_return': round(annual_ret,2),
             'max_drawdown': round(max_drawdown,2),
+            'max_drawdown_duration': drawdown_duration,
             'sharpe_ratio': round(sharpe,2),
+            'annual_volatility': round(annual_vol,2),
+            'information_ratio': round(information_ratio,2),
             'win_rate': round(win_rate,2),
             'total_trades': total_trades
         }
