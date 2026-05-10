@@ -1,0 +1,57 @@
+[33mb64d07b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m feat: 增加周期K线聚合、技术指标计算、缓存优化及完整历史数据
+[33ma00e061[m feat: 修复下拉框无限放大，新增周月K切换、多指标及B/S标记
+[33m731e025[m fix: 修复个股详情页无法查询其他股票的问题
+[33mdc71a9d[m fix: 修复K线图tooltip数据获取及容器清理
+[33mf045bfd[m fix: 添加个股K线调试alert并修复K线不显示问题
+[33md2f206f[m fix: 优化K线图表渲染，避免残留实例并增强数据匹配
+[33m6fd390c[m fix: 修复 renderStockKline 中 K 线数据顺序错误，确保 low/high 正确
+[33ma6fad7b[m fix: 修复 fetchStockKline 中 dates 和 values 未一一对应的问题
+[33md4ba945[m fix: 强制重排K线数据顺序为 open, close, low, high
+[33m9a38804[m feat: 在调试面板中添加个股数据调试按钮
+[33m6fda582[m fix: 修复K线数据索引顺序并优先使用data.values
+[33mc1c3371[m fix: 优先使用opens/closes/lows/highs构造个股K线数据，修复顺序错乱
+[33md10eca9[m fix: 修复个股详情页K线数据顺序错误
+[33m47df5b2[m fix: 修复个股详情页K线开盘价显示递增数字问题
+[33ma2e6e5b[m fix: 修复个股详情页 K线数据顺序问题（open, close, low, high）
+[33ma6db95d[m refactor: 简化 Bridge 初始化和 ECharts 本地化
+[33m78fef69[m feat: 添加股票代码市场判断功能，支持自动添加 .SH/.SZ/.BJ 后缀
+[33m8c30c0e[m fix: 修复日期和股票代码格式不匹配导致查询失败
+[33m4f47b64[m fix: 修复get_kline方法中日期和股票代码格式问题
+[33m1c32a74[m fix: 优化QWebChannel初始化，增加重试和状态更新
+[33m31ce205[m fix: 修复K线渲染函数，增加调试输出并确保容器尺寸正确
+[33mfee4037[m fix: 添加K线调试面板并修复渲染问题
+[33m111523a[m fix: 更新 qwebchannel.js 路径为 Qt 资源路径
+[33m22f1ce5[m ```python # backend/data_feed.py import json import pandas as pd from backend.db import Database
+[33m0834037[m fix: 修改查询适配新表结构并添加限制
+[33m3ef5be7[m fix: 禁用 OpenGL 加速避免崩溃
+[33m65bacd5[m fix: 添加--disable-gpu标志修复WebEngine崩溃问题
+[33m5295e78[m feat: 添加主入口并移除自定义右键菜单
+[33m4153e75[m fix: 修复 get_traded_stocks 方法以处理持仓列表类型
+[33m9cd0c78[m feat: 在页面右上角添加 Bridge 状态指示器
+[33m059d270[m fix: 修复数据库查询字段映射和代码格式处理
+[33mbeb51a4[m refactor: 使用SQLAlchemy替换pymysql并移除volume字段
+[33m6e8f70e[m test: 添加数据库连接与数据获取测试代码
+[33md6721de[m fix: 修复K线图渲染缺失values字段的问题
+[33m5900bd6[m feat: 增加动态股票下拉框及可滚动表格
+[33m35575b0[m fix: 修复K线数据格式、收益率曲线及成交股票下拉接口
+[33m68ff19b[m feat: 添加F12打开开发者工具和右键检查菜单
+[33m049246c[m feat: 添加数据库连接状态测试接口
+[33m5d5d005[m 阶段五
+[33m670d6d5[m fix: 修复K线图在回测和个股详情页不显示的问题
+[33m7d9a2cc[m feat: 完成其他导航功能开发，个股详情默认显示000001 K线
+[33mf8dd470[m feat: 新增策略详情页股票代码可点击跳转至K线买卖点图
+[33m6e86f1e[m feat: 添加模拟交易引擎及前端交易界面
+[33m88cc590[m fix: 修复bridge未连接问题并添加模拟数据回退
+[33m6625848[m feat: 新增双均线策略回测及买卖点显示
+[33mc886b4e[m fix: 将 PyQt5 迁移至 PySide6
+[33m4913657[m feat: 完成Tquant阶段一和二，实现K线数据获取与图表渲染
+[33m140c969[m feat: 实现从数据库获取真实 K 线数据并集成前端展示
+[33mf29e0f8[m fix: 修正加载的HTML文件路径为Tquant.html
+[33m346a722[m feat: 添加个人中心页面和头像上传功能
+[33m2dbdd5a[m fix: 修复HTML中未转义的&符号
+[33m1914903[m style: 统一字体颜色为白色，收益率为正时显示红色，为负时显示绿色
+[33m4455e16[m fix: 修复HTML中未转义的`&`符号
+[33ma8081a9[m feat: 搭建桌面基础框架，嵌入Axure页面并实现QWebChannel通信
+[33m49a4661[m docs: 添加架构确认文件，说明K线图BS点显示及跳转功能
+[33mffba57b[m docs: 添加ARCHITECTURE.md文件
+[33mbbc9a50[m 架构设计完成

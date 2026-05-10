@@ -1,0 +1,320 @@
+import pandas as pd
+from jqdata import *
+
+def initialize(context):
+    # === 基础设置 ===
+    set_benchmark('000001.XSHG')
+    set_option('use_real_price', True)
+    set_option('order_volume_ratio', 1)
+    
+    # === 设置交易成本 ===
+    set_order_cost(OrderCost(
+        open_commission=0.0003,   # 买入佣金：万分之三
+        close_commission=0.0003,  # 卖出佣金：万分之三
+        min_commission=5,         # 最低佣金5元
+        close_tax=0.0005          # 卖出印花税：万分之五
+    ), type='stock')
+    
+    # === 策略参数 ===
+    g.stock_count = 10           # 买入涨幅最大的前10只股票
+    g.filter_new_stock_days = 365 # 过滤新股天数
+    g.stop_loss_rate = 0.08      # 个股止损比例（-8%）
+    
+    # === 运行时间 ===
+    run_daily(trade, '9:40')
+    run_daily(check_stop_loss, '14:55')  # 收盘前检查止损
+    run_daily(log_results, '15:00')
+
+
+def get_ranking_stocks(context):
+    """
+    选股函数：获取涨幅排名靠前的股票
+    【已修正未来函数】
+    """
+    try:
+        # 1. 获取基础股票池（中证500）
+        pool_stocks = get_index_stocks('000905.XSHG')
+        if len(pool_stocks) == 0:
+            log.warn("股票池为空")
+            return []
+
+        # 2. 获取财务数据（白马股筛选）
+        # 注意：使用前一个交易日确保数据可得性
+        query_date = context.previous_date
+        q = query(
+            valuation.code,
+            indicator.inc_net_profit_annual,
+            valuation.pe_ratio,
+            valuation.market_cap
+        ).filter(
+            indicator.inc_net_profit_annual > 10,
+            valuation.pe_ratio > 0,
+            valuation.pe_ratio < 100,      # 避免极端值
+            valuation.market_cap > 100
+        )
+        
+        fund_df = get_fundamentals(q, date=query_date)
+        
+        if fund_df is None or fund_df.empty:
+            log.warn("财务数据查询为空，使用全市场选股")
+            white_horse_filtered = pool_stocks
+        else:
+            # 手动过滤：只保留在中证500中的股票
+            fund_df['code'] = fund_df['code'].astype(str)
+            filtered_fund = fund_df[fund_df['code'].isin(pool_stocks)]
+            
+            if filtered_fund.empty:
+                log.warn("财务筛选后无股票，退化为全市场选股")
+                white_horse_filtered = pool_stocks
+            else:
+                white_horse_filtered = filtered_fund['code'].tolist()
+                log.info(f"白马股筛选完成，剩余 {len(white_horse_filtered)} 只股票")
+
+        # 3. 获取历史行情数据（关键修正：使用昨日及之前的数据）
+        # 获取最近2天的数据，用于计算前一天的涨跌幅
+        price_df = get_price(white_horse_filtered,
+                           end_date=context.previous_date,  # 使用前一个交易日
+                           frequency='daily',
+                           fields=['close', 'pre_close', 'paused'],
+                           count=2,                         # 取2天数据
+                           panel=False,
+                           skip_paused=False,
+                           fq='pre')
+        
+        if price_df.empty or len(price_df) < 2:
+            log.warn("行情数据不足")
+            return []
+
+        # 4. 数据处理：按股票代码分组，计算每只股票的涨幅
+        returns_list = []
+        for stock in white_horse_filtered:
+            stock_data = price_df[price_df['code'] == stock]
+            
+            if len(stock_data) < 2:
+                continue
+                
+            # 获取最近两天数据
+            day_before_yesterday = stock_data.iloc[0]  # 前天(T-2)
+            yesterday = stock_data.iloc[1]             # 昨天(T-1)
+            
+            # 检查是否停牌
+            if yesterday['paused'] == 1:
+                continue
+                
+            # 计算昨日涨跌幅：(昨日收盘价 - 前日收盘价) / 前日收盘价
+            prev_close = day_before_yesterday['close']
+            curr_close = yesterday['close']
+            
+            if prev_close > 0:
+                daily_return = (curr_close - prev_close) / prev_close
+                returns_list.append({
+                    'code': stock,
+                    'return': daily_return,
+                    'close': curr_close  # 昨日收盘价
+                })
+        
+        if not returns_list:
+            return []
+            
+        # 5. 按涨幅排序并选取前N名
+        returns_df = pd.DataFrame(returns_list)
+        sorted_df = returns_df.sort_values(by='return', ascending=False)
+        top_stocks = sorted_df.head(g.stock_count)['code'].tolist()
+        
+        log.info(f"选股成功！选出 {len(top_stocks)} 只股票")
+        return top_stocks
+        
+    except Exception as e:
+        log.error(f"选股过程出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def check_stop_loss(context):
+    """
+    止损检查函数 - 已修正价格获取方式
+    在收盘前检查持仓，触发止损则卖出
+    """
+    portfolio = context.portfolio
+    positions = portfolio.positions
+    
+    if len(positions) == 0:
+        return
+    
+    # 获取当前所有持仓股票的最新价格
+    # 方式一：使用 get_current_data() 获取实时数据（适用于模拟盘/实盘）
+    try:
+        current_data = get_current_data()
+    except:
+        current_data = None
+    
+    # 方式二：备选方案，使用 get_price() 获取最新价格
+    stock_list = list(positions.keys())
+    if stock_list:
+        price_data = get_price(stock_list, 
+                             end_date=context.current_dt, 
+                             frequency='1m', 
+                             fields=['close'], 
+                             count=1, 
+                             panel=False)
+    
+    for stock in positions.keys():
+        position = positions[stock]
+        
+        # 获取当前价格
+        current_price = None
+        
+        # 优先使用 get_current_data
+        if current_data is not None and stock in current_data:
+            stock_data = current_data[stock]
+            current_price = stock_data.last_price
+        
+        # 如果上述方法失败，使用 get_price 获取
+        if current_price is None and 'price_data' in locals():
+            stock_price_data = price_data[price_data['code'] == stock]
+            if not stock_price_data.empty:
+                current_price = stock_price_data.iloc[-1]['close']
+        
+        # 如果还是无法获取价格，跳过该股票
+        if current_price is None or current_price <= 0:
+            log.warn(f"无法获取股票 {stock} 的当前价格，跳过止损检查")
+            continue
+        
+        # 计算持仓盈亏比例
+        if position.avg_cost > 0:
+            profit_pct = (current_price - position.avg_cost) / position.avg_cost
+            
+            # 触发止损
+            if profit_pct <= -g.stop_loss_rate:
+                log.warn(f"止损触发: {stock}, 成本价: {position.avg_cost:.2f}, "
+                        f"当前价: {current_price:.2f}, 亏损: {profit_pct:.2%}")
+                order_target_value(stock, 0)  # 清仓该股票
+
+
+def trade(context):
+    """
+    交易函数
+    """
+    # 1. 获取买入列表
+    buy_list = get_ranking_stocks(context)
+    
+    # 2. 如果列表为空，清仓
+    if not buy_list:
+        log.warn("买入列表为空，执行清仓")
+        for stock in list(context.portfolio.positions.keys()):
+            order_target_value(stock, 0)
+        return
+    
+    # 3. 卖出不在买入列表中的持仓
+    positions = context.portfolio.positions
+    for stock in list(positions.keys()):
+        if stock not in buy_list:
+            log.info(f"卖出不在列表中的股票: {stock}")
+            order_target_value(stock, 0)
+    
+    # 4. 分配资金并买入
+    available_cash = context.portfolio.available_cash
+    if available_cash > 0 and len(buy_list) > 0:
+        cash_per_stock = available_cash / len(buy_list)
+        
+        for stock in buy_list:
+            # 简单检查：如果已有持仓且比例合适，则不重复买入
+            current_pos = positions.get(stock, None)
+            if current_pos is None or current_pos.total_amount == 0:
+                log.info(f"买入: {stock}, 金额: {cash_per_stock:.2f}")
+                order_value(stock, cash_per_stock)
+            else:
+                log.debug(f"股票 {stock} 已有持仓，跳过买入")
+
+
+def log_results(context):
+    """
+    收盘日志函数 - 已修正价格获取方式
+    """
+    portfolio = context.portfolio
+    positions = portfolio.positions
+    
+    total_value = portfolio.total_value
+    available_cash = portfolio.available_cash
+    total_returns = (total_value / portfolio.starting_cash) - 1
+    
+    log.info("=" * 60)
+    log.info(f"日期: {context.current_dt}")
+    log.info(f"总资产: {total_value:.2f}, 可用现金: {available_cash:.2f}")
+    log.info(f"累计收益率: {total_returns:.2%}")
+    log.info(f"持仓数量: {len(positions)}")
+    
+    if len(positions) > 0:
+        log.info("持仓明细:")
+        
+        # 获取所有持仓股票的当前价格
+        stock_list = list(positions.keys())
+        if stock_list:
+            # 使用 get_price 获取最新收盘价（当日收盘后）
+            price_data = get_price(stock_list, 
+                                 end_date=context.current_dt, 
+                                 frequency='daily', 
+                                 fields=['close'], 
+                                 count=1, 
+                                 panel=False)
+        
+        for stock, pos in positions.items():
+            security = get_security_info(stock)
+            name = security.display_name if security else stock
+            
+            # 获取当前价格
+            current_price = 0
+            if 'price_data' in locals():
+                stock_price_data = price_data[price_data['code'] == stock]
+                if not stock_price_data.empty:
+                    current_price = stock_price_data.iloc[-1]['close']
+            
+            # 计算持仓盈亏
+            if pos.avg_cost > 0 and current_price > 0:
+                profit_pct = (current_price - pos.avg_cost) / pos.avg_cost
+                profit_amount = (current_price - pos.avg_cost) * pos.total_amount
+                log.info(f"  {name}({stock}): "
+                        f"数量{pos.total_amount}, "
+                        f"成本{pos.avg_cost:.2f}, "
+                        f"现价{current_price:.2f}, "
+                        f"盈亏{profit_pct:.2%}({profit_amount:.2f})")
+            else:
+                log.info(f"  {name}({stock}): "
+                        f"数量{pos.total_amount}, "
+                        f"成本{pos.avg_cost:.2f}")
+    else:
+        log.info("当前空仓")
+    log.info("=" * 60)
+
+
+# 可选：如果需要更精确的价格获取，可以添加以下辅助函数
+def get_position_current_price(context, stock):
+    """
+    辅助函数：获取持仓股票的当前价格
+    """
+    try:
+        # 方法1: 使用 get_current_data
+        current_data = get_current_data()
+        if stock in current_data:
+            return current_data[stock].last_price0
+        
+        # 方法2: 使用 get_price 获取最新分钟线
+        price_data = get_price(stock, 
+                             end_date=context.current_dt, 
+                             frequency='1m', 
+                             fields=['close'], 
+                             count=1, 
+                             panel=False)
+        if not price_data.empty:
+            return price_data.iloc[-1]['close']
+        
+        # 方法3: 使用持仓的收盘价作为备选
+        position = context.portfolio.positions.get(stock)
+        if position and hasattr(position, 'close_price'):
+            return position.close_price
+            
+    except Exception as e:
+        log.error(f"获取股票 {stock} 价格失败: {e}")
+    
+    return 0
