@@ -1,6 +1,7 @@
 import { bridge, log } from './bridge.js';
 import { formatStockDisplayHtml } from './chartRenderer.js';
-import { populateStockDatalist } from './main.js';
+import { populateStockDatalist, profitClass, formatStockNameOnly } from './main.js';
+import { dailyHoldings } from './stockData.js';
 
 export function renderProfile() {
     if (bridge) {
@@ -32,6 +33,19 @@ function useMockProfile() {
         ]
     };
     renderProfileWithData(mock);
+}
+
+function buildDailyRows() {
+    return dailyHoldings.map(function(h) {
+        var profitCls = profitClass(h.dailyProfit);
+        var cumCls = profitClass(h.cumulative);
+        return '<tr>' +
+            '<td>' + h.date + '</td>' +
+            '<td>' + h.cash + '</td>' +
+            '<td class="' + profitCls + '">' + h.dailyProfit + '</td>' +
+            '<td class="' + cumCls + '">' + h.cumulative + '</td>' +
+            '</tr>';
+    }).join('');
 }
 
 function renderProfileWithData(data) {
@@ -68,6 +82,15 @@ function renderProfileWithData(data) {
                 </div>
             </div>
             <div class="card">
+                <div class="card-title">📅 每日持仓收益</div>
+                <div class="scrollable-table" style="max-height:300px; overflow-y:auto;">
+                    <table>
+                        <thead><tr><th>日期</th><th>账户现金</th><th>日收益</th><th>累计收益</th></tr></thead>
+                        <tbody>${buildDailyRows()}</tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
                 <div class="card-title">🛒 模拟交易(输入)</div>
                 <div class="trade-input-row">
                     <input type="text" id="tradeStockSelect" list="tradeStockList" placeholder="选择股票" style="width:130px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#ffffff; padding:8px 14px; font-size:13px;">
@@ -81,7 +104,7 @@ function renderProfileWithData(data) {
             </div>
         `;
     populateStockDatalist('tradeStockList', tradeCodes);
-    document.getElementById('tradeStockSelect').value = tradeCodes[0];
+    document.getElementById('tradeStockSelect').value = formatStockNameOnly(tradeCodes[0]);
 
     document.getElementById('tradeBuyBtn').onclick = function() { doTrade('buy'); };
     document.getElementById('tradeSellBtn').onclick = function() { doTrade('sell'); };

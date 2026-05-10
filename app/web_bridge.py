@@ -83,6 +83,42 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps([])
 
+    @Slot(str, result=str)
+    def get_index_stocks(self, index_code):
+        """返回指数成分股代码列表。数据库不可用时返回 mock 数据。"""
+        mock_indices = {
+            '000300.XSHG': ['000001','000002','000063','000333','000651','000725','000858','002142',
+                '002415','002594','300750','600000','600009','600016','600028','600030','600031',
+                '600036','600048','600050','600104','600276','600309','600519','600585','600809',
+                '600887','601012','601088','601166','601288','601318','601328','601398','601668',
+                '601857','601888','601939','603259','603288'],
+            '000905.XSHG': ['000012','000021','000039','000050','000060','000066','000100','000155',
+                '002013','002028','002049','002074','002091','002110','002129','002138','002155',
+                '300001','300003','300014','300024','300033','300037','300058','300070','300088',
+                '600004','600008','600012','600017','600018','600019','600020','600021','600022',
+                '601000','601001','601003','601005','601006','601008','601018','601019','601020'],
+            '000852.XSHG': ['000158','000301','000401','000420','000426','000501','000510','000519',
+                '002001','002003','002007','002008','002010','002011','002017','002019','002020',
+                '300002','300004','300005','300006','300007','300008','300009','300010','300011',
+                '600001','600002','600003','600005','600006','600007','600010','600011','600012'],
+            '399006.XSHE': ['300001','300003','300014','300015','300024','300033','300037','300058',
+                '300059','300070','300088','300122','300124','300142','300146','300207','300251',
+                '300274','300316','300347','300408','300413','300433','300450','300498','300502',
+                '300529','300558','300595','300601','300628','300661','300750','300759','300760'],
+            '000688.XSHG': ['688001','688005','688008','688009','688012','688036','688065','688111',
+                '688126','688187','688223','688256','688303','688396','688516','688536','688561',
+                '688599','688728','688777','688981']
+        }
+        try:
+            result = self.db.get_index_stocks(index_code)
+            if result and len(result) > 0:
+                return json.dumps(result)
+            # fallback to mock
+            return json.dumps(mock_indices.get(index_code, []))
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps(mock_indices.get(index_code, []))
+
     @Slot(str, str, str, result=str)
     def run_backtest(self, code, start_date="2010-01-01", end_date="2026-12-31"):
         try:
@@ -120,7 +156,19 @@ class WebBridge(QObject):
             start = params.get("start", "2010-01-01")
             end = params.get("end", "2026-12-31")
             cash = params.get("cash", 1000000)
-            result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash)
+            slippage = params.get("slippage", "close")
+
+            # 调试日志：输出接收到的策略代码信息
+            print(f"[Bridge] 接收策略代码长度: {len(user_code)}", flush=True)
+            print(f"[Bridge] 策略代码前150字符: {user_code[:150]}", flush=True)
+            print(f"[Bridge] 是否包含 initialize: {'def initialize' in user_code}", flush=True)
+            print(f"[Bridge] 是否包含 handle_bar: {'def handle_bar' in user_code}", flush=True)
+
+            result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash, slippage=slippage)
+
+            # 输出后端日志最后5条
+            print(f"[Bridge] 后端日志(最后5条): {result.get('logs', [])[-5:]}", flush=True)
+
             if "error" in result:
                 return json.dumps({"success": False, "error": result["error"]})
             return json.dumps({

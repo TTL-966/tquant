@@ -61,6 +61,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
 
     var buySeriesData = [];
     var sellSeriesData = [];
+    var buySeriesRefs = [];
+    var sellSeriesRefs = [];
+
+    var halfSpread = (window._slippageMode === 'half_spread');
 
     if (buyPts && buyPts.length > 0) {
         for (var i = 0; i < buyPts.length; i++) {
@@ -68,8 +72,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             var idx = dates.indexOf(pt.date);
             if (idx >= 0 && idx < values.length) {
                 var high = values[idx][3];
-                var price = high + 0.05;
+                var closeP = values[idx][1];
+                var price = halfSpread ? (high + closeP) / 2 : high + 0.05;
                 buySeriesData.push([idx, price]);
+                buySeriesRefs.push(pt);
             } else {
                 console.warn("买入点日期未找到:", pt.date);
             }
@@ -81,8 +87,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             var idx = dates.indexOf(pt.date);
             if (idx >= 0 && idx < values.length) {
                 var low = values[idx][2];
-                var price = low - 0.05;
+                var closeP = values[idx][1];
+                var price = halfSpread ? (low + closeP) / 2 : low - 0.05;
                 sellSeriesData.push([idx, price]);
+                sellSeriesRefs.push(pt);
             } else {
                 console.warn("卖出点日期未找到:", pt.date);
             }
@@ -109,14 +117,8 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             symbolSize: 14,
             symbolRotate: 0,
             itemStyle: { color: '#ff0000' },
-            label: {
-                show: true,
-                formatter: 'B',
-                color: '#ffffff',
-                fontSize: 10,
-                position: 'top'
-            },
-            tooltip: { formatter: function(params) { return '买入: ' + dates[params.data[0]]; } }
+            label: { show: false },
+            tooltip: { show: false }
         },
         {
             name: '卖出点',
@@ -126,18 +128,12 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             symbolSize: 14,
             symbolRotate: 180,
             itemStyle: { color: '#00ff00' },
-            label: {
-                show: true,
-                formatter: 'S',
-                color: '#ffffff',
-                fontSize: 10,
-                position: 'bottom'
-            },
-            tooltip: { formatter: function(params) { return '卖出: ' + dates[params.data[0]]; } }
+            label: { show: false },
+            tooltip: { show: false }
         }
     ];
 
-    var legendData = ['K线', '买入点', '卖出点'];
+    var legendData = ['K线'];
 
     if (maData && maData.ma5 && maData.ma5.length === dates.length) {
         var ma5Name = formatMaLegend(maData.ma5, 'MA5');
@@ -244,6 +240,57 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
 
     chart.setOption(option);
     console.log("图表设置完成");
+
+    // 创建悬停信号信息卡片（全局单例，右上角与图例同行）
+    var signalCard = document.getElementById('signalInfoCard');
+    if (!signalCard) {
+        signalCard = document.createElement('div');
+        signalCard.id = 'signalInfoCard';
+        signalCard.style.cssText = 'position:absolute; top:220px; right:20px; background:rgba(15,18,32,0.9); border:0px solid rgba(0,0,0,0); border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; display:none; pointer-events:none; line-height:1.6;';
+        dom.parentElement.style.position = 'relative';
+        dom.parentElement.appendChild(signalCard);
+    }
+
+    // 鼠标悬停有信号K线时显示卡片
+    chart.on('mousemove', function(params) {
+        if (!params || params.dataIndex === undefined) {
+            signalCard.style.display = 'none';
+            signalCard.style.border = '0px solid rgba(0,0,0,0)';
+            return;
+        }
+        var date = dates[params.dataIndex];
+        if (!date) {
+            signalCard.style.display = 'none';
+            signalCard.style.border = '0px solid rgba(0,0,0,0)';
+            return;
+        }
+        var buyHere = buyPts ? buyPts.filter(function(b) { return b.date === date; }) : [];
+        var sellHere = sellPts ? sellPts.filter(function(s) { return s.date === date; }) : [];
+
+        if (buyHere.length === 0 && sellHere.length === 0) {
+            signalCard.style.display = 'none';
+            signalCard.style.border = '0px solid rgba(0,0,0,0)';
+            return;
+        }
+
+        var lines = [];
+        buyHere.forEach(function(b) {
+            var lot = Math.floor((b.shares || 0) / 100) || '零股';
+            lines.push('<span style="color:#ff4d4f;">B ' + (b.price != null ? b.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
+        });
+        sellHere.forEach(function(s) {
+            var lot = Math.floor((s.shares || 0) / 100) || '零股';
+            lines.push('<span style="color:#52c41a;">S ' + (s.price != null ? s.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
+        });
+        signalCard.innerHTML = lines.join('<br>');
+        signalCard.style.display = 'block';
+        signalCard.style.border = '1px solid #4f7eff';
+    });
+
+    chart.on('mouseout', function() {
+        signalCard.style.display = 'none';
+        signalCard.style.border = '0px solid rgba(0,0,0,0)';
+    });
 }
 
 // ---- 个股详情页K线渲染（含均线）----
@@ -401,10 +448,20 @@ export function drawDetailCurve() {
 }
 
 // ---- 收益曲线（动态数据）----
-export function drawEquityCurve(containerId, equityCurve) {
+export function drawEquityCurve(containerId, equityCurve, retry) {
+    if (retry === undefined) retry = 0;
     var dom = document.getElementById(containerId);
     if (!dom) {
         console.error("drawEquityCurve: 容器不存在", containerId);
+        return;
+    }
+    if (dom.clientHeight === 0) {
+        if (retry < 5) {
+            console.warn("drawEquityCurve: 容器高度为0，延迟重试 " + (retry + 1) + "/5");
+            setTimeout(function() { drawEquityCurve(containerId, equityCurve, retry + 1); }, 200);
+        } else {
+            dom.innerHTML = '<div style="color:#9aa9cc; padding:40px; text-align:center;">图表加载失败</div>';
+        }
         return;
     }
     if (typeof echarts === 'undefined') {

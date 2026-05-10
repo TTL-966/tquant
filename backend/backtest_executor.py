@@ -24,6 +24,11 @@ class Logger:
 class BacktestExecutor:
     """基础回测执行器，支持 attribute_history、order_target_value 等 API。"""
 
+    @staticmethod
+    def _normalize_security(security):
+        """去除股票代码后缀（如 .SZ / .SH / .BJ），返回纯数字代码。"""
+        return security.split('.')[0] if '.' in security else security
+
     def __init__(self, data_source):
         """
         :param data_source: 数据源对象，需提供 get_kline_json 方法。
@@ -37,21 +42,11 @@ class BacktestExecutor:
 
     # ---------- 沙箱构建 ----------
     def _build_sandbox(self, context, logger):
-        """返回安全的 sandbox_globals 字典。"""
-        # 白名单内置函数
-        safe_builtins = {
-            k: v for k, v in __builtins__.items()
-            if k in {
-                'abs', 'all', 'any', 'bool', 'dict', 'enumerate', 'float',
-                'getattr', 'hasattr', 'int', 'isinstance', 'len', 'list',
-                'map', 'max', 'min', 'print', 'range', 'reversed',
-                'round', 'set', 'sorted', 'str', 'sum', 'tuple', 'type',
-                'vars', 'zip'
-            }
-        }
-
+        """返回 sandbox_globals 字典。
+        桌面应用无需沙箱限制，直接使用 Python 原生完整内置函数。
+        """
         sandbox = {
-            '__builtins__': safe_builtins,
+            '__builtins__': __builtins__,
             'pd': pd,
             'np': np,
             'context': context,
@@ -90,47 +85,75 @@ class BacktestExecutor:
 
     def _history_bars_wrapper(self, security, count, unit, field):
         """
-        返回 numpy array，仅包含 field 列的过去 count 个值。
-        兼容旧策略。
+        返回最近 count 根 K 线的 field 值（numpy array）。
+        如果历史数据不足 count，则返回实际可用的数据（长度可能小于 count）。
+        策略中可通过 len() 检查数据完整性。
         """
-        df = self._attribute_history_wrapper(security, count, fields=[field])
-        if df.empty or field not in df.columns:
+        if self.current_idx < 0:
             return np.array([])
-        return df[field].values
+        start = max(0, self.current_idx - count + 1)
+        end = self.current_idx + 1
+        slice_df = self.df.iloc[start:end]
+        if slice_df.empty or field not in slice_df.columns:
+            return np.array([])
+        vals = slice_df[field].values
+        # 返回最近 min(count, len(vals)) 个值
+        return vals[-min(count, len(vals)):]
 
     def _order_target_value_wrapper(self, security, value):
         """
-        目标市值下单，记录信号。
+        目标市值下单，记录信号。股数向下取整到100的整数倍。
+        根据 self.slippage 决定实际成交价：close / next_open / half_spread。
         """
+        code = self._normalize_security(security)
         if self.df is None or self.current_idx < 0:
             return
         bar = self.df.iloc[self.current_idx]
-        current_price = bar['close']
-        current_shares = self._get_portfolio_holdings().get(security, 0)
-        current_value = current_shares * current_price
+        close_price = bar['close']
+        # 计算实际成交价（滑点）
+        if self.slippage == 'next_open' and self.current_idx + 1 < len(self.df):
+            fill_price = self.df.iloc[self.current_idx + 1]['open']
+        else:
+            fill_price = close_price
+        current_shares = self._get_portfolio_holdings().get(code, 0)
+        current_value = current_shares * fill_price
         diff_value = value - current_value
         if abs(diff_value) < 0.01:
             return
-        shares_to_trade = diff_value / current_price
-        # 允许小数股数（为简化）
-        self._record_trade(security, shares_to_trade, current_price)
+        shares_to_trade = diff_value / fill_price
+        # 向下取整到100的整数倍（1手）
+        if shares_to_trade > 0:
+            shares_to_trade = int(shares_to_trade / 100) * 100
+        else:
+            shares_to_trade = int(shares_to_trade / 100) * 100
+        if shares_to_trade == 0:
+            return
+        # 买入时检查资金是否充足
+        if shares_to_trade > 0:
+            cost = shares_to_trade * fill_price
+            cash = self._get_portfolio_cash()
+            if cost > cash:
+                self.logs.append(f"[WARN] 资金不足：需要 {cost:.2f}，现金 {cash:.2f}")
+                return
+        self._record_trade(code, shares_to_trade, fill_price)
 
     def _order_target_percent_wrapper(self, security, percent):
         """
-        目标仓位百分比下单。
-        percent: 0~1 之间的数值，表示目标仓位占比。
+        目标仓位百分比下单。percent: 0~1 之间的数值。
+        计算总资产时包含所有持仓市值。
         """
+        code = self._normalize_security(security)
         if self.df is None or self.current_idx < 0:
             return
-        # 计算当前总资产
         cash = self._get_portfolio_cash()
         holdings = self._get_portfolio_holdings()
-        trade_shares = holdings.get(security, 0)
         current_price = self.df.iloc[self.current_idx]['close']
-        holding_value = trade_shares * current_price
-        total_assets = cash + holding_value   # 简化，忽略其他持仓
+        total_holding_value = 0.0
+        for h_shares in holdings.values():
+            total_holding_value += h_shares * current_price
+        total_assets = cash + total_holding_value
         target_value = total_assets * percent
-        self._order_target_value_wrapper(security, target_value)
+        self._order_target_value_wrapper(code, target_value)
 
     def _get_current_data_wrapper(self, security):
         """
@@ -171,6 +194,7 @@ class BacktestExecutor:
         更新持仓和现金，并记录信号。
         shares 正数为买入，负数为卖出。
         """
+        code = self._normalize_security(security)
         ctx = self._context
         cash = ctx.portfolio['cash']
         holdings = ctx.portfolio['holdings']
@@ -179,34 +203,36 @@ class BacktestExecutor:
         cash -= cost
         ctx.portfolio['cash'] = cash
         # 更新持仓
-        current_shares = holdings.get(security, 0)
+        current_shares = holdings.get(code, 0)
         new_shares = current_shares + shares
         if abs(new_shares) < 1e-8:
-            if security in holdings:
-                del holdings[security]
+            if code in holdings:
+                del holdings[code]
         else:
-            holdings[security] = new_shares
+            holdings[code] = new_shares
         # 记录交易信号
         trade_type = 'buy' if shares > 0 else 'sell'
         date_str = self.df.index[self.current_idx].strftime('%Y-%m-%d')
         self.trade_signals.append({
             'date': date_str,
-            'code': security,
+            'code': code,
             'type': trade_type,
             'price': round(price, 2),
             'shares': round(abs(shares), 2)   # 保留两位小数
         })
 
     # ---------- 主执行方法 ----------
-    def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000):
+    def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000, slippage="close"):
         """
         :param user_code: 用户策略代码字符串
         :param stock_code: 股票代码，如 "000001"
         :param start_date: 起始日期字符串 "YYYY-MM-DD"
         :param end_date: 结束日期字符串
         :param initial_cash: 初始资金
+        :param slippage: 成交价模式 "close" / "next_open" / "half_spread"
         :return: dict 包含 status, signals, equity_curve, metrics, logs
         """
+        self.slippage = slippage
         # 重置状态
         self.trade_signals.clear()
         self.logs.clear()

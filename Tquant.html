@@ -209,11 +209,8 @@
             min-width: 145px !important;
             max-width: 145px !important;
         }
-        /* ----- 新增：统一 text 输入框样式，配合 datalist ----- */
+        /* ----- 统一 text 输入框样式，配合 datalist ----- */
         .metric-row input[type="text"] {
-            width: 130px !important;
-            min-width: 130px !important;
-            max-width: 130px !important;
             height: 34px !important;
             background: #1e253b;
             border: 1px solid #323d5a;
@@ -222,6 +219,18 @@
             font-size: 13px;
             padding: 6px 10px;
             box-sizing: border-box;
+        }
+        /* 仅对没有 list 属性的 text 输入框应用宽度限制（保持买卖点页面布局不变） */
+        .metric-row input[type="text"]:not([list]) {
+            width: 130px !important;
+            min-width: 130px !important;
+            max-width: 130px !important;
+        }
+        /* 带 list 属性的 text 输入框（datalist 下拉框）使用独立宽度 */
+        .metric-row input[type="text"][list] {
+            width: auto;
+            min-width: 150px;
+            max-width: 200px;
         }
         /* --------------------------------------------------- */
         .metric-row > * {
@@ -410,7 +419,7 @@
         /* ----------  全局 select 重置，避免干扰 ---------- */
         select {
             min-width: 0;
-            max-width: none;
+            max-width: 100%;
             flex-shrink: 0;
             height: 34px;
             line-height: 34px;
@@ -519,9 +528,8 @@
                 个人中心
             </div>
             <div class="nav-item active" data-page="history">📁 历史回测</div>
-            <div class="nav-item" data-page="strategy">💻 策略代码</div>
+            <div class="nav-item" data-page="strategy">🏭 策略工厂</div>
             <div class="nav-item" data-page="detail">📊 策略详情</div>
-            <div class="nav-item" data-page="daily">💰 每日持仓&amp;收益</div>
             <div class="nav-item" data-page="kchart">📈 买卖点成交图(K线)</div>
             <div class="nav-item" data-page="stock">📉 个股详情</div>
             <div class="nav-item" data-page="api">📘 API文档</div>

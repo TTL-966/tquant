@@ -81,7 +81,7 @@ var mockTradeSignals = [
 var currentTradeSignals = mockTradeSignals.slice();
 
 export function profitClass(str) {
-    if (!str) return '';
+    if (!str || typeof str !== 'string') return '';
     if (str.startsWith('+')) return 'profit-positive';
     if (str.startsWith('-')) return 'profit-negative';
     return '';
@@ -128,22 +128,10 @@ export function saveAvatarToStorage(dataUrl) {
     });
 })();
 
-// ========== 自定义 loadPage 包装 ==========
+// ========== 自定义 loadPage 包装（直接委托给 navigation.js） ==========
 
 function loadPage(pageId) {
-    if (pageId === 'detail') {
-        originalLoadPage(pageId);
-        setTimeout(function() {
-            renderDetailPage();
-        }, 0);
-    } else if (pageId === 'strategy') {
-        originalLoadPage(pageId);
-        setTimeout(function() {
-            enhanceStrategyPage();
-        }, 0);
-    } else {
-        originalLoadPage(pageId);
-    }
+    originalLoadPage(pageId);
 }
 
 // ---- 策略详情页渲染 ----

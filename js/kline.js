@@ -104,30 +104,29 @@ export function runBacktest(code, startDate, endDate) {
     });
 }
 
-// 新增：使用自定义策略执行回测
-export function runCustomBacktest(stockCode, startDate, endDate, strategyName, logDom) {
+// 使用自定义策略执行回测（单只股票，由 strategy.js 模态弹窗调用）
+export function runCustomBacktest(stockCode, startDate, endDate, strategyName, cash) {
     if (!bridge) {
-        logDom.innerHTML += '<div style="color:#ff6b6b;">Bridge 未连接</div>';
-        return;
+        window._lastBacktestError = 'Bridge 未连接';
+        return Promise.reject(new Error('Bridge 未连接'));
     }
     var code = window.currentStrategyCode;
     if (!code) {
-        logDom.innerHTML += '<div style="color:#ff6b6b;">请先在策略页面保存代码</div>';
-        return;
+        window._lastBacktestError = '请先在策略页面保存代码';
+        return Promise.reject(new Error('请先在策略页面保存代码'));
     }
     var params = {
         code: code,
         stock: stockCode,
         start: startDate,
         end: endDate,
-        cash: 1000000
+        cash: cash || 1000000
     };
-    logDom.innerHTML += '<div>🚀 正在执行回测，策略：' + strategyName + '</div>';
-    bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
+    return bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
         var res = JSON.parse(jsonStr);
         if (!res.success) {
-            logDom.innerHTML += '<div>❌ 回测失败: ' + (res.error || '未知错误') + '</div>';
-            return;
+            window._lastBacktestError = res.error || '未知错误';
+            return res;
         }
         // 更新买卖点
         buyPoints.length = 0;
@@ -149,8 +148,21 @@ export function runCustomBacktest(stockCode, startDate, endDate, strategyName, l
                 });
             }
         });
-        // 存储结果
+        // 存储结果和信号
         window._lastBacktestResult = res;
+        window._lastBacktestError = null;
+        // 更新全局信号（合并而非替换）
+        if (!window.strategySignals) window.strategySignals = [];
+        var existing = window.strategySignals;
+        (res.signals || []).forEach(function(s) {
+            existing.push({
+                date: s.date,
+                code: s.code || stockCode,
+                type: s.type,
+                price: s.price,
+                shares: s.shares
+            });
+        });
         // 重绘K线（如果当前有数据）
         if (currentKlineDates.length > 0) {
             var maData = {
@@ -162,9 +174,9 @@ export function runCustomBacktest(stockCode, startDate, endDate, strategyName, l
             };
             renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints, maData);
         }
-        logDom.innerHTML += '<div>✅ 回测完成，买入 ' + buyPoints.length + '，卖出 ' + sellPoints.length + ' 个信号</div>';
-        logDom.innerHTML += '<div>💡 请前往【策略详情】查看详细结果。</div>';
+        return res;
     }).catch(function(err) {
-        logDom.innerHTML += '<div>❌ 回测请求失败: ' + err.message + '</div>';
+        window._lastBacktestError = err.message;
+        throw err;
     });
 }
