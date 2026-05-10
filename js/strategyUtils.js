@@ -176,6 +176,89 @@ function genVolume(card, idx) {
     return { code: lines, cond: contextName(idx, 'cur_vol') + ' > ' + contextName(idx, 'avg_vol') + ' * ' + multP };
 }
 
+function genATRBreakout(card, idx) {
+    var p = card.params;
+    var periodP = ctxParam(idx, 'period');
+    var multP = ctxParam(idx, 'multiplier');
+    var totalNeeded = p.period + 2;
+    var lines = [];
+    lines.push('# Card ' + idx + ': ATR通道突破');
+    lines.push(contextName(idx, 'highs') + ' = history_bars(stock, ' + totalNeeded + ', \'1d\', \'high\')');
+    lines.push(contextName(idx, 'lows') + ' = history_bars(stock, ' + totalNeeded + ', \'1d\', \'low\')');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + totalNeeded + ', \'1d\', \'close\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + totalNeeded + ':');
+    lines.push('    return');
+    lines.push(contextName(idx, 'tr_list') + ' = []');
+    lines.push('for i in range(1, len(' + contextName(idx, 'closes') + ')):');
+    lines.push('    high_low = ' + contextName(idx, 'highs') + '[i] - ' + contextName(idx, 'lows') + '[i]');
+    lines.push('    high_close = abs(' + contextName(idx, 'highs') + '[i] - ' + contextName(idx, 'closes') + '[i-1])');
+    lines.push('    low_close = abs(' + contextName(idx, 'lows') + '[i] - ' + contextName(idx, 'closes') + '[i-1])');
+    lines.push('    ' + contextName(idx, 'tr_list') + '.append(max(high_low, high_close, low_close))');
+    lines.push(contextName(idx, 'atr') + ' = np.mean(' + contextName(idx, 'tr_list') + '[-' + periodP + ':])');
+    lines.push(contextName(idx, 'mid') + ' = ' + contextName(idx, 'closes') + '[-' + periodP + ':].mean()');
+    lines.push(contextName(idx, 'upper') + ' = ' + contextName(idx, 'mid') + ' + ' + multP + ' * ' + contextName(idx, 'atr'));
+    lines.push(contextName(idx, 'lower') + ' = ' + contextName(idx, 'mid') + ' - ' + multP + ' * ' + contextName(idx, 'atr'));
+    lines.push(contextName(idx, 'last_close') + ' = ' + contextName(idx, 'closes') + '[-1]');
+    if (p.direction === 'upper_breakout') {
+        return { code: lines, cond: contextName(idx, 'last_close') + ' > ' + contextName(idx, 'upper') };
+    } else {
+        return { code: lines, cond: contextName(idx, 'last_close') + ' < ' + contextName(idx, 'lower') };
+    }
+}
+
+function genCCI(card, idx) {
+    var p = card.params;
+    var periodP = ctxParam(idx, 'period');
+    var oversoldP = ctxParam(idx, 'oversold');
+    var overboughtP = ctxParam(idx, 'overbought');
+    var totalNeeded = p.period + 1;
+    var lines = [];
+    lines.push('# Card ' + idx + ': CCI');
+    lines.push(contextName(idx, 'highs') + ' = history_bars(stock, ' + totalNeeded + ', \'1d\', \'high\')');
+    lines.push(contextName(idx, 'lows') + ' = history_bars(stock, ' + totalNeeded + ', \'1d\', \'low\')');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + totalNeeded + ', \'1d\', \'close\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + totalNeeded + ':');
+    lines.push('    return');
+    lines.push(contextName(idx, 'tp') + ' = (' + contextName(idx, 'highs') + ' + ' + contextName(idx, 'lows') + ' + ' + contextName(idx, 'closes') + ') / 3.0');
+    lines.push(contextName(idx, 'tp_ma') + ' = ' + contextName(idx, 'tp') + '[-' + periodP + ':].mean()');
+    lines.push(contextName(idx, 'md') + ' = np.abs(' + contextName(idx, 'tp') + '[-' + periodP + ':] - ' + contextName(idx, 'tp_ma') + ').mean()');
+    lines.push(contextName(idx, 'cci') + ' = 0');
+    lines.push('if ' + contextName(idx, 'md') + ' != 0:');
+    lines.push('    ' + contextName(idx, 'cci') + ' = (' + contextName(idx, 'tp') + '[-1] - ' + contextName(idx, 'tp_ma') + ') / (0.015 * ' + contextName(idx, 'md') + ')');
+    if (p.direction === 'oversold_buy') {
+        return { code: lines, cond: contextName(idx, 'cci') + ' < ' + oversoldP };
+    } else {
+        return { code: lines, cond: contextName(idx, 'cci') + ' > ' + overboughtP };
+    }
+}
+
+function genMAAlignment(card, idx) {
+    var p = card.params;
+    var fastP = ctxParam(idx, 'fastPeriod');
+    var midP = ctxParam(idx, 'midPeriod');
+    var slowP = ctxParam(idx, 'slowPeriod');
+    var maxPeriod = Math.max(p.fastPeriod, p.midPeriod, p.slowPeriod);
+    var lines = [];
+    lines.push('# Card ' + idx + ': 均线排列');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + (maxPeriod + 1) + ', \'1d\', \'close\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + (maxPeriod + 1) + ':');
+    lines.push('    return');
+    lines.push(contextName(idx, 'ma_fast') + ' = ' + contextName(idx, 'closes') + '[-' + fastP + ':].mean()');
+    lines.push(contextName(idx, 'ma_mid') + ' = ' + contextName(idx, 'closes') + '[-' + midP + ':].mean()');
+    lines.push(contextName(idx, 'ma_slow') + ' = ' + contextName(idx, 'closes') + '[-' + slowP + ':].mean()');
+    if (p.direction === 'bullish') {
+        return {
+            code: lines,
+            cond: contextName(idx, 'ma_fast') + ' > ' + contextName(idx, 'ma_mid') + ' and ' + contextName(idx, 'ma_mid') + ' > ' + contextName(idx, 'ma_slow')
+        };
+    } else {
+        return {
+            code: lines,
+            cond: contextName(idx, 'ma_fast') + ' < ' + contextName(idx, 'ma_mid') + ' and ' + contextName(idx, 'ma_mid') + ' < ' + contextName(idx, 'ma_slow')
+        };
+    }
+}
+
 // ---- Main code generation ----
 
 export function generateCode(cards) {
@@ -193,8 +276,16 @@ export function generateCode(cards) {
         if (card.type === 'stop_loss_profit') { hasStopLoss = true; stopLossCard = card; }
         if (card.type === 'position') { positionCard = card; }
     }
-    if (positionCard && positionCard.params.positionType === 'fixed') {
-        targetPercent = String(positionCard.params.fixedPercent || 1.0);
+    if (positionCard) {
+        if (positionCard.params.positionType === 'fixed') {
+            targetPercent = String(positionCard.params.fixedPercent || 1.0);
+        } else if (positionCard.params.positionType === 'kelly') {
+            var winRate = 0.5;
+            var profitRatio = 2.0;
+            var kellyF = winRate - (1 - winRate) / profitRatio;
+            kellyF = Math.max(0.01, Math.min(1.0, kellyF));
+            targetPercent = String(kellyF.toFixed(4));
+        }
     }
 
     return rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPercent);
@@ -247,6 +338,9 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
             case 'bollinger': genResult = genBollinger(card, i); break;
             case 'kdj': genResult = genKDJ(card, i); break;
             case 'volume': genResult = genVolume(card, i); break;
+            case 'atr_breakout': genResult = genATRBreakout(card, i); break;
+            case 'cci': genResult = genCCI(card, i); break;
+            case 'ma_alignment': genResult = genMAAlignment(card, i); break;
             case 'stop_loss_profit':
                 lines.push('    # Card ' + i + ': 止损止盈（参数已记录）');
                 lines.push('');

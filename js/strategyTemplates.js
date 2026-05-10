@@ -102,6 +102,56 @@ export var CARD_TYPE_META = {
             { key: 'multiple', label: '放大倍数', type: 'number', min: 1.1, max: 10, step: 0.1, default: 1.5 }
         ]
     },
+    atr_breakout: {
+        type: 'atr_breakout',
+        label: 'ATR通道突破',
+        icon: '🌊',
+        description: '基于平均真实波幅的通道突破信号',
+        defaultAction: 'buy',
+        defaultParams: { period: 14, multiplier: 2, direction: 'upper_breakout' },
+        paramFields: [
+            { key: 'period', label: 'ATR周期', type: 'number', min: 5, max: 100, default: 14 },
+            { key: 'multiplier', label: '通道倍数', type: 'number', min: 0.5, max: 5, step: 0.5, default: 2 },
+            { key: 'direction', label: '突破方向', type: 'select', options: [
+                { value: 'upper_breakout', label: '突破上轨买入' },
+                { value: 'lower_breakout', label: '跌破下轨卖出' }
+            ], default: 'upper_breakout' }
+        ]
+    },
+    cci: {
+        type: 'cci',
+        label: 'CCI商品通道指数',
+        icon: '📊',
+        description: 'CCI超买超卖信号',
+        defaultAction: 'buy',
+        defaultParams: { period: 20, oversold: -100, overbought: 100, direction: 'oversold_buy' },
+        paramFields: [
+            { key: 'period', label: '计算周期', type: 'number', min: 5, max: 100, default: 20 },
+            { key: 'oversold', label: '超卖阈值', type: 'number', min: -300, max: 0, default: -100 },
+            { key: 'overbought', label: '超买阈值', type: 'number', min: 0, max: 300, default: 100 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'oversold_buy', label: '超卖买入（CCI低于阈值）' },
+                { value: 'overbought_sell', label: '超买卖出（CCI高于阈值）' }
+            ], default: 'oversold_buy' }
+        ]
+    },
+    ma_alignment: {
+        type: 'ma_alignment',
+        label: '均线排列',
+        icon: '📈',
+        description: '多周期均线排列状态信号',
+        defaultAction: 'buy',
+        defaultParams: { fastPeriod: 5, midPeriod: 10, slowPeriod: 20, direction: 'bullish' },
+        paramFields: [
+            { key: 'fastPeriod', label: '快线周期', type: 'number', min: 2, max: 50, default: 5 },
+            { key: 'midPeriod', label: '中线周期', type: 'number', min: 3, max: 100, default: 10 },
+            { key: 'slowPeriod', label: '慢线周期', type: 'number', min: 5, max: 250, default: 20 },
+            { key: 'direction', label: '排列方向', type: 'select', options: [
+                { value: 'bullish', label: '多头排列买入' },
+                { value: 'bearish', label: '空头排列卖出' }
+            ], default: 'bullish' }
+        ]
+    },
     stop_loss_profit: {
         type: 'stop_loss_profit',
         label: '止损止盈',
@@ -125,7 +175,7 @@ export var CARD_TYPE_META = {
         paramFields: [
             { key: 'positionType', label: '仓位类型', type: 'select', options: [
                 { value: 'fixed', label: '固定仓位' },
-                { value: 'kelly', label: '凯利公式（预留）' }
+                { value: 'kelly', label: '凯利公式' }
             ], default: 'fixed' },
             { key: 'fixedPercent', label: '仓位比例', type: 'number', min: 0.01, max: 1.0, step: 0.01, default: 1.0 }
         ]

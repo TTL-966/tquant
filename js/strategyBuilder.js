@@ -241,7 +241,7 @@ function showAddCardModal() {
     var grid = document.createElement('div');
     grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
 
-    var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'kdj', 'volume', 'stop_loss_profit', 'position'];
+    var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'kdj', 'volume', 'atr_breakout', 'cci', 'ma_alignment', 'stop_loss_profit', 'position'];
     typeKeys.forEach(function(key) {
         var meta = CARD_TYPE_META[key];
         var item = document.createElement('div');
@@ -322,6 +322,11 @@ function showEditCardModal(card, index) {
     closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;';
     closeBtn.onclick = function() { overlay.remove(); modal.remove(); };
 
+    function clearOldDatalist(id) {
+        var old = document.getElementById(id);
+        if (old) old.remove();
+    }
+
     var body = document.createElement('div');
 
     // Build form fields
@@ -339,6 +344,8 @@ function showEditCardModal(card, index) {
 
         if (f.type === 'select' && f.options) {
             var dlId = 'cardEditDatalist_' + f.key + '_' + (card.id || index);
+            clearOldDatalist(dlId); // 先移除可能残留的同名 datalist
+
             var currentLabel = formData[f.key];
             var foundOpt = f.options.find(function(opt) { return opt.value === formData[f.key]; });
             if (foundOpt) currentLabel = foundOpt.label;
