@@ -322,11 +322,6 @@ function showEditCardModal(card, index) {
     closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;';
     closeBtn.onclick = function() { overlay.remove(); modal.remove(); };
 
-    function clearOldDatalist(id) {
-        var old = document.getElementById(id);
-        if (old) old.remove();
-    }
-
     var body = document.createElement('div');
 
     // Build form fields
@@ -335,7 +330,7 @@ function showEditCardModal(card, index) {
         formData[f.key] = card.params[f.key] !== undefined ? card.params[f.key] : f.default;
 
         var row = document.createElement('div');
-        row.style.cssText = 'margin-bottom:12px;';
+        row.style.cssText = 'margin-bottom:12px;overflow:hidden;';
 
         var label = document.createElement('div');
         label.style.cssText = 'color:#9aa9cc;font-size:12px;margin-bottom:4px;';
@@ -344,18 +339,18 @@ function showEditCardModal(card, index) {
 
         if (f.type === 'select' && f.options) {
             var dlId = 'cardEditDatalist_' + f.key + '_' + (card.id || index);
-            clearOldDatalist(dlId); // 先移除可能残留的同名 datalist
-
             var currentLabel = formData[f.key];
             var foundOpt = f.options.find(function(opt) { return opt.value === formData[f.key]; });
             if (foundOpt) currentLabel = foundOpt.label;
+
             var input = document.createElement('input');
             input.type = 'text';
             input.setAttribute('list', dlId);
             input.setAttribute('data-field', f.key);
             input.setAttribute('autocomplete', 'off');
             input.value = currentLabel;
-            input.style.cssText = 'width:100%; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px; box-sizing:border-box;';
+            input.style.cssText = 'width:260px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px; box-sizing:border-box;';
+
             var dl = document.createElement('datalist');
             dl.id = dlId;
             f.options.forEach(function(opt) {
@@ -365,6 +360,11 @@ function showEditCardModal(card, index) {
                 o.textContent = opt.label;
                 dl.appendChild(o);
             });
+
+            // 移除可能残留的同名 datalist（仅作为保护）
+            var oldDl = document.getElementById(dlId);
+            if (oldDl) oldDl.remove();
+
             row.appendChild(input);
             row.appendChild(dl);
         } else if (f.type === 'number') {

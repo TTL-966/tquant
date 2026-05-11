@@ -18,6 +18,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.web_view = QWebEngineView()
+        from PySide6.QtWebEngineCore import QWebEngineProfile
+        profile = QWebEngineProfile.defaultProfile()
+        profile.setHttpCacheType(QWebEngineProfile.NoCache)
+        profile.setPersistentStoragePath("")
+        print("QtWebEngine 缓存已禁用")
         layout.addWidget(self.web_view)
 
         self.channel = QWebChannel()
@@ -27,6 +32,7 @@ class MainWindow(QMainWindow):
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
         html_path = os.path.join(base_dir, "Tquant.html")
+
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
 
 if __name__ == "__main__":
