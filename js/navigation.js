@@ -6,6 +6,7 @@ import { bindDatePicker } from './datepicker.js';
 import { stockNameMap, tradeStockLibrary, backtestStrategies, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
 import { renderStrategyPage } from './strategyBuilder.js';
+import { renderCodeEditorPage } from './codeEditor.js';
 
 var currentStockCode = "000001";
 
@@ -84,6 +85,9 @@ export function loadPage(pageId) {
     } else if (pageId === 'strategy') {
         container.innerHTML = '';
         renderStrategyPage(container);
+    } else if (pageId === 'codeEditor') {
+        container.innerHTML = '';
+        renderCodeEditorPage(container);
     } else if (pageId === 'detail') {
         renderDetailPage(container);
     } else if (pageId === 'api') {

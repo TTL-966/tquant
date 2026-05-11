@@ -263,6 +263,7 @@ class BacktestExecutor:
             'holdings': {}   # code -> shares
         }
         context.current_dt = None
+        context.stock = stock_code
         self._context = context   # 给内部方法访问
 
         # 3. 日志模块

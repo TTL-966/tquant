@@ -51,10 +51,10 @@ export function initDatePicker() {
     });
 }
 
-export function bindDatePicker(inputElement) {
+export function bindDatePicker(inputElement, placement) {
     inputElement.addEventListener('click', (e) => {
         e.stopPropagation();
-        showPicker(inputElement);
+        showPicker(inputElement, placement || 'bottom');
     });
     inputElement.setAttribute('readonly', 'readonly');
 }
@@ -66,7 +66,7 @@ function formatDate(date) {
     return `${y}-${m}-${d}`;
 }
 
-function showPicker(input) {
+function showPicker(input, placement) {
     picker.input = input;
     const val = input.value.trim();
     if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
@@ -79,7 +79,11 @@ function showPicker(input) {
 
     const rect = input.getBoundingClientRect();
     picker.el.style.left = rect.left + 'px';
-    picker.el.style.top = (rect.bottom + window.scrollY + 5) + 'px';
+    if (placement === 'top') {
+        picker.el.style.top = (rect.top + window.scrollY - picker.el.offsetHeight - 5) + 'px';
+    } else {
+        picker.el.style.top = (rect.bottom + window.scrollY + 5) + 'px';
+    }
     picker.el.style.display = 'block';
 }
 
