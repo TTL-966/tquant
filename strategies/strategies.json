@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "id": 1,
+    "name": "1",
+    "code": "{\"version\":1,\"cards\":[{\"id\":\"card_mp12s3i0_cx52ay\",\"type\":\"ma_cross\",\"action\":\"buy\",\"params\":{\"fastPeriod\":5,\"slowPeriod\":20,\"direction\":\"golden\"}},{\"id\":\"card_mp12s5x5_41czij\",\"type\":\"ma_cross\",\"action\":\"sell\",\"params\":{\"fastPeriod\":5,\"slowPeriod\":20,\"direction\":\"death\"}}],\"capital\":100000,\"startDate\":\"2025-01-01\",\"endDate\":\"2026-05-11\"}"
+  }
+]

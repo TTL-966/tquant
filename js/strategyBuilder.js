@@ -19,6 +19,57 @@ var logContainer = null;
 var codeExpanded = false;
 var logExpanded = true;
 
+// ---- Custom Select Panel ----
+
+function showCustomSelect(input, options, callback) {
+    closeCustomSelect();
+    if (!options || options.length === 0) return;
+
+    var panel = document.createElement('div');
+    panel.className = 'custom-select-panel';
+    panel.style.cssText = 'position:fixed; z-index:99999; background:#1a2135; border:1px solid #4f7eff; border-radius:12px; padding:6px 0; max-height:250px; overflow-y:auto; min-width:260px; box-shadow:0 8px 20px rgba(0,0,0,0.5);';
+
+    options.forEach(function(opt) {
+        var item = document.createElement('div');
+        item.style.cssText = 'padding:8px 16px; cursor:pointer; color:#fff; font-size:13px; transition:background 0.15s; white-space:nowrap;';
+        item.textContent = opt.label;
+        item.setAttribute('data-value', opt.value);
+        item.addEventListener('mouseenter', function() { item.style.background = '#2d3a5e'; });
+        item.addEventListener('mouseleave', function() { item.style.background = 'transparent'; });
+        item.addEventListener('click', function(e) {
+            e.stopPropagation();
+            input.value = opt.label;
+            input.setAttribute('data-value', opt.value);
+            panel.remove();
+            if (typeof callback === 'function') callback(opt.value);
+        });
+        panel.appendChild(item);
+    });
+
+    document.body.appendChild(panel);
+
+    var rect = input.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + 'px';
+
+    setTimeout(function() {
+        document.addEventListener('click', closeCustomSelectOnClick);
+    }, 0);
+}
+
+function closeCustomSelectOnClick(e) {
+    var panel = document.querySelector('.custom-select-panel');
+    if (panel && !panel.contains(e.target)) {
+        closeCustomSelect();
+    }
+}
+
+function closeCustomSelect() {
+    var panel = document.querySelector('.custom-select-panel');
+    if (panel) panel.remove();
+    document.removeEventListener('click', closeCustomSelectOnClick);
+}
+
 // ---- Logging & Toast ----
 
 function nowTimestamp() {
@@ -308,7 +359,7 @@ function showEditCardModal(card, index) {
 
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;';
-    overlay.onclick = function() { overlay.remove(); modal.remove(); };
+    overlay.onclick = function() { closeCustomSelect(); overlay.remove(); modal.remove(); };
 
     var modal = document.createElement('div');
     modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:24px;min-width:380px;max-width:460px;z-index:10000;color:#fff;';
@@ -320,7 +371,7 @@ function showEditCardModal(card, index) {
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '✖';
     closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;';
-    closeBtn.onclick = function() { overlay.remove(); modal.remove(); };
+    closeBtn.onclick = function() { closeCustomSelect(); overlay.remove(); modal.remove(); };
 
     var body = document.createElement('div');
 
@@ -338,35 +389,25 @@ function showEditCardModal(card, index) {
         row.appendChild(label);
 
         if (f.type === 'select' && f.options) {
-            var dlId = 'cardEditDatalist_' + f.key + '_' + (card.id || index);
-            var currentLabel = formData[f.key];
-            var foundOpt = f.options.find(function(opt) { return opt.value === formData[f.key]; });
+            var currentValue = formData[f.key];
+            var currentLabel = currentValue;
+            var foundOpt = f.options.find(function(opt) { return opt.value === currentValue; });
             if (foundOpt) currentLabel = foundOpt.label;
 
             var input = document.createElement('input');
             input.type = 'text';
-            input.setAttribute('list', dlId);
             input.setAttribute('data-field', f.key);
-            input.setAttribute('autocomplete', 'off');
+            input.setAttribute('data-value', currentValue);
+            input.setAttribute('readonly', 'readonly');
             input.value = currentLabel;
-            input.style.cssText = 'width:260px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px; box-sizing:border-box;';
+            input.style.cssText = 'width:260px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px; box-sizing:border-box; cursor:pointer;';
 
-            var dl = document.createElement('datalist');
-            dl.id = dlId;
-            f.options.forEach(function(opt) {
-                var o = document.createElement('option');
-                o.value = opt.label;
-                o.setAttribute('data-value', opt.value);
-                o.textContent = opt.label;
-                dl.appendChild(o);
+            input.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomSelect(input, f.options, function(selectedValue) {});
             });
 
-            // 移除可能残留的同名 datalist（仅作为保护）
-            var oldDl = document.getElementById(dlId);
-            if (oldDl) oldDl.remove();
-
             row.appendChild(input);
-            row.appendChild(dl);
         } else if (f.type === 'number') {
             var input = document.createElement('input');
             input.type = 'number';
@@ -426,7 +467,7 @@ function showEditCardModal(card, index) {
     var cancelBtn = document.createElement('button');
     cancelBtn.textContent = '取消';
     cancelBtn.style.cssText = 'background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:6px 18px;border-radius:30px;cursor:pointer;';
-    cancelBtn.onclick = function() { overlay.remove(); modal.remove(); };
+    cancelBtn.onclick = function() { closeCustomSelect(); overlay.remove(); modal.remove(); };
 
     var saveBtn = document.createElement('button');
     saveBtn.textContent = '保存';
@@ -438,18 +479,7 @@ function showEditCardModal(card, index) {
             if (el) {
                 var val;
                 if (f.type === 'select') {
-                    var enteredVal = el.value;
-                    var dlId = el.getAttribute('list');
-                    var dl = document.getElementById(dlId);
-                    if (dl) {
-                        for (var i = 0; i < dl.options.length; i++) {
-                            if (dl.options[i].value === enteredVal || dl.options[i].textContent === enteredVal) {
-                                val = dl.options[i].getAttribute('data-value');
-                                break;
-                            }
-                        }
-                    }
-                    if (!val) val = el.value;
+                    val = el.getAttribute('data-value') || el.value;
                 } else if (f.type === 'number') {
                     val = parseFloat(el.value);
                     if (isNaN(val)) val = f.default;

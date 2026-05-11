@@ -159,10 +159,7 @@ class WebBridge(QObject):
             slippage = params.get("slippage", "close")
 
             # 调试日志：输出接收到的策略代码信息
-            print(f"[Bridge] 接收策略代码长度: {len(user_code)}", flush=True)
-            print(f"[Bridge] 策略代码前150字符: {user_code[:150]}", flush=True)
-            print(f"[Bridge] 是否包含 initialize: {'def initialize' in user_code}", flush=True)
-            print(f"[Bridge] 是否包含 handle_bar: {'def handle_bar' in user_code}", flush=True)
+
 
             result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash, slippage=slippage)
 
