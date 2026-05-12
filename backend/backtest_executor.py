@@ -17,6 +17,12 @@ class Logger:
     def error(self, msg):
         self._executor.logs.append(f"[ERROR] {msg}")
 
+    def debug(self, msg):
+        self._executor.logs.append(f"[DEBUG] {msg}")
+
+    def warn(self, msg):
+        self._executor.logs.append(f"[WARN] {msg}")
+
     def __call__(self, msg):
         self.info(msg)
 
@@ -249,7 +255,7 @@ class BacktestExecutor:
             if not dates or not values:
                 return self._error_result("K线数据为空")
             # values 格式：[[open, close, low, high], ...]
-            df = pd.DataFrame(values, columns=['open', 'close', 'low', 'high'])
+            df = pd.DataFrame(values, columns=['open', 'close', 'low', 'high', 'volume'])
             df.index = pd.to_datetime(dates)
             df.index.name = 'date'
             self.df = df
@@ -320,7 +326,7 @@ class BacktestExecutor:
                 'high': bar['high'],
                 'low': bar['low'],
                 'close': bar['close'],
-                'volume': 0   # 暂缺
+                'volume': bar.get('volume', 0)
             }
             try:
                 handle_bar(context, bar_dict)

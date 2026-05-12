@@ -7,6 +7,7 @@ import { stockNameMap, tradeStockLibrary, backtestStrategies, fetchStockName, se
 import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
 import { renderStrategyPage } from './strategyBuilder.js';
 import { renderCodeEditorPage } from './codeEditor.js';
+import { renderTroubleshootPage } from './troubleshoot.js';
 
 var currentStockCode = "000001";
 
@@ -92,6 +93,8 @@ export function loadPage(pageId) {
         renderDetailPage(container);
     } else if (pageId === 'api') {
         renderApiPage(container);
+    } else if (pageId === 'troubleshoot') {
+        renderTroubleshootPage(container);
     } else if (pageId === 'settings') {
         renderSettingsPage(container);
     }
@@ -491,70 +494,172 @@ function renderHistoryPage(container) {
 function renderApiPage(container) {
     container.innerHTML = `
         <div class="card">
-            <div class="card-title">📘 API 文档</div>
-            <p style="color:#9aa9cc; margin-bottom:16px;">Tquant 量化工作站前后端通信接口说明（QWebChannel Bridge）。</p>
+            <div class="card-title">📘 策略代码编写 API 参考</div>
+            <p style="color:#9aa9cc; margin-bottom:16px;">本指南教您如何在"策略代码"编辑器中编写自定义回测策略。引擎提供简洁的 API，让您专注于交易逻辑。</p>
 
-            <h4 style="color:#4f7eff; margin-top:16px;">📊 K线数据</h4>
+            <h4 style="color:#4f7eff; margin-top:24px;">🏗️ 策略基础结构</h4>
+            <p style="color:#9aa9cc;">一个完整的策略必须包含两个函数：</p>
             <div class="code-area" style="margin-bottom:12px;">
-bridge.get_kline_data(code, start_date, end_date, adjust)
-→ 返回 { dates, opens, highs, lows, closes, volumes }</div>
+def initialize(context):
+    # 初始化参数、设置全局变量
+    pass
 
-            <h4 style="color:#4f7eff; margin-top:16px;">🧪 策略回测</h4>
+def handle_bar(context, bar_dict):
+    # 每根K线都会调用一次，在这里编写交易逻辑
+    pass
+            </div>
+            <p style="color:#9aa9cc;">策略运行时，先执行一次 <code style="color:#4f7eff;">initialize</code>，然后按时间顺序遍历每一根日K线，调用 <code style="color:#4f7eff;">handle_bar</code>。</p>
+
+            <h4 style="color:#4f7eff; margin-top:24px;">📦 常用数据获取：history_bars</h4>
+            <p style="color:#9aa9cc;">获取股票的历史K线数据，返回 numpy array。</p>
             <div class="code-area" style="margin-bottom:12px;">
-bridge.run_custom_backtest(jsonParams)
-→ 参数: { code, stock, start, end, cash }
-→ 返回: { success, signals, equity_curve, metrics }</div>
+# 语法
+history_bars(security, count, unit, field)
 
-            <h4 style="color:#4f7eff; margin-top:16px;">💾 策略管理</h4>
+# 参数说明
+# security : 股票代码 (字符串)，如 "000001"
+# count    : 获取的K线数量 (整数)
+# unit     : K线周期，目前只支持 '1d' (日线)
+# field    : 字段名，可选 'open', 'close', 'high', 'low', 'volume'
+
+# 示例：获取最近 20 根日线的收盘价
+closes = history_bars("000001", 20, '1d', 'close')
+# 返回 numpy array，如 [10.2, 10.5, 10.3, ...]
+
+# 获取成交量
+vols = history_bars("000001", 20, '1d', 'volume')
+# 返回 numpy array，如 [150000, 230000, 180000, ...]
+            </div>
+
+            <h4 style="color:#4f7eff; margin-top:24px;">💊 下单函数</h4>
+            <p style="color:#9aa9cc;">调整股票仓位，资金管理由引擎自动处理。</p>
             <div class="code-area" style="margin-bottom:12px;">
-bridge.save_strategy(name, code, id?)
-bridge.list_strategies()
-bridge.load_strategy(id)
-bridge.delete_strategy(id)</div>
+# 按百分比下单 (推荐)
+order_target_percent(security, percent)
+# security : 股票代码
+# percent  : 目标仓位比例，0.0 ~ 1.0 之间
+# 示例：全仓买入
+order_target_percent("000001", 1.0)
+# 示例：清仓卖出
+order_target_percent("000001", 0.0)
 
-            <h4 style="color:#4f7eff; margin-top:16px;">🔍 股票搜索</h4>
+# 按固定金额下单 (可选)
+order_target_value(security, value)
+# value : 目标持仓市值 (元)
+            </div>
+            <p style="color:#9aa9cc; font-size:13px;">📌 默认每次交易以收盘价成交（可配置滑点）。买入最小单位为 100 股（1手）。</p>
+
+            <h4 style="color:#4f7eff; margin-top:24px;">📊 当前K线数据：bar_dict</h4>
+            <p style="color:#9aa9cc;">在 handle_bar 中，通过 bar_dict 字典获取当前日期的行情。</p>
             <div class="code-area" style="margin-bottom:12px;">
-bridge.search_stock(query) → [{ code, name }]
-bridge.get_industry_stocks(industry) → [{ code, name }]
-bridge.get_index_stocks(index_code) → [code, ...]
-→ 支持指数: 000300.XSHG(沪深300) 000905.XSHG(中证500)
- 000852.XSHG(中证1000) 399006.XSHE(创业板) 000688.XSHG(科创50)</div>
+def handle_bar(context, bar_dict):
+    current_close = bar_dict['close']   # 收盘价
+    current_open  = bar_dict['open']    # 开盘价
+    current_high  = bar_dict['high']    # 最高价
+    current_low   = bar_dict['low']     # 最低价
+    current_vol   = bar_dict['volume']  # 成交量（整数，单位：股）
+            </div>
 
-            <h4 style="color:#4f7eff; margin-top:16px;">📋 模拟交易</h4>
+            <h4 style="color:#4f7eff; margin-top:24px;">📝 日志输出：log</h4>
             <div class="code-area" style="margin-bottom:12px;">
-bridge.get_holdings() → [{ code, name, shares, cost }]
-bridge.get_trade_history() → [{ date, code, type, price, shares }]
-bridge.place_order(code, type, price, shares) → { success, message }</div>
+log.info("这是一条普通日志")
+log.error("这是一个错误日志")
+# 日志会显示在前端的回测日志区域
+            </div>
 
-            <h4 style="color:#4f7eff; margin-top:16px;">📐 指标计算示例（history_bars 实现）</h4>
+            <h4 style="color:#4f7eff; margin-top:24px;">⚙️ 全局存储：context</h4>
+            <p style="color:#9aa9cc;">context 是一个全局共享的命名空间对象，可以在 initialize 中设置参数，在 handle_bar 中读取和使用。</p>
             <div class="code-area" style="margin-bottom:12px;">
-# === RSI(14) ===
-def calc_rsi(context, period):
-    closes = history_bars(context.stock, period+1, '1d', 'close')
-    if len(closes) < period+1: return 50
-    diffs = np.diff(closes)
-    gains = np.where(diffs > 0, diffs, 0)
-    losses = np.where(diffs < 0, -diffs, 0)
-    avg_gain = gains.mean(); avg_loss = losses.mean()
-    if avg_loss == 0: return 100
-    return 100 - 100/(1 + avg_gain/avg_loss)
+def initialize(context):
+    context.my_param = 20
+    context.stock = "000001"
 
-# === MACD(12,26,9) ===
-def calc_macd(context):
-    closes = history_bars(context.stock, 35, '1d', 'close')
-    if len(closes) < 35: return 0, 0, 0
-    ema12 = pd.Series(closes).ewm(span=12).mean().iloc[-1]
-    ema26 = pd.Series(closes).ewm(span=26).mean().iloc[-1]
-    dif = ema12 - ema26
-    return dif, 0, 0  # 简化版
+def handle_bar(context, bar_dict):
+    # 读取参数
+    period = context.my_param
+    stock = context.stock
+            </div>
 
-# === 布林带(20,2) ===
-def calc_bollinger(context):
-    closes = history_bars(context.stock, 20, '1d', 'close')
-    if len(closes) < 20: return 0, 0, 0
-    ma20 = closes.mean()
-    std = closes.std()
-    return ma20, ma20+2*std, ma20-2*std</div>
+            <h4 style="color:#4f7eff; margin-top:24px;">🧪 完整示例：双均线策略</h4>
+            <div class="code-area" style="margin-bottom:12px;">
+# 双均线策略：金叉买入，死叉卖出
+
+import numpy as np
+
+def initialize(context):
+    context.fast = 5
+    context.slow = 20
+
+def handle_bar(context, bar_dict):
+    stock = "STOCK_CODE_PLACEHOLDER"  # 编辑器会自动替换为实际代码
+
+    # 获取历史收盘价
+    fast_arr = history_bars(stock, context.fast + 1, '1d', 'close')
+    slow_arr = history_bars(stock, context.slow + 1, '1d', 'close')
+
+    if len(fast_arr) < context.fast + 1 or len(slow_arr) < context.slow + 1:
+        return
+
+    fast_ma = fast_arr[-context.fast:].mean()
+    slow_ma = slow_arr[-context.slow:].mean()
+    prev_fast = fast_arr[-context.fast-1:-1].mean()
+    prev_slow = slow_arr[-context.slow-1:-1].mean()
+
+    if prev_fast <= prev_slow and fast_ma > slow_ma:
+        order_target_percent(stock, 1.0)
+        log.info("金叉买入信号")
+    elif prev_fast >= prev_slow and fast_ma < slow_ma:
+        order_target_percent(stock, 0)
+        log.info("死叉卖出信号")
+            </div>
+
+            <h4 style="color:#4f7eff; margin-top:24px;">💡 注意事项</h4>
+            <ul style="color:#9aa9cc; margin-bottom:12px; padding-left:20px;">
+                <li>数据不足时 (<code>len(arr) &lt; period</code>) 务必 <code>return</code>，避免计算错误。</li>
+                <li>可使用 <code>np.mean()</code>、<code>np.std()</code>、<code>pd.Series</code> 等计算指标。</li>
+                <li>策略异常会被后端捕获并记录到日志，不会中断整个回测。</li>
+                <li>滑点模式、初始资金、回测区间在前端面板中配置，无需在代码中设置。</li>
+                <li>✅ 成交量数据已接入真实数据库，可用于构建量价策略（如成交量放大突破）。</li>
+            </ul>
+
+            <h4 style="color:#4f7eff; margin-top:24px;">❌ 常见错误与解决方案</h4>
+
+            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
+                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">1. 'dict' object has no attribute 'positions'</p>
+                <p style="color:#9aa9cc;font-size:13px;">原因：使用了 <code style="color:#4f7eff;">context.portfolio.positions</code>，但引擎中 portfolio 是一个字典。</p>
+                <div class="code-area" style="margin-top:6px;"># 正确写法
+holdings = context.portfolio.get('holdings', {})
+current_position = holdings.get(stock, 0)</div>
+            </div>
+
+            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
+                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">2. 'types.SimpleNamespace' object has no attribute 'stock'</p>
+                <p style="color:#9aa9cc;font-size:13px;">原因：在 <code style="color:#4f7eff;">initialize</code> 中没有定义 <code style="color:#4f7eff;">context.stock</code> 就直接使用。</p>
+                <div class="code-area" style="margin-top:6px;"># 正确写法：在 initialize 中设置
+def initialize(context):
+    context.stock = "STOCK_CODE_PLACEHOLDER"
+
+# 或者直接在 handle_bar 中写
+def handle_bar(context, bar_dict):
+    stock = "STOCK_CODE_PLACEHOLDER"  # 编辑器会自动替换占位符</div>
+            </div>
+
+            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
+                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">3. 回测无信号</p>
+                <ul style="color:#9aa9cc;font-size:13px;padding-left:20px;margin:4px 0;">
+                    <li>检查 <code style="color:#4f7eff;">history_bars</code> 的数据长度是否满足计算要求（数据不足时需 <code style="color:#4f7eff;">return</code>）。</li>
+                    <li>检查策略逻辑是否过于严格（如阈值设置过高）。</li>
+                    <li>查看后端日志中是否有错误信息（前端日志区域会显示后端的 <code style="color:#4f7eff;">[ERROR]</code> 日志）。</li>
+                </ul>
+            </div>
+
+            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
+                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">4. 成交量数据使用</p>
+                <ul style="color:#9aa9cc;font-size:13px;padding-left:20px;margin:4px 0;">
+                    <li><code style="color:#4f7eff;">history_bars(stock, n, '1d', 'volume')</code> 返回的数组元素是整数（单位：股）。</li>
+                    <li>均量计算应取 <code style="color:#4f7eff;">vols[:-1].mean()</code>，排除当前未完成的成交量。</li>
+                </ul>
+            </div>
         </div>`;
 }
 

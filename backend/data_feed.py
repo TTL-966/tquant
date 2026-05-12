@@ -54,8 +54,8 @@ class DataFeed:
 
             # 将 DataFrame 转换为缓存格式
             dates = [self._format_date(d) for d in df['trade_date']]
-            values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2)]
-                      for o, c, l, h in zip(df['open'], df['close'], df['low'], df['high'])]
+            values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2), int(v)]
+                      for o, c, l, h, v in zip(df['open'], df['close'], df['low'], df['high'], df['volume'])]
             self._kline_cache[code_pure] = {"dates": dates, "values": values}
 
         cached = self._kline_cache.get(code_pure)
@@ -120,6 +120,6 @@ class DataFeed:
         lows = np.minimum(opens, closes) - np.random.rand(n) * 0.5
 
         date_strs = [d.strftime('%Y-%m-%d') for d in dates_all]
-        values = [[round(opens[i], 2), round(closes[i], 2), round(lows[i], 2), round(highs[i], 2)]
-                  for i in range(n)]
+        volumes = np.random.randint(100000, 500000, n)
+        values = [[round(opens[i],2), round(closes[i],2), round(lows[i],2), round(highs[i],2), int(volumes[i])] for i in range(n)]
         return json.dumps({"dates": date_strs, "values": values})
