@@ -3,6 +3,7 @@ import datetime
 import bisect
 import pandas as pd
 from backend.db import Database
+import math
 
 class DataFeed:
     _kline_cache = {}   # key: 纯代码(不带后缀)，value: {"dates": [...], "values": [[o,c,l,h], ...]}
@@ -44,6 +45,22 @@ class DataFeed:
         """获取K线数据 JSON，支持缓存，根据日期范围过滤，并支持限制行数"""
         code_pure = code.split('.')[0]
 
+        def safe_float(x):
+            try:
+                if x is None or (isinstance(x, float) and math.isnan(x)):
+                    return 0.0
+                return round(float(x), 2)
+            except (ValueError, TypeError):
+                return 0.0
+
+        def safe_int(x):
+            try:
+                if x is None or (isinstance(x, float) and math.isnan(x)):
+                    return 0
+                return int(float(x))
+            except (ValueError, TypeError):
+                return 0
+
         # 如果缓存中没有，则从数据库加载全量数据
         if code_pure not in self._kline_cache:
             df = self.db.get_kline(code, start_date=None, end_date=None, limit=0)  # 全量
@@ -54,7 +71,7 @@ class DataFeed:
 
             # 将 DataFrame 转换为缓存格式
             dates = [self._format_date(d) for d in df['trade_date']]
-            values = [[round(o, 2), round(c, 2), round(l, 2), round(h, 2), int(v)]
+            values = [[safe_float(o), safe_float(c), safe_float(l), safe_float(h), safe_int(v)]
                       for o, c, l, h, v in zip(df['open'], df['close'], df['low'], df['high'], df['volume'])]
             self._kline_cache[code_pure] = {"dates": dates, "values": values}
 

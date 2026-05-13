@@ -241,6 +241,13 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     chart.setOption(option);
     console.log("图表设置完成");
 
+    // 通知副图模块渲染成交量（通过全局函数注入，避免循环依赖）
+    setTimeout(function() {
+        if (window.renderVolumeSubChart && typeof window.renderVolumeSubChart === 'function') {
+            window.renderVolumeSubChart('volumeSubChart', dates, values, chart);
+        }
+    }, 50);
+
     // 创建悬停信号信息卡片（全局单例，右上角与图例同行）
     var signalCard = document.getElementById('signalInfoCard');
     if (!signalCard) {
@@ -424,6 +431,14 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             }]
         };
         chart.setOption(option, true);
+
+        // 通知副图模块渲染成交量（通过全局函数注入，避免循环依赖）
+        setTimeout(function() {
+            if (window.renderVolumeSubChart && typeof window.renderVolumeSubChart === 'function') {
+                window.renderVolumeSubChart('stockVolumeSubChart', dates, values, chart);
+            }
+        }, 50);
+
         setTimeout(function() { chart.resize(); }, 100);
     }, 10);
 }

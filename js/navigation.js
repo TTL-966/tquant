@@ -2,6 +2,7 @@ import { bridge } from './bridge.js';
 import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, currentKlineDates, currentKlineValues } from './kline.js';
 import { renderProfile } from './profile.js';
 import { renderStockKline, drawDetailCurve, formatStockDisplayHtml, drawEquityCurve, renderKlineWithSignals } from './chartRenderer.js';
+import { renderVolumeSubChart, destroyVolumeSubChart } from './subChartRenderer.js';
 import { bindDatePicker } from './datepicker.js';
 import { stockNameMap, tradeStockLibrary, backtestStrategies, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
@@ -75,6 +76,9 @@ export function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
     if (!container) return;
 
+    // 切换页面时清理旧副图实例
+    destroyVolumeSubChart();
+
     if (pageId === 'profile') {
         renderProfile();
     } else if (pageId === 'kchart') {
@@ -140,10 +144,14 @@ function renderKchartPage(container) {
                 <button id="refreshKlineBtn">刷新K线</button>
             </div>
             <div id="klineMainChart" class="kline-container"></div>
+            <div id="volumeSubChart" style="height:180px;width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
             <p style="margin-top:12px; color:#9aa9cc;">若无买卖点，请先在策略页运行回测并保存信号，再点击"加载策略信号"。</p>
         </div>`;
 
     setTimeout(function() {
+        // 挂载副图渲染函数到全局，供 chartRenderer.js 在 setOption 后回调
+        window.renderVolumeSubChart = renderVolumeSubChart;
+
         // 策略名称显示
         var nameSpan = document.getElementById('currentStrategyName');
         if (nameSpan) nameSpan.innerText = window.currentStrategyName || '无';
@@ -295,12 +303,16 @@ function renderStockPage(container) {
             </div>
             <div id="stockInfoArea" style="margin-bottom:12px; color:#9aa9cc;">请输入股票代码查询</div>
             <div id="stockKlineChart" style="height:400px; width:100%;"></div>
+            <div id="stockVolumeSubChart" style="height:140px;width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
             <div id="indicatorArea" style="margin-top:12px; padding:16px; background:#151c2c; border:1px solid #242a40; border-radius:16px; color:#9aa9cc; text-align:center;">
-                成交量 / KDJ 等指标区域（即将开放）
+                MACD / KDJ 等指标区域（即将开放）
             </div>
         </div>`;
 
     setTimeout(function() {
+        // 挂载副图渲染函数到全局，供 chartRenderer.js 在 setOption 后回调
+        window.renderVolumeSubChart = renderVolumeSubChart;
+
         var codeInput = document.getElementById('stockCodeInput');
         var searchBtn = document.getElementById('stockSearchBtn');
         var infoArea = document.getElementById('stockInfoArea');
