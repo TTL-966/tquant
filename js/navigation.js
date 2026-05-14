@@ -71,6 +71,44 @@ function calcMAHelper(values, period) {
     return ma;
 }
 
+// ---- 实时行情栏更新 ----
+function updatePriceBarName(name, code) {
+    var nameEl = document.getElementById('stockPriceBarName');
+    var codeEl = document.getElementById('stockPriceBarCode');
+    if (nameEl) nameEl.textContent = name || '--';
+    if (codeEl) codeEl.textContent = code || '--';
+}
+
+function updatePriceBar(data) {
+    var priceEl = document.getElementById('stockPriceBarPrice');
+    var changeEl = document.getElementById('stockPriceBarChange');
+    var changePctEl = document.getElementById('stockPriceBarChangePct');
+
+    if (!data || data.error) {
+        if (priceEl) { priceEl.textContent = '--'; priceEl.className = 'latest-price price-flat'; }
+        if (changeEl) { changeEl.textContent = '--'; changeEl.className = ''; }
+        if (changePctEl) { changePctEl.textContent = '--'; changePctEl.className = ''; }
+        return;
+    }
+
+    var change = data.change || 0;
+    var changePct = data.change_pct || 0;
+    var cls = change > 0 ? 'price-up' : (change < 0 ? 'price-down' : 'price-flat');
+
+    if (priceEl) {
+        priceEl.textContent = data.price != null ? data.price.toFixed(2) : '--';
+        priceEl.className = 'latest-price ' + cls;
+    }
+    if (changeEl) {
+        changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2);
+        changeEl.className = cls;
+    }
+    if (changePctEl) {
+        changePctEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+        changePctEl.className = cls;
+    }
+}
+
 // ========== 主路由 ==========
 export function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
@@ -301,6 +339,19 @@ function renderStockPage(container) {
                     <button id="stockIndustryBtn" style="background:#2a3a5a;">🏭 同行业股票</button>
                 </div>
             </div>
+            <div id="stockPriceBar" class="stock-price-bar">
+                <div class="stock-name-code">
+                    <span class="stock-name-large" id="stockPriceBarName">--</span>
+                    <span class="stock-code-small" id="stockPriceBarCode">--</span>
+                </div>
+                <div class="stock-price-info">
+                    <span class="latest-price" id="stockPriceBarPrice">--</span>
+                    <div class="change-row">
+                        <span id="stockPriceBarChange">--</span>
+                        <span id="stockPriceBarChangePct">--</span>
+                    </div>
+                </div>
+            </div>
             <div id="stockInfoArea" style="margin-bottom:12px; color:#9aa9cc;">请输入股票代码查询</div>
             <div id="stockKlineChart" style="height:400px; width:100%;"></div>
             <div id="stockVolumeSubChart" style="height:140px;width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
@@ -370,11 +421,16 @@ function renderStockPage(container) {
             if (codeInput) codeInput.value = formatStockNameOnly(code);
             fetchStockName(code, bridge).then(function(fetchedName) {
                 if (fetchedName) stockNameMap[code] = fetchedName;
+                var name = stockNameMap[code] || code;
                 if (infoArea) {
-                    var name = stockNameMap[code] || code;
                     infoArea.innerHTML = '<span style="color:#fff;font-weight:600;">' + name + '</span> <span style="color:#9aa9cc;">(' + code + ')</span>';
                 }
+                // 更新实时行情栏中的股票名称和代码
+                updatePriceBarName(name, code);
             });
+
+            // 预填实时行情栏中的股票代码
+            updatePriceBarName(formatStockNameOnly(code), code);
             // 获取行业信息
             if (bridge && industryLabel) {
                 bridge.get_industry(code).then(function(jsonStr) {
@@ -412,6 +468,15 @@ function renderStockPage(container) {
                 }).catch(function(err) {
                     var chartDom = document.getElementById('stockKlineChart');
                     if (chartDom) chartDom.innerHTML = '<div style="color:#ff6b6b;padding:20px;">加载失败: ' + err.message + '</div>';
+                });
+            }
+            // 获取实时行情
+            if (bridge) {
+                bridge.get_latest_price(code).then(function(jsonStr) {
+                    var data = JSON.parse(jsonStr);
+                    updatePriceBar(data);
+                }).catch(function() {
+                    updatePriceBar(null);
                 });
             }
         }

@@ -508,6 +508,59 @@
 		    box-sizing: border-box !important;
 		}
 
+
+        /* ---------- 个股详情页实时行情栏 ---------- */
+        .stock-price-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #151c2c;
+            border: 1px solid #242a40;
+            border-radius: 12px;
+            padding: 12px 18px;
+            margin-bottom: 14px;
+        }
+        .stock-price-bar .stock-name-code {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .stock-price-bar .stock-name-large {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .stock-price-bar .stock-code-small {
+            color: #9aa9cc;
+            font-size: 12px;
+        }
+        .stock-price-bar .stock-price-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .stock-price-bar .latest-price {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        .stock-price-bar .change-row {
+            display: flex;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .stock-price-bar .price-up {
+            color: #ef5350 !important;
+        }
+        .stock-price-bar .price-down {
+            color: #26a69a !important;
+        }
+        .stock-price-bar .price-flat {
+            color: #9aa9cc !important;
+        }
+
     </style>
 </head>
 <body>

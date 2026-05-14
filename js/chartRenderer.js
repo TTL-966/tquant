@@ -1,6 +1,9 @@
 // js/chartRenderer.js
 import { stockNameMap } from './stockData.js';
 
+// ---- 模块级均线缓存 ----
+var _stockMACache = null;
+
 // ---- 均线图例格式化辅助函数（去掉箭头，只显示数值）----
 function formatMaLegend(maArray, name) {
     var lastVal = null;
@@ -50,14 +53,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         return;
     }
 
-    var existingChart = echarts.getInstanceByDom(dom);
-    if (existingChart) {
-        existingChart.dispose();
-        console.log("已销毁旧图表实例");
+    var chart = echarts.getInstanceByDom(dom);
+    if (!chart) {
+        chart = echarts.init(dom);
     }
-
-    var chart = echarts.init(dom);
-    console.log("ECharts 实例创建成功");
 
     var buySeriesData = [];
     var sellSeriesData = [];
@@ -97,18 +96,24 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         }
     }
 
+    var candleSeries = {
+        name: 'K线',
+        type: 'candlestick',
+        data: values,
+        itemStyle: {
+            color: '#ef5350',
+            color0: '#26a69a',
+            borderColor: '#ef5350',
+            borderColor0: '#26a69a'
+        }
+    };
+    if (values.length > 1000) {
+        candleSeries.progressive = 200;
+        candleSeries.progressiveThreshold = 1000;
+    }
+
     var series = [
-        {
-            name: 'K线',
-            type: 'candlestick',
-            data: values,
-            itemStyle: {
-                color: '#ef5350',
-                color0: '#26a69a',
-                borderColor: '#ef5350',
-                borderColor0: '#26a69a'
-            }
-        },
+        candleSeries,
         {
             name: '买入点',
             type: 'scatter',
@@ -195,9 +200,25 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
 
     var option = {
         backgroundColor: 'transparent',
+        animation: false,
         tooltip: {
             trigger: 'axis',
-            axisPointer: { type: 'shadow' }
+            axisPointer: {
+                type: 'cross',
+                crossStyle: { color: 'rgba(255,255,255,0.2)' },
+                lineStyle: { color: 'rgba(255,255,255,0.3)', width: 1, type: 'dashed' },
+                label: {
+                    backgroundColor: '#4f7eff',
+                    color: '#ffffff',
+                    position: 'bottom',
+                    formatter: function(params) {
+                        if (params && params.value) {
+                            return params.value;
+                        }
+                        return '';
+                    }
+                }
+            }
         },
         xAxis: {
             data: dates,
@@ -220,11 +241,22 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         legend: {
             data: legendData,
             textStyle: { color: '#ffffff' },
-            left: 'left'
+            type: 'scroll',
+            orient: 'horizontal',
+            left: 'left',
+            top: 0,
+            itemWidth: 100,
+            itemHeight: 20,
+            pageIconColor: '#4f7eff',
+            pageTextStyle: { color: '#ffffff' }
         },
         grid: {
             containLabel: true,
-            backgroundColor: '#0e1220'
+            backgroundColor: '#0e1220',
+            left: '10%',
+            right: '8%',
+            top:60
+
         },
         dataZoom: [
             {
@@ -248,35 +280,48 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         }
     }, 50);
 
-    // 创建悬停信号信息卡片（全局单例，右上角与图例同行）
+    // 信号信息卡片（固定左下角）
     var signalCard = document.getElementById('signalInfoCard');
     if (!signalCard) {
         signalCard = document.createElement('div');
         signalCard.id = 'signalInfoCard';
-        signalCard.style.cssText = 'position:absolute; top:220px; right:20px; background:rgba(15,18,32,0.9); border:0px solid rgba(0,0,0,0); border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; display:none; pointer-events:none; line-height:1.6;';
-        dom.parentElement.style.position = 'relative';
-        dom.parentElement.appendChild(signalCard);
+        signalCard.style.cssText = 'display:none; position:fixed; left:10px; bottom:10px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:9999; pointer-events:none; line-height:1.6;';
+        document.body.appendChild(signalCard);
     }
 
-    // 鼠标悬停有信号K线时显示卡片
     chart.on('mousemove', function(params) {
         if (!params || params.dataIndex === undefined) {
             signalCard.style.display = 'none';
-            signalCard.style.border = '0px solid rgba(0,0,0,0)';
             return;
         }
         var date = dates[params.dataIndex];
         if (!date) {
             signalCard.style.display = 'none';
-            signalCard.style.border = '0px solid rgba(0,0,0,0)';
             return;
         }
+
+        var dataIdx = params.dataIndex;
+        if (dataIdx !== undefined) {
+            setTimeout(function() {
+                var volContainer = document.getElementById('volumeSubChart');
+                if (volContainer && window._volumeChartInstances && window._volumeChartInstances['volumeSubChart']) {
+                    var volChart = window._volumeChartInstances['volumeSubChart'];
+                    if (volChart && !volChart.isDisposed()) {
+                        volChart.dispatchAction({
+                            type: 'showTip',
+                            seriesIndex: 0,
+                            dataIndex: dataIdx
+                        });
+                    }
+                }
+            }, 5);
+        }
+
         var buyHere = buyPts ? buyPts.filter(function(b) { return b.date === date; }) : [];
         var sellHere = sellPts ? sellPts.filter(function(s) { return s.date === date; }) : [];
 
         if (buyHere.length === 0 && sellHere.length === 0) {
             signalCard.style.display = 'none';
-            signalCard.style.border = '0px solid rgba(0,0,0,0)';
             return;
         }
 
@@ -290,13 +335,11 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             lines.push('<span style="color:#52c41a;">S ' + (s.price != null ? s.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
         });
         signalCard.innerHTML = lines.join('<br>');
-        signalCard.style.display = 'block';
-        signalCard.style.border = '1px solid #4f7eff';
+        signalCard.style.display = '';
     });
 
     chart.on('mouseout', function() {
         signalCard.style.display = 'none';
-        signalCard.style.border = '0px solid rgba(0,0,0,0)';
     });
 }
 
@@ -319,9 +362,6 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         container.style.height = "460px";
         container.style.minHeight = "460px";
     }
-
-    var oldChart = echarts.getInstanceByDom(container);
-    if (oldChart) oldChart.dispose();
 
     // 延迟10ms执行，使UI保持响应
     setTimeout(function() {
@@ -351,23 +391,44 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             return ma;
         }
 
-        var ma5Data = calcMA(values, 5);
-        var ma10Data = calcMA(values, 10);
-        var ma20Data = calcMA(values, 20);
-        var ma30Data = calcMA(values, 30);
+        var ma5Data, ma10Data, ma20Data, ma30Data;
+        if (_stockMACache && _stockMACache.datesRef === dates) {
+            ma5Data = _stockMACache.ma5;
+            ma10Data = _stockMACache.ma10;
+            ma20Data = _stockMACache.ma20;
+            ma30Data = _stockMACache.ma30;
+        } else {
+            ma5Data = calcMA(values, 5);
+            ma10Data = calcMA(values, 10);
+            ma20Data = calcMA(values, 20);
+            ma30Data = calcMA(values, 30);
+            _stockMACache = {
+                datesRef: dates,
+                ma5: ma5Data,
+                ma10: ma10Data,
+                ma20: ma20Data,
+                ma30: ma30Data
+            };
+        }
+
+        var candleSeries = {
+            name: 'K线',
+            type: 'candlestick',
+            data: fixedValues,
+            itemStyle: {
+                color: '#ef5350',
+                color0: '#26a69a',
+                borderColor: '#ef5350',
+                borderColor0: '#26a69a'
+            }
+        };
+        if (values.length > 1000) {
+            candleSeries.progressive = 200;
+            candleSeries.progressiveThreshold = 1000;
+        }
 
         var series = [
-            {
-                name: 'K线',
-                type: 'candlestick',
-                data: fixedValues,
-                itemStyle: {
-                    color: '#ef5350',
-                    color0: '#26a69a',
-                    borderColor: '#ef5350',
-                    borderColor0: '#26a69a'
-                }
-            },
+            candleSeries,
             {
                 name: 'MA5',
                 type: 'line',
@@ -399,10 +460,31 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             }
         ];
 
-        var chart = echarts.init(container);
+        var chart = echarts.getInstanceByDom(container);
+        if (!chart) {
+            chart = echarts.init(container);
+        }
         var option = {
             backgroundColor: 'transparent',
-            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            animation: false,
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'cross',
+                    crossStyle: { color: 'rgba(255,255,255,0.2)' },
+                    lineStyle: { color: 'rgba(255,255,255,0.3)', width: 1, type: 'dashed' },
+                    label: {
+                        backgroundColor: '#4f7eff',
+                        color: '#ffffff',
+                        formatter: function(params) {
+                            if (params && params.value) {
+                                return params.value;
+                            }
+                            return '';
+                        }
+                    }
+                }
+            },
             xAxis: {
                 type: 'category',
                 data: dates,
@@ -418,9 +500,16 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             legend: {
                 data: ['K线', 'MA5', 'MA10', 'MA20', 'MA30'],
                 textStyle: { color: '#ffffff' },
-                left: 'left'
+                type: 'scroll',
+                orient: 'horizontal',
+                left: 'left',
+                top: 0,
+                itemWidth: 100,
+                itemHeight: 20,
+                pageIconColor: '#4f7eff',
+                pageTextStyle: { color: '#ffffff' }
             },
-            grid: { containLabel: true, backgroundColor: '#0e1220' },
+            grid: { containLabel: true, backgroundColor: '#0e1220' ,left: '10%',right: '8%',top:30},
             dataZoom: [{
                 type: 'inside',
                 start: 80,
@@ -438,6 +527,27 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                 window.renderVolumeSubChart('stockVolumeSubChart', dates, values, chart);
             }
         }, 50);
+
+        chart.off('mousemove');  // 避免重复绑定
+        chart.on('mousemove', function(params) {
+            if (!params || params.dataIndex === undefined) return;
+            var dataIdx = params.dataIndex;
+            if (dataIdx !== undefined) {
+                setTimeout(function() {
+                    var volContainer = document.getElementById('stockVolumeSubChart');
+                    if (volContainer && window._volumeChartInstances && window._volumeChartInstances['stockVolumeSubChart']) {
+                        var volChart = window._volumeChartInstances['stockVolumeSubChart'];
+                        if (volChart && !volChart.isDisposed()) {
+                            volChart.dispatchAction({
+                                type: 'showTip',
+                                seriesIndex: 0,
+                                dataIndex: dataIdx
+                            });
+                        }
+                    }
+                }, 5);
+            }
+        })
 
         setTimeout(function() { chart.resize(); }, 100);
     }, 10);
@@ -522,7 +632,7 @@ export function drawEquityCurve(containerId, equityCurve, retry) {
                 }
             }
         }],
-        grid: { containLabel: true, backgroundColor: '#0e1220' }
+        grid: { containLabel: true, backgroundColor: '#0e1220'}
     };
     chart.setOption(option);
 }
