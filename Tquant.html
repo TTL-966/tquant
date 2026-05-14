@@ -148,6 +148,61 @@
             margin: 10px 0;
         }
 
+        /* ---------- kchart 页面自适应布局（K线+成交量填满视口，无需滚动）---------- */
+        #kchartCard {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 170px);
+            overflow: hidden;
+            margin-bottom: 0;
+        }
+        #kchartCard .card-title,
+        #kchartCard #currentStrategyDisplay,
+        #kchartCard .legend-sign,
+        #kchartCard .metric-row,
+        #kchartCard .kchart-bottom-text,
+        #kchartCard > div[style] {
+            flex-shrink: 0;
+        }
+        #kchartCard #klineMainChart {
+            flex: 3;
+            height: auto !important;
+            min-height: 0;
+            margin: 4px 0 2px 0;
+            width: 100% !important;
+        }
+        #kchartCard #volumeSubChart {
+            flex: 1;
+            height: auto !important;
+            min-height: 0;
+        }
+
+        /* ---------- stock 页面自适应布局（K线+成交量填满视口，无需滚动）---------- */
+        #stockCard {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 170px);
+            overflow: hidden;
+            margin-bottom: 0;
+        }
+        #stockCard .card-title,
+        #stockCard .stock-search-row,
+        #stockCard #stockPriceBar,
+        #stockCard #stockInfoArea,
+        #stockCard #indicatorArea {
+            flex-shrink: 0;
+        }
+        #stockCard #stockKlineChart {
+            flex: 3;
+            height: auto !important;
+            min-height: 0;
+        }
+        #stockCard #stockVolumeSubChart {
+            flex: 1;
+            height: auto !important;
+            min-height: 0;
+        }
+
         /* ------------------- 新增规则 start ------------------- */
         #stockKlineChart {
             width: 100% !important;

@@ -163,7 +163,7 @@ function renderKchartPage(container) {
     var periodText = window.strategyStartDate ? (backtestStart + ' ~ ' + backtestEnd) : '未设置';
 
     container.innerHTML = `
-        <div class="card">
+        <div class="card" id="kchartCard">
             <div class="card-title">📈 买卖点成交图 (策略回测生成买卖点)</div>
             <div id="currentStrategyDisplay" style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
                 <span style="color:#9aa9cc;">📋 当前回测策略：</span>
@@ -182,8 +182,8 @@ function renderKchartPage(container) {
                 <button id="refreshKlineBtn">刷新K线</button>
             </div>
             <div id="klineMainChart" class="kline-container"></div>
-            <div id="volumeSubChart" style="height:180px;width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
-            <p style="margin-top:12px; color:#9aa9cc;">若无买卖点，请先在策略页运行回测并保存信号，再点击"加载策略信号"。</p>
+            <div id="volumeSubChart" style="width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
+            <p class="kchart-bottom-text" style="margin-top:6px; color:#9aa9cc;">若无买卖点，请先在策略页运行回测并保存信号，再点击"加载策略信号"。</p>
         </div>`;
 
     setTimeout(function() {
@@ -326,7 +326,7 @@ function renderKchartPage(container) {
 // ========== 个股详情页 ==========
 function renderStockPage(container) {
     container.innerHTML = `
-        <div class="card">
+        <div class="card" id="stockCard">
             <div class="card-title">📉 个股详情</div>
             <div class="stock-search-row" style="display:flex; justify-content:space-between; align-items:center;">
                 <div style="display:flex; gap:10px; align-items:center; flex:1; position:relative;">
@@ -353,8 +353,8 @@ function renderStockPage(container) {
                 </div>
             </div>
             <div id="stockInfoArea" style="margin-bottom:12px; color:#9aa9cc;">请输入股票代码查询</div>
-            <div id="stockKlineChart" style="height:400px; width:100%;"></div>
-            <div id="stockVolumeSubChart" style="height:140px;width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
+            <div id="stockKlineChart" style="width:100%;"></div>
+            <div id="stockVolumeSubChart" style="width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
             <div id="indicatorArea" style="margin-top:12px; padding:16px; background:#151c2c; border:1px solid #242a40; border-radius:16px; color:#9aa9cc; text-align:center;">
                 MACD / KDJ 等指标区域（即将开放）
             </div>
