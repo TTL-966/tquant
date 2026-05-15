@@ -848,19 +848,34 @@ function renderBacktestDetail(container, result) {
     var strategyName = window.currentStrategyName || '未命名策略';
     var periodStart = window.strategyStartDate || '--';
     var periodEnd = window.strategyEndDate || '--';
+
+    // 检测是否为多股组合回测
+    var stockCodes = {};
+    if (result.signals && result.signals.length > 0) {
+        result.signals.forEach(function(s) {
+            if (s.code) stockCodes[s.code] = true;
+        });
+    }
+    var uniqueStocks = Object.keys(stockCodes);
+    var isMultiStock = uniqueStocks.length > 1;
+    var multiBadge = isMultiStock
+        ? '<span style="background:#4f7eff;color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;margin-left:8px;">组合回测 ' + uniqueStocks.length + '只</span>'
+        : '';
+
     container.innerHTML = `
         <div class="card">
-            <div class="card-title">📊 策略回测报告</div>
-            <div style="display:flex;gap:24px;margin-bottom:12px;color:#9aa9cc;font-size:13px;">
+            <div class="card-title">📊 策略回测报告${multiBadge}</div>
+            <div style="display:flex;gap:24px;margin-bottom:12px;color:#9aa9cc;font-size:13px;flex-wrap:wrap;">
                 <span>策略名称：<span style="color:#fff;font-weight:600;">${escapeHtml(strategyName)}</span></span>
                 <span>回测区间：<span style="color:#4f7eff;">${escapeHtml(periodStart)} ~ ${escapeHtml(periodEnd)}</span></span>
+                ${isMultiStock ? '<span>股票数量：<span style="color:#4f7eff;">' + uniqueStocks.length + ' 只</span></span>' : ''}
             </div>
             <div id="detailCurveContainer" style="height: 280px; width:100%; margin-bottom: 16px;"></div>
             <div id="metricCards" style="margin-bottom:16px;">
                 ${buildMetricCards(result.metrics || {})}
             </div>
             <div style="margin-top: 20px;">
-                <h4 style="color:#ffffff;">📋 交易信号列表</h4>
+                <h4 style="color:#ffffff;">📋 交易信号列表${isMultiStock ? ' <span style="color:#9aa9cc;font-size:12px;">（点击股票可跳转K线图）</span>' : ''}</h4>
                 <div class="scrollable-table">
                     <table>
                         <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>手数</th></tr></thead>

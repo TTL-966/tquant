@@ -285,8 +285,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     if (!signalCard) {
         signalCard = document.createElement('div');
         signalCard.id = 'signalInfoCard';
-        signalCard.style.cssText = 'display:none; position:fixed; left:10px; bottom:10px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:9999; pointer-events:none; line-height:1.6;';
-        document.body.appendChild(signalCard);
+        dom.style.position = 'relative';
+        signalCard.style.cssText = 'display:none; position:absolute; top:10px; right:10px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; pointer-events:none; line-height:1.6;';
+        dom.parentElement.style.position = 'relative';  // 已有
+        dom.appendChild(signalCard);
     }
 
     chart.on('mousemove', function(params) {

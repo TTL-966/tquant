@@ -10,6 +10,7 @@ from backend.trade_simulation import TradeSimulation
 from backend.db import Database
 from backend.strategy_storage import StrategyStorage
 from backend.backtest_executor import BacktestExecutor   # 新增导入
+from backend.multi_backtest_executor import MultiBacktestExecutor   # 多股回测
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
@@ -20,6 +21,7 @@ class WebBridge(QObject):
         self.db = Database()
         self.strategy_storage = StrategyStorage()
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
+        self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
 
     @Slot(result=str)
     def ping(self):
@@ -174,6 +176,68 @@ class WebBridge(QObject):
                 "equity_curve": result.get("equity_curve", []),
                 "metrics": result.get("metrics", {}),
                 "logs": result.get("logs", [])
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    # ---- 多股组合回测槽 ----
+    @Slot(str, result=str)
+    def run_multi_backtest(self, params_json):
+        """
+        接收 JSON 字符串，格式:
+        {
+            "code": "...",              # 策略代码（含 STOCK_CODE_PLACEHOLDER 占位符）
+            "stocks": ["000001","000858","300750"],
+            "start": "2020-01-01",
+            "end": "2025-12-31",
+            "cash": 1000000,
+            "slippage": "close"
+        }
+        返回 JSON:
+        {
+            "success": true,
+            "signals": [{"date":"...","code":"000001","type":"buy","price":12.35,"shares":800}, ...],
+            "equity_curve": [{"date":"...","value":1000000}, ...],
+            "metrics": {...},
+            "logs": [...],
+            "errors": []
+        }
+        """
+        try:
+            params = json.loads(params_json)
+            user_code = params.get("code", "")
+            stocks = params.get("stocks", [])
+            start = params.get("start", "2010-01-01")
+            end = params.get("end", "2026-12-31")
+            cash = params.get("cash", 1000000)
+            slippage = params.get("slippage", "close")
+
+            if not user_code:
+                return json.dumps({"success": False, "error": "策略代码为空"})
+            if not stocks or len(stocks) == 0:
+                return json.dumps({"success": False, "error": "股票列表为空"})
+
+            # 去重并清理股票代码
+            stocks = list(dict.fromkeys([s.split('.')[0] for s in stocks]))
+
+            result = self.multi_backtest_executor.run(
+                user_code, stocks, start, end,
+                initial_cash=cash, slippage=slippage
+            )
+
+            print(f"[Bridge] 多股回测完成: {len(stocks)}只股票, 信号{len(result.get('signals',[]))}个", flush=True)
+
+            if not result.get("success"):
+                return json.dumps({"success": False, "error": result.get("error", "回测失败")})
+
+            return json.dumps({
+                "success": True,
+                "signals": result.get("signals", []),
+                "equity_curve": result.get("equity_curve", []),
+                "metrics": result.get("metrics", {}),
+                "logs": result.get("logs", []),
+                "errors": result.get("errors", [])
             })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)

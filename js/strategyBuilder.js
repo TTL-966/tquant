@@ -803,53 +803,8 @@ function showBacktestModal() {
         window._slippageMode = slippageType;
 
         var startTime = Date.now();
-        var promises = codes.map(function(stock) {
-            var cleanCode = userCode.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
-            var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType };
-            return bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
-                var res = JSON.parse(jsonStr);
-                if (!res.success) {
-                    addLog('error', stock + ' 回测失败: ' + (res.error || '未知'));
-                    return null;
-                }
-                var sigCount = (res.signals && res.signals.length) || 0;
-                addLog('success', stock + ' 回测完成，信号 ' + sigCount + ' 个');
-                if (res.logs && res.logs.length > 0) {
-                    res.logs.slice(-10).forEach(function(l) {
-                        if (l.indexOf('[WARN]') !== -1) {
-                            addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
-                        } else if (l.indexOf('[ERROR]') !== -1) {
-                            addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
-                        } else {
-                            addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
-                        }
-                    });
-                }
-                return res;
-            }).catch(function(err) {
-                addLog('error', stock + ' 请求失败: ' + err.message);
-                return null;
-            });
-        });
 
-        Promise.all(promises).then(function(results) {
-            var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-            // 多股票回测警告：资金独立不共享，合并权益曲线无意义
-            if (codes.length > 1) {
-                showToast('检测到多股票回测，结果按独立资金计算，不代表真实组合收益。建议单只股票回测。', true, 5000);
-                addLog('warn', '多股票回测：资金不共享，权益曲线为各只独立相加，收益率被放大。建议单只股票回测。');
-                // 只保留第一个有效结果，避免误导性合并
-                var firstValid = null;
-                for (var ri = 0; ri < results.length; ri++) {
-                    if (results[ri] && results[ri].success !== false) {
-                        firstValid = results[ri];
-                        break;
-                    }
-                }
-                results = firstValid ? [firstValid] : [];
-            }
-
+        function processSingleStockResults(results, elapsed) {
             var mergedSignals = [];
             var equityMap = {};
             var positionMap = {};
@@ -876,7 +831,6 @@ function showBacktestModal() {
                 }
             });
 
-            // 批量加载缺失的股票名称
             var unknownCodes = [];
             var seenCodes = {};
             mergedSignals.forEach(function(s) {
@@ -907,7 +861,7 @@ function showBacktestModal() {
                 posEntries.sort(function(a, b) { return b.value - a.value; });
                 window.topPositionCodes = posEntries.slice(0, 6).map(function(e) { return e.code; });
 
-                addLog('success', '✅ 全部回测完成，总信号 ' + mergedSignals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                addLog('success', '✅ 回测完成，总信号 ' + mergedSignals.length + ' 个，耗时 ' + elapsed + ' 秒');
                 if (mergedSignals.length === 0) {
                     addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
                 }
@@ -927,14 +881,86 @@ function showBacktestModal() {
             } else {
                 buildFinalResult();
             }
-        }).catch(function(err) {
+        }
+
+        function finalizeError(err) {
             addLog('error', '回测整体失败: ' + err.message);
             window._lastBacktestError = err.message;
             statusDiv.textContent = '回测整体失败: ' + err.message;
             statusDiv.style.color = '#ff4c4c';
             runBtn.disabled = false;
             runBtn.textContent = '开始回测';
-        });
+        }
+
+        if (codes.length > 1) {
+            // ---- 多股组合回测：共享资金池 ----
+            addLog('info', '🚀 启动多股组合回测（共享资金池），共 ' + codes.length + ' 只股票');
+            // 发送原始代码（含 STOCK_CODE_PLACEHOLDER），后端逐个替换
+            var multiParams = { code: userCode, stocks: codes, start: start, end: end, cash: cashVal, slippage: slippageType };
+            bridge.run_multi_backtest(JSON.stringify(multiParams)).then(function(jsonStr) {
+                var res = JSON.parse(jsonStr);
+                var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                if (!res.success) {
+                    addLog('error', '多股回测失败: ' + (res.error || '未知错误'));
+                    finalizeError(new Error(res.error || '未知错误'));
+                    return;
+                }
+                if (res.logs && res.logs.length > 0) {
+                    res.logs.slice(-30).forEach(function(l) {
+                        if (l.indexOf('[WARN]') !== -1) {
+                            addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
+                        } else if (l.indexOf('[ERROR]') !== -1) {
+                            addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
+                        } else {
+                            addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+                        }
+                    });
+                }
+                // 模拟单股结果格式，复用现有合并逻辑
+                var equityCurve = res.equity_curve || [];
+                var signals = res.signals || [];
+                var metrics = res.metrics || {};
+                var wrappedResults = [{
+                    success: true,
+                    signals: signals,
+                    equity_curve: equityCurve,
+                    metrics: metrics
+                }];
+                processSingleStockResults(wrappedResults, elapsed);
+            }).catch(function(err) {
+                finalizeError(err);
+            });
+        } else {
+            // ---- 单股回测：使用原有接口 ----
+            var stock = codes[0];
+            var cleanCode = userCode.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
+            var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType };
+            bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
+                var res = JSON.parse(jsonStr);
+                var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                if (!res.success) {
+                    addLog('error', stock + ' 回测失败: ' + (res.error || '未知'));
+                    finalizeError(new Error(res.error || '未知错误'));
+                    return;
+                }
+                var sigCount = (res.signals && res.signals.length) || 0;
+                addLog('success', stock + ' 回测完成，信号 ' + sigCount + ' 个');
+                if (res.logs && res.logs.length > 0) {
+                    res.logs.slice(-10).forEach(function(l) {
+                        if (l.indexOf('[WARN]') !== -1) {
+                            addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
+                        } else if (l.indexOf('[ERROR]') !== -1) {
+                            addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
+                        } else {
+                            addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+                        }
+                    });
+                }
+                processSingleStockResults([res], elapsed);
+            }).catch(function(err) {
+                finalizeError(err);
+            });
+        }
     };
 
     body.appendChild(dateInfo);
