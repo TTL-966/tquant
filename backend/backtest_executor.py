@@ -258,6 +258,31 @@ class BacktestExecutor:
             df = pd.DataFrame(values, columns=['open', 'close', 'low', 'high', 'volume'])
             df.index = pd.to_datetime(dates)
             df.index.name = 'date'
+
+            # ---- 检查股票上市/退市状态，调整有效回测区间 ----
+            db = getattr(self.data_source, 'db', None)
+            if db is not None:
+                status = db.get_stock_status(stock_code)
+                list_date = pd.to_datetime(status['listed'])
+                delist_date = pd.to_datetime(status['delisted']) if status['delisted'] else None
+
+                actual_start = max(pd.to_datetime(start_date), list_date)
+                actual_end = min(pd.to_datetime(end_date), delist_date) if delist_date else pd.to_datetime(end_date)
+
+                if actual_start >= actual_end:
+                    return self._error_result(
+                        f"股票 {stock_code} 无有效交易日（上市:{status['listed']}, "
+                        f"退市:{status.get('delisted')}），回测区间 {start_date}~{end_date}"
+                    )
+
+                df = df[(df.index >= actual_start) & (df.index <= actual_end)]
+                if len(df) < 2:
+                    return self._error_result(f"股票 {stock_code} 有效交易日不足（{len(df)}天）")
+                self.logs.append(
+                    f"[INFO] 有效区间: {actual_start.strftime('%Y-%m-%d')} ~ "
+                    f"{actual_end.strftime('%Y-%m-%d')}, {len(df)}根K线"
+                )
+
             self.df = df
         except Exception as e:
             return self._error_result(f"获取K线数据失败: {str(e)}")

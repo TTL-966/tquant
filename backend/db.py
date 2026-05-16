@@ -198,6 +198,50 @@ class Database:
             pass
         return code
 
+    # ---------- 股票状态查询 ----------
+    def get_stock_status(self, code):
+        """根据股票代码（纯数字）获取上市日期和退市日期。
+
+        返回字典: {'listed': 'YYYY-MM-DD', 'delisted': 'YYYY-MM-DD' or None}
+        若数据库不可用或缺少相关字段，返回默认值（上市 1900-01-01，未退市）。
+        """
+        if self.engine is None:
+            return {'listed': '1900-01-01', 'delisted': None}
+
+        code_str = str(code).zfill(6)
+        suffix = self._get_stock_suffix(code_str)
+        ts_code = f"{code_str}{suffix}"
+
+        def _format_date(val):
+            if val is None:
+                return None
+            s = str(val).strip()
+            if len(s) == 8 and s.isdigit():
+                return f"{s[:4]}-{s[4:6]}-{s[6:]}"
+            if len(s) == 10 and s[4] == '-' and s[7] == '-':
+                return s
+            return s
+
+        try:
+            sql = text("""
+                SELECT list_date, delist_date FROM stock_basic
+                WHERE ts_code = :ts_code
+                LIMIT 1
+            """)
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, {"ts_code": ts_code}).fetchall()
+            if rows:
+                raw_list = rows[0][0]
+                raw_delist = rows[0][1] if len(rows[0]) > 1 else None
+                return {
+                    'listed': _format_date(raw_list) if raw_list else '1900-01-01',
+                    'delisted': _format_date(raw_delist),
+                }
+            return {'listed': '1900-01-01', 'delisted': None}
+        except Exception:
+            # stock_basic 表可能不存在或缺少字段，返回默认值
+            return {'listed': '1900-01-01', 'delisted': None}
+
     # ---------- 新增行业相关方法 ----------
     def get_industry_by_code(self, code):
         """根据股票代码（纯数字）查询行业名称"""
