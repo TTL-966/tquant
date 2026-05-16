@@ -9,6 +9,7 @@ import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, lo
 import { renderStrategyPage } from './strategyBuilder.js';
 import { renderCodeEditorPage } from './codeEditor.js';
 import { renderTroubleshootPage } from './troubleshoot.js';
+import { CARD_TYPE_META } from './strategyTemplates.js';
 
 var currentStockCode = "000001";
 
@@ -569,175 +570,192 @@ function renderHistoryPage(container) {
 
 // ========== API文档页 ==========
 function renderApiPage(container) {
-    container.innerHTML = `
-        <div class="card">
-            <div class="card-title">📘 策略代码编写 API 参考</div>
-            <p style="color:#9aa9cc; margin-bottom:16px;">本指南教您如何在"策略代码"编辑器中编写自定义回测策略。引擎提供简洁的 API，让您专注于交易逻辑。</p>
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
-            <h4 style="color:#4f7eff; margin-top:24px;">🏗️ 策略基础结构</h4>
-            <p style="color:#9aa9cc;">一个完整的策略必须包含两个函数：</p>
-            <div class="code-area" style="margin-bottom:12px;">
-def initialize(context):
-    # 初始化参数、设置全局变量
-    pass
+    // ---- Build accordion panel data ----
+    var panels = [
+        {
+            id: 'basics',
+            icon: '🏗️',
+            title: '策略基础结构',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">一个完整的策略必须包含两个函数：<code style="color:#4f7eff;">initialize</code> 在回测开始时执行一次，<code style="color:#4f7eff;">handle_bar</code> 每根日K线调用一次。</p>' +
+                '<pre class="code-area">def initialize(context):\n    # 初始化参数、设置全局变量\n    pass\n\ndef handle_bar(context, bar_dict):\n    # 每根K线都会调用一次，在这里编写交易逻辑\n    pass</pre>'
+        },
+        {
+            id: 'bar_dict',
+            icon: '📊',
+            title: '当前K线数据：bar_dict',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">在 <code style="color:#4f7eff;">handle_bar</code> 中通过 bar_dict 字典获取当前日行情。</p>' +
+                '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:4px 8px;">字段</th><th style="text-align:left;padding:4px 8px;">含义</th><th style="text-align:left;padding:4px 8px;">类型</th></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">bar_dict[\'open\']</td><td style="padding:4px 8px;">开盘价</td><td style="padding:4px 8px;">float</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">bar_dict[\'high\']</td><td style="padding:4px 8px;">最高价</td><td style="padding:4px 8px;">float</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">bar_dict[\'low\']</td><td style="padding:4px 8px;">最低价</td><td style="padding:4px 8px;">float</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">bar_dict[\'close\']</td><td style="padding:4px 8px;">收盘价</td><td style="padding:4px 8px;">float</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">bar_dict[\'volume\']</td><td style="padding:4px 8px;">成交量（股）</td><td style="padding:4px 8px;">int</td></tr>' +
+                '</table>'
+        },
+        {
+            id: 'history_bars',
+            icon: '📦',
+            title: '历史数据：history_bars',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">获取股票历史K线数据，返回 numpy array。</p>' +
+                '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:4px 8px;">参数</th><th style="text-align:left;padding:4px 8px;">说明</th></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">security</td><td style="padding:4px 8px;">股票代码，如 "000001"</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">count</td><td style="padding:4px 8px;">获取K线数量</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">unit</td><td style="padding:4px 8px;">周期，仅支持 \'1d\'</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">field</td><td style="padding:4px 8px;">字段：\'open\' / \'close\' / \'high\' / \'low\' / \'volume\'</td></tr>' +
+                '</table>' +
+                '<pre class="code-area">closes = history_bars("000001", 20, \'1d\', \'close\')\n# → numpy array [10.2, 10.5, 10.3, ...]\nvols  = history_bars("000001", 20, \'1d\', \'volume\')</pre>'
+        },
+        {
+            id: 'order',
+            icon: '💊',
+            title: '下单函数与成交价模式',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">调整股票仓位，资金管理由引擎自动处理。</p>' +
+                '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:4px 8px;">函数</th><th style="text-align:left;padding:4px 8px;">作用</th></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">order_target_percent(stock, pct)</td><td style="padding:4px 8px;">目标仓位比例（0~1），推荐使用</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;">order_target_value(stock, val)</td><td style="padding:4px 8px;">目标持仓市值（元）</td></tr>' +
+                '</table>' +
+                '<pre class="code-area">order_target_percent("000001", 1.0)   # 全仓买入\norder_target_percent("000001", 0.5)   # 半仓\norder_target_percent("000001", 0)     # 清仓</pre>' +
+                '<p style="color:#9aa9cc;font-size:12px;">📌 最小交易单位为100股（1手），不足1手的订单会被舍去。</p>' +
+                '<hr style="border-color:#323d5a;margin:10px 0;">' +
+                '<p style="color:#fff;font-weight:600;margin-bottom:4px;">🎯 成交价模式说明</p>' +
+                '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:2px 8px;">模式</th><th style="text-align:left;padding:2px 8px;">前端选项</th><th style="text-align:left;padding:2px 8px;">说明</th></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4cff4c;">收盘价成交</td><td style="padding:4px 8px;">收盘价成交（回测默认）</td><td style="padding:4px 8px;">使用当前bar收盘价作为成交价。日线回测中，收盘价即当日最终成交价，无未来数据问题。</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#f2c94c;">次日开盘价成交</td><td style="padding:4px 8px;">次日开盘价成交</td><td style="padding:4px 8px;">使用下一个交易日的开盘价成交。模拟信号产生当天无法以收盘价成交、需次日开盘执行的延迟场景。</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#9aa9cc;">半价差偏移</td><td style="padding:4px 8px;">半价差偏移（仅买卖点标记）</td><td style="padding:4px 8px;">仅影响K线图上买卖点的标记位置（偏移到K线中位），实际回测仍使用收盘价成交。</td></tr>' +
+                '</table>' +
+                '<p style="color:#9aa9cc;font-size:12px;">💡 回测用当前bar收盘价成交；如要模拟开盘抢单或延迟成交，选择"次日开盘价成交"。</p>'
+        },
+        {
+            id: 'log',
+            icon: '📝',
+            title: '日志输出：log',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">支持多级别日志，输出显示在前端回测日志区域。</p>' +
+                '<pre class="code-area">log.info("买入信号触发")\nlog.error("数据不足")\nlog.warn("注意：仓位已达上限")</pre>'
+        },
+        {
+            id: 'context',
+            icon: '⚙️',
+            title: '全局存储：context',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">context 是全局命名空间对象，在 initialize 中设置参数，在 handle_bar 中读取。</p>' +
+                '<pre class="code-area">def initialize(context):\n    context.my_param = 20\n    context.stock = "000001"\n\ndef handle_bar(context, bar_dict):\n    period = context.my_param\n    stock  = context.stock</pre>'
+        },
+        {
+            id: 'example',
+            icon: '🧪',
+            title: '完整示例：双均线金叉买入策略',
+            body: '<pre class="code-area">import numpy as np\n\ndef initialize(context):\n    context.fast = 5\n    context.slow = 20\n\ndef handle_bar(context, bar_dict):\n    stock = "STOCK_CODE_PLACEHOLDER"\n    fast_arr = history_bars(stock, context.fast + 1, \'1d\', \'close\')\n    slow_arr = history_bars(stock, context.slow + 1, \'1d\', \'close\')\n    if len(fast_arr) < context.fast + 1 or len(slow_arr) < context.slow + 1:\n        return\n    fast_ma = fast_arr[-context.fast:].mean()\n    slow_ma = slow_arr[-context.slow:].mean()\n    prev_fast = fast_arr[-context.fast-1:-1].mean()\n    prev_slow = slow_arr[-context.slow-1:-1].mean()\n    if prev_fast <= prev_slow and fast_ma > slow_ma:\n        order_target_percent(stock, 1.0)\n        log.info("金叉买入")</pre>'
+        },
+        {
+            id: 'tips',
+            icon: '💡',
+            title: '注意事项与常见错误',
+            body: '<ul style="color:#9aa9cc;margin-bottom:8px;padding-left:20px;">' +
+                '<li>数据不足时务必 <code style="color:#4f7eff;">return</code>，避免计算错误。</li>' +
+                '<li>portfolio 是字典，持仓通过 <code style="color:#4f7eff;">context.portfolio.get(\'holdings\', {})</code> 获取。</li>' +
+                '<li>可使用 <code style="color:#4f7eff;">np.mean()</code>、<code style="color:#4f7eff;">np.std()</code>、<code style="color:#4f7eff;">pd.Series</code> 计算指标。</li>' +
+                '<li>策略异常被后端捕获记录到日志，不会中断整个回测。</li>' +
+                '<li>成交量数据已接入真实数据库，<code style="color:#4f7eff;">history_bars(..., \'volume\')</code> 返回整数（股）。</li>' +
+                '</ul>'
+        }
+    ];
 
-def handle_bar(context, bar_dict):
-    # 每根K线都会调用一次，在这里编写交易逻辑
-    pass
-            </div>
-            <p style="color:#9aa9cc;">策略运行时，先执行一次 <code style="color:#4f7eff;">initialize</code>，然后按时间顺序遍历每一根日K线，调用 <code style="color:#4f7eff;">handle_bar</code>。</p>
+    // Append card-type panels from CARD_TYPE_META
+    var cardTypeKeys = Object.keys(CARD_TYPE_META);
+    var cardExamples = {
+        ma_cross: 'MA5 上穿 MA20 → 金叉买入',
+        rsi: 'RSI(14) < 30 → 超卖买入',
+        macd: 'DIF 上穿 DEA → MACD 金叉',
+        bollinger: '收盘价 < 布林下轨 → 突破买入',
+        kdj: 'K 上穿 D → KDJ 金叉',
+        volume: '当日成交量 > 20日均量 × 1.5',
+        atr_breakout: '收盘价 > ATR 上轨 → 突破买入',
+        cci: 'CCI(20) < -100 → 超卖买入',
+        ma_alignment: 'MA5 > MA10 > MA20 → 多头排列',
+        stop_loss_profit: '持仓后自动止损-5% / 止盈+10% / 最大持有20天',
+        position: '固定仓位 100% / 凯利公式仓位',
+        price_limit: '涨停不买 / 跌停不卖'
+    };
 
-            <h4 style="color:#4f7eff; margin-top:24px;">📦 常用数据获取：history_bars</h4>
-            <p style="color:#9aa9cc;">获取股票的历史K线数据，返回 numpy array。</p>
-            <div class="code-area" style="margin-bottom:12px;">
-# 语法
-history_bars(security, count, unit, field)
+    cardTypeKeys.forEach(function(key) {
+        var meta = CARD_TYPE_META[key];
+        if (!meta) return;
 
-# 参数说明
-# security : 股票代码 (字符串)，如 "000001"
-# count    : 获取的K线数量 (整数)
-# unit     : K线周期，目前只支持 '1d' (日线)
-# field    : 字段名，可选 'open', 'close', 'high', 'low', 'volume'
+        // Build param table rows
+        var paramRows = '';
+        if (meta.paramFields) {
+            meta.paramFields.forEach(function(f) {
+                var typeStr = f.type === 'select' ? '选项' : (f.type === 'number' ? '数值' : '文本');
+                var defVal = f.default !== undefined ? String(f.default) : '--';
+                paramRows += '<tr style="color:#9aa9cc;">' +
+                    '<td style="padding:2px 8px;">' + escapeHtml(f.label) + '</td>' +
+                    '<td style="padding:2px 8px;">' + typeStr + '</td>' +
+                    '<td style="padding:2px 8px;">' + escapeHtml(defVal) + '</td>' +
+                    '</tr>';
+            });
+        }
 
-# 示例：获取最近 20 根日线的收盘价
-closes = history_bars("000001", 20, '1d', 'close')
-# 返回 numpy array，如 [10.2, 10.5, 10.3, ...]
+        var bodyHtml = '<p style="color:#9aa9cc;margin-bottom:8px;">' + escapeHtml(meta.description) + '</p>';
+        if (meta.paramFields && meta.paramFields.length > 0) {
+            bodyHtml += '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:2px 8px;">参数</th><th style="text-align:left;padding:2px 8px;">类型</th><th style="text-align:left;padding:2px 8px;">默认值</th></tr>' +
+                paramRows + '</table>';
+        }
+        if (cardExamples[key]) {
+            bodyHtml += '<div style="color:#9aa9cc;font-size:12px;padding:6px 10px;background:#0e1220;border-radius:6px;">示例：' + escapeHtml(cardExamples[key]) + '</div>';
+        }
 
-# 获取成交量
-vols = history_bars("000001", 20, '1d', 'volume')
-# 返回 numpy array，如 [150000, 230000, 180000, ...]
-            </div>
+        panels.push({
+            id: 'card_' + key,
+            icon: meta.icon,
+            title: meta.label,
+            body: bodyHtml
+        });
+    });
 
-            <h4 style="color:#4f7eff; margin-top:24px;">💊 下单函数</h4>
-            <p style="color:#9aa9cc;">调整股票仓位，资金管理由引擎自动处理。</p>
-            <div class="code-area" style="margin-bottom:12px;">
-# 按百分比下单 (推荐)
-order_target_percent(security, percent)
-# security : 股票代码
-# percent  : 目标仓位比例，0.0 ~ 1.0 之间
-# 示例：全仓买入
-order_target_percent("000001", 1.0)
-# 示例：清仓卖出
-order_target_percent("000001", 0.0)
+    // ---- Render accordion ----
+    var html = '<div class="card" style="max-height:70vh;overflow-y:auto;">' +
+        '<div class="card-title">📘 策略 API 参考</div>' +
+        '<p style="color:#9aa9cc;margin-bottom:16px;">点击面板展开查看详情。所有卡片类型的参数和用法均可在此查阅。</p>';
 
-# 按固定金额下单 (可选)
-order_target_value(security, value)
-# value : 目标持仓市值 (元)
-            </div>
-            <p style="color:#9aa9cc; font-size:13px;">📌 默认每次交易以收盘价成交（可配置滑点）。买入最小单位为 100 股（1手）。</p>
+    panels.forEach(function(panel) {
+        html += '<div class="api-accordion-item" style="border:1px solid #323d5a;border-radius:10px;margin-bottom:6px;overflow:hidden;">' +
+            '<div class="api-accordion-header" data-panel="' + panel.id + '" style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;background:#0e1220;transition:background 0.15s;user-select:none;">' +
+            '<span class="api-arrow" data-panel="' + panel.id + '" style="font-size:10px;transition:transform 0.2s;color:#9aa9cc;">▶</span>' +
+            '<span style="font-size:16px;">' + panel.icon + '</span>' +
+            '<span style="color:#fff;font-weight:600;font-size:13px;">' + escapeHtml(panel.title) + '</span>' +
+            '</div>' +
+            '<div class="api-accordion-body" id="api-body-' + panel.id + '" style="display:none;padding:10px 14px;background:#151c2c;border-top:1px solid #323d5a;font-size:13px;">' +
+            panel.body +
+            '</div></div>';
+    });
 
-            <h4 style="color:#4f7eff; margin-top:24px;">📊 当前K线数据：bar_dict</h4>
-            <p style="color:#9aa9cc;">在 handle_bar 中，通过 bar_dict 字典获取当前日期的行情。</p>
-            <div class="code-area" style="margin-bottom:12px;">
-def handle_bar(context, bar_dict):
-    current_close = bar_dict['close']   # 收盘价
-    current_open  = bar_dict['open']    # 开盘价
-    current_high  = bar_dict['high']    # 最高价
-    current_low   = bar_dict['low']     # 最低价
-    current_vol   = bar_dict['volume']  # 成交量（整数，单位：股）
-            </div>
+    html += '</div>';
+    container.innerHTML = html;
 
-            <h4 style="color:#4f7eff; margin-top:24px;">📝 日志输出：log</h4>
-            <div class="code-area" style="margin-bottom:12px;">
-log.info("这是一条普通日志")
-log.error("这是一个错误日志")
-# 日志会显示在前端的回测日志区域
-            </div>
-
-            <h4 style="color:#4f7eff; margin-top:24px;">⚙️ 全局存储：context</h4>
-            <p style="color:#9aa9cc;">context 是一个全局共享的命名空间对象，可以在 initialize 中设置参数，在 handle_bar 中读取和使用。</p>
-            <div class="code-area" style="margin-bottom:12px;">
-def initialize(context):
-    context.my_param = 20
-    context.stock = "000001"
-
-def handle_bar(context, bar_dict):
-    # 读取参数
-    period = context.my_param
-    stock = context.stock
-            </div>
-
-            <h4 style="color:#4f7eff; margin-top:24px;">🧪 完整示例：双均线策略</h4>
-            <div class="code-area" style="margin-bottom:12px;">
-# 双均线策略：金叉买入，死叉卖出
-
-import numpy as np
-
-def initialize(context):
-    context.fast = 5
-    context.slow = 20
-
-def handle_bar(context, bar_dict):
-    stock = "STOCK_CODE_PLACEHOLDER"  # 编辑器会自动替换为实际代码
-
-    # 获取历史收盘价
-    fast_arr = history_bars(stock, context.fast + 1, '1d', 'close')
-    slow_arr = history_bars(stock, context.slow + 1, '1d', 'close')
-
-    if len(fast_arr) < context.fast + 1 or len(slow_arr) < context.slow + 1:
-        return
-
-    fast_ma = fast_arr[-context.fast:].mean()
-    slow_ma = slow_arr[-context.slow:].mean()
-    prev_fast = fast_arr[-context.fast-1:-1].mean()
-    prev_slow = slow_arr[-context.slow-1:-1].mean()
-
-    if prev_fast <= prev_slow and fast_ma > slow_ma:
-        order_target_percent(stock, 1.0)
-        log.info("金叉买入信号")
-    elif prev_fast >= prev_slow and fast_ma < slow_ma:
-        order_target_percent(stock, 0)
-        log.info("死叉卖出信号")
-            </div>
-
-            <h4 style="color:#4f7eff; margin-top:24px;">💡 注意事项</h4>
-            <ul style="color:#9aa9cc; margin-bottom:12px; padding-left:20px;">
-                <li>数据不足时 (<code>len(arr) &lt; period</code>) 务必 <code>return</code>，避免计算错误。</li>
-                <li>可使用 <code>np.mean()</code>、<code>np.std()</code>、<code>pd.Series</code> 等计算指标。</li>
-                <li>策略异常会被后端捕获并记录到日志，不会中断整个回测。</li>
-                <li>滑点模式、初始资金、回测区间在前端面板中配置，无需在代码中设置。</li>
-                <li>✅ 成交量数据已接入真实数据库，可用于构建量价策略（如成交量放大突破）。</li>
-            </ul>
-
-            <h4 style="color:#4f7eff; margin-top:24px;">❌ 常见错误与解决方案</h4>
-
-            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
-                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">1. 'dict' object has no attribute 'positions'</p>
-                <p style="color:#9aa9cc;font-size:13px;">原因：使用了 <code style="color:#4f7eff;">context.portfolio.positions</code>，但引擎中 portfolio 是一个字典。</p>
-                <div class="code-area" style="margin-top:6px;"># 正确写法
-holdings = context.portfolio.get('holdings', {})
-current_position = holdings.get(stock, 0)</div>
-            </div>
-
-            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
-                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">2. 'types.SimpleNamespace' object has no attribute 'stock'</p>
-                <p style="color:#9aa9cc;font-size:13px;">原因：在 <code style="color:#4f7eff;">initialize</code> 中没有定义 <code style="color:#4f7eff;">context.stock</code> 就直接使用。</p>
-                <div class="code-area" style="margin-top:6px;"># 正确写法：在 initialize 中设置
-def initialize(context):
-    context.stock = "STOCK_CODE_PLACEHOLDER"
-
-# 或者直接在 handle_bar 中写
-def handle_bar(context, bar_dict):
-    stock = "STOCK_CODE_PLACEHOLDER"  # 编辑器会自动替换占位符</div>
-            </div>
-
-            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
-                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">3. 回测无信号</p>
-                <ul style="color:#9aa9cc;font-size:13px;padding-left:20px;margin:4px 0;">
-                    <li>检查 <code style="color:#4f7eff;">history_bars</code> 的数据长度是否满足计算要求（数据不足时需 <code style="color:#4f7eff;">return</code>）。</li>
-                    <li>检查策略逻辑是否过于严格（如阈值设置过高）。</li>
-                    <li>查看后端日志中是否有错误信息（前端日志区域会显示后端的 <code style="color:#4f7eff;">[ERROR]</code> 日志）。</li>
-                </ul>
-            </div>
-
-            <div style="background:#151c2c;border:1px solid #242a40;border-radius:8px;padding:12px;margin-bottom:12px;">
-                <p style="color:#ff6b6b;font-weight:600;margin-bottom:4px;">4. 成交量数据使用</p>
-                <ul style="color:#9aa9cc;font-size:13px;padding-left:20px;margin:4px 0;">
-                    <li><code style="color:#4f7eff;">history_bars(stock, n, '1d', 'volume')</code> 返回的数组元素是整数（单位：股）。</li>
-                    <li>均量计算应取 <code style="color:#4f7eff;">vols[:-1].mean()</code>，排除当前未完成的成交量。</li>
-                </ul>
-            </div>
-        </div>`;
+    // Bind accordion toggle
+    var headers = container.querySelectorAll('.api-accordion-header');
+    headers.forEach(function(header) {
+        header.addEventListener('mouseenter', function() { header.style.background = '#1a2540'; });
+        header.addEventListener('mouseleave', function() { header.style.background = '#0e1220'; });
+        header.addEventListener('click', function() {
+            var panelId = this.getAttribute('data-panel');
+            var body = document.getElementById('api-body-' + panelId);
+            var arrow = this.querySelector('.api-arrow');
+            if (body) {
+                var isOpen = body.style.display !== 'none';
+                body.style.display = isOpen ? 'none' : 'block';
+                if (arrow) arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+            }
+        });
+    });
 }
 
 // ========== 设置页 ==========

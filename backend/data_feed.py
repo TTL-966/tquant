@@ -140,3 +140,30 @@ class DataFeed:
         volumes = np.random.randint(100000, 500000, n)
         values = [[round(opens[i],2), round(closes[i],2), round(lows[i],2), round(highs[i],2), int(volumes[i])] for i in range(n)]
         return json.dumps({"dates": date_strs, "values": values})
+
+    def get_prev_close(self, code, target_date=None):
+        """从 K 线缓存中获取指定日期（或最近日期）的前一交易日收盘价。
+
+        :param code: 股票纯数字代码
+        :param target_date: 'YYYY-MM-DD' 字符串，若为 None 则取最新
+        :return: float 或 None
+        """
+        code_pure = code.split('.')[0]
+        if code_pure not in self._kline_cache:
+            self.get_kline_json(code)
+        cached = self._kline_cache.get(code_pure)
+        if cached is None:
+            return None
+        dates = cached["dates"]
+        values = cached["values"]
+        if len(dates) < 2:
+            return None
+        if target_date is None:
+            return values[-2][1]  # close is index 1
+        try:
+            idx = dates.index(target_date)
+        except ValueError:
+            idx = bisect.bisect_left(dates, target_date)
+        if idx <= 0 or idx >= len(values):
+            return None
+        return values[idx - 1][1]

@@ -323,6 +323,36 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
     lines.push('    stock = context.stock');
     lines.push('    entry_signals = []');
     lines.push('    exit_signals = []');
+
+    // ---- 检查涨跌停限制卡片 ----
+    var hasPriceLimit = false;
+    var priceLimitType = 'no_buy_on_limit_up';
+    for (var pi = 0; pi < cards.length; pi++) {
+        if (cards[pi].type === 'price_limit') {
+            hasPriceLimit = true;
+            priceLimitType = cards[pi].params.limitType || 'no_buy_on_limit_up';
+            break;
+        }
+    }
+    if (hasPriceLimit) {
+        lines.push('');
+        lines.push('    # 涨跌停限制');
+        lines.push('    def _is_limit_up(prev_close):');
+        lines.push('        if prev_close is None or prev_close <= 0:');
+        lines.push('            return False');
+        lines.push('        return bar_dict[\'high\'] >= round(prev_close * 1.1, 2)');
+        lines.push('');
+        lines.push('    def _is_limit_down(prev_close):');
+        lines.push('        if prev_close is None or prev_close <= 0:');
+        lines.push('            return False');
+        lines.push('        return bar_dict[\'low\'] <= round(prev_close * 0.9, 2)');
+        lines.push('');
+        lines.push('    _prev_closes = history_bars(stock, 2, \'1d\', \'close\')');
+        lines.push('    _prev_close = _prev_closes[-2] if len(_prev_closes) >= 2 else None');
+        lines.push('');
+        lines.push('    _buy_blocked = \'' + priceLimitType + '\' in [\'no_buy_on_limit_up\', \'both\'] and _is_limit_up(_prev_close)');
+        lines.push('    _sell_blocked = \'' + priceLimitType + '\' in [\'no_sell_on_limit_down\', \'both\'] and _is_limit_down(_prev_close)');
+    }
     lines.push('');
 
     // Generate each card's condition block
@@ -343,6 +373,10 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
             case 'ma_alignment': genResult = genMAAlignment(card, i); break;
             case 'stop_loss_profit':
                 lines.push('    # Card ' + i + ': 止损止盈（参数已记录）');
+                lines.push('');
+                continue;
+            case 'price_limit':
+                lines.push('    # Card ' + i + ': 涨跌停限制（已在 bar 入口拦截）');
                 lines.push('');
                 continue;
             default: continue;
@@ -369,23 +403,47 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
     // Execute entry
     lines.push('    # 执行入场信号');
     lines.push('    if len(entry_signals) > 0 and all(entry_signals):');
-    lines.push('        order_target_percent(stock, target_percent)');
-    if (hasStopLoss) {
-        lines.push('        context._entry_price = bar_dict["close"]');
-        lines.push('        context._entry_date = context.current_dt');
+    if (hasPriceLimit) {
+        lines.push('        if _buy_blocked:');
+        lines.push('            log.info("涨停不买入")');
+        lines.push('        else:');
+        lines.push('            order_target_percent(stock, target_percent)');
+        if (hasStopLoss) {
+            lines.push('            context._entry_price = bar_dict["close"]');
+            lines.push('            context._entry_date = context.current_dt');
+        }
+        lines.push('            log.info("买入信号触发")');
+    } else {
+        lines.push('        order_target_percent(stock, target_percent)');
+        if (hasStopLoss) {
+            lines.push('        context._entry_price = bar_dict["close"]');
+            lines.push('        context._entry_date = context.current_dt');
+        }
+        lines.push('        log.info("买入信号触发")');
     }
-    lines.push('        log.info("买入信号触发")');
     lines.push('');
 
     // Execute exit from exit conditions
     lines.push('    # 执行离场信号');
     lines.push('    if len(exit_signals) > 0 and all(exit_signals):');
-    lines.push('        order_target_percent(stock, 0)');
-    if (hasStopLoss) {
-        lines.push('        context._entry_price = 0.0');
-        lines.push('        context._entry_date = None');
+    if (hasPriceLimit) {
+        lines.push('        if _sell_blocked:');
+        lines.push('            log.info("跌停不卖出")');
+        lines.push('        else:');
+        lines.push('            order_target_percent(stock, 0)');
+        if (hasStopLoss) {
+            lines.push('            context._entry_price = 0.0');
+            lines.push('            context._entry_date = None');
+        }
+        lines.push('            log.info("卖出信号触发")');
+    } else {
+        lines.push('        order_target_percent(stock, 0)');
+        if (hasStopLoss) {
+            lines.push('        context._entry_price = 0.0');
+            lines.push('        context._entry_date = None');
+        }
+        lines.push('        log.info("卖出信号触发")');
     }
-    lines.push('        log.info("卖出信号触发")');
     lines.push('');
 
     // Stop loss / take profit logic (runs independently)

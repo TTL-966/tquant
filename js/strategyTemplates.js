@@ -179,6 +179,21 @@ export var CARD_TYPE_META = {
             ], default: 'fixed' },
             { key: 'fixedPercent', label: '仓位比例', type: 'number', min: 0.01, max: 1.0, step: 0.01, default: 1.0 }
         ]
+    },
+    price_limit: {
+        type: 'price_limit',
+        label: '涨跌停限制',
+        icon: '🚫',
+        description: '涨停时禁止买入 / 跌停时禁止卖出',
+        defaultAction: 'buy',
+        defaultParams: { limitType: 'no_buy_on_limit_up' },
+        paramFields: [
+            { key: 'limitType', label: '限制类型', type: 'select', options: [
+                { value: 'no_buy_on_limit_up', label: '涨停不买入' },
+                { value: 'no_sell_on_limit_down', label: '跌停不卖出' },
+                { value: 'both', label: '涨停不买且跌停不卖' }
+            ], default: 'no_buy_on_limit_up' }
+        ]
     }
 };
 

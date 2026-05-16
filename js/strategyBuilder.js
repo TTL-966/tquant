@@ -292,7 +292,7 @@ function showAddCardModal() {
     var grid = document.createElement('div');
     grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
 
-    var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'kdj', 'volume', 'atr_breakout', 'cci', 'ma_alignment', 'stop_loss_profit', 'position'];
+    var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'kdj', 'volume', 'atr_breakout', 'cci', 'ma_alignment', 'stop_loss_profit', 'position', 'price_limit'];
     typeKeys.forEach(function(key) {
         var meta = CARD_TYPE_META[key];
         var item = document.createElement('div');
@@ -1128,12 +1128,12 @@ export function renderStrategyPage(container) {
         '<input type="text" class="datepicker-input" id="strategyEndDate" value="' + (endDate || today) + '" readonly ' +
         'style="width:120px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
         '<span>成交价:</span>' +
-        '<input type="text" id="slippageInput" list="slippageDatalist" value="收盘价成交（默认）" autocomplete="off" ' +
-        'style="width:180px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px;">' +
+        '<input type="text" id="slippageInput" list="slippageDatalist" value="收盘价成交（回测默认）" autocomplete="off" ' +
+        'style="width:220px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px;">' +
         '<datalist id="slippageDatalist">' +
-        '<option value="收盘价成交（默认）" data-value="close">收盘价成交（默认）</option>' +
-        '<option value="次日开盘价" data-value="next_open">次日开盘价</option>' +
-        '<option value="半价差（仅标记偏移）" data-value="half_spread">半价差（仅标记偏移）</option>' +
+        '<option value="收盘价成交（回测默认）" data-value="close">收盘价成交（使用当前bar收盘价）</option>' +
+        '<option value="次日开盘价成交" data-value="next_open">次日开盘价成交（模拟无法以收盘价成交的场景）</option>' +
+        '<option value="半价差偏移（仅买卖点标记）" data-value="half_spread">半价差偏移（仅K线图买卖点标记偏移，不影响实际成交价）</option>' +
         '</datalist>' +
         '</div></div>' +
 

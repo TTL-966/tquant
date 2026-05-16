@@ -67,6 +67,33 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
 
+    @Slot(str, str, result=str)
+    def get_limit_status(self, code, target_date=""):
+        """预留接口：获取股票在指定日期的涨跌停状态。
+
+        :param code: 股票代码
+        :param target_date: 'YYYY-MM-DD' 日期字符串
+        :return: JSON 字符串，含 is_limit_up / is_limit_down / limit_up_price / limit_down_price
+        """
+        try:
+            prev_close = self.data_feed.get_prev_close(code, target_date if target_date else None)
+            if prev_close is None:
+                return json.dumps({"is_limit_up": False, "is_limit_down": False,
+                                   "limit_up_price": 0, "limit_down_price": 0,
+                                   "prev_close": 0, "note": "无法获取前收盘价"})
+            limit_up = round(prev_close * 1.1, 2)
+            limit_down = round(prev_close * 0.9, 2)
+            return json.dumps({
+                "is_limit_up": False,
+                "is_limit_down": False,
+                "limit_up_price": limit_up,
+                "limit_down_price": limit_down,
+                "prev_close": prev_close,
+                "note": "涨跌停价格已计算，实际涨停/跌停状态需结合当日最高/最低价判断"
+            })
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
     @Slot(str, result=str)
     def get_industry(self, code):
         try:
