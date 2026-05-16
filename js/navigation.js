@@ -626,10 +626,10 @@ function renderApiPage(container) {
                 '<hr style="border-color:#323d5a;margin:10px 0;">' +
                 '<p style="color:#fff;font-weight:600;margin-bottom:4px;">🎯 成交价模式说明</p>' +
                 '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
-                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:2px 8px;">模式</th><th style="text-align:left;padding:2px 8px;">前端选项</th><th style="text-align:left;padding:2px 8px;">说明</th></tr>' +
-                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4cff4c;">收盘价成交</td><td style="padding:4px 8px;">收盘价成交（回测默认）</td><td style="padding:4px 8px;">使用当前bar收盘价作为成交价。日线回测中，收盘价即当日最终成交价，无未来数据问题。</td></tr>' +
-                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#f2c94c;">次日开盘价成交</td><td style="padding:4px 8px;">次日开盘价成交</td><td style="padding:4px 8px;">使用下一个交易日的开盘价成交。模拟信号产生当天无法以收盘价成交、需次日开盘执行的延迟场景。</td></tr>' +
-                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#9aa9cc;">半价差偏移</td><td style="padding:4px 8px;">半价差偏移（仅买卖点标记）</td><td style="padding:4px 8px;">仅影响K线图上买卖点的标记位置（偏移到K线中位），实际回测仍使用收盘价成交。</td></tr>' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:2px 8px;">data-value</th><th style="text-align:left;padding:2px 8px;">前端选项</th><th style="text-align:left;padding:2px 8px;">实际成交价</th></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4cff4c;">close</td><td style="padding:4px 8px;">收盘价成交（回测默认）</td><td style="padding:4px 8px;">当前bar收盘价。日线回测标准做法，无未来数据问题。</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#f2c94c;">next_open</td><td style="padding:4px 8px;">次日开盘价成交</td><td style="padding:4px 8px;">下一交易日开盘价。模拟信号产生当天无法以收盘价成交、需次日开盘执行的场景。</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#9aa9cc;">half_spread</td><td style="padding:4px 8px;">半价差偏移（仅K线图标记）</td><td style="padding:4px 8px;">实际成交价仍为收盘价，仅K线图买卖点标记偏移到 (high+low)/2 位置。</td></tr>' +
                 '</table>' +
                 '<p style="color:#9aa9cc;font-size:12px;">💡 回测用当前bar收盘价成交；如要模拟开盘抢单或延迟成交，选择"次日开盘价成交"。</p>'
         },

@@ -786,20 +786,7 @@ function showBacktestModal() {
         addLog('info', '回测参数 | 初始资金: ¥' + cashVal.toLocaleString() + ' | 区间: ' + start + ' ~ ' + end);
 
         var slippageInput = document.getElementById('slippageInput');
-        var slippageType = 'close';
-        if (slippageInput) {
-            var enteredVal = slippageInput.value;
-            var dl = document.getElementById('slippageDatalist');
-            if (dl) {
-                for (var i = 0; i < dl.options.length; i++) {
-                    if (dl.options[i].value === enteredVal || dl.options[i].textContent === enteredVal) {
-                        slippageType = dl.options[i].getAttribute('data-value');
-                        break;
-                    }
-                }
-            }
-            if (!slippageType) slippageType = enteredVal;
-        }
+        var slippageType = slippageInput ? (slippageInput.getAttribute('data-value') || 'close') : 'close';
         window._slippageMode = slippageType;
 
         var startTime = Date.now();
@@ -1128,13 +1115,9 @@ export function renderStrategyPage(container) {
         '<input type="text" class="datepicker-input" id="strategyEndDate" value="' + (endDate || today) + '" readonly ' +
         'style="width:120px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
         '<span>成交价:</span>' +
-        '<input type="text" id="slippageInput" list="slippageDatalist" value="收盘价成交（回测默认）" autocomplete="off" ' +
-        'style="width:220px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:13px;">' +
-        '<datalist id="slippageDatalist">' +
-        '<option value="收盘价成交（回测默认）" data-value="close">收盘价成交（使用当前bar收盘价）</option>' +
-        '<option value="次日开盘价成交" data-value="next_open">次日开盘价成交（模拟无法以收盘价成交的场景）</option>' +
-        '<option value="半价差偏移（仅买卖点标记）" data-value="half_spread">半价差偏移（仅K线图买卖点标记偏移，不影响实际成交价）</option>' +
-        '</datalist>' +
+        '<input type="text" id="slippageInput" value="收盘价成交（回测默认）" readonly data-value="close" ' +
+        'style="width:180px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 30px 6px 10px; font-size:13px; cursor:pointer; ' +
+        'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center;">' +
         '</div></div>' +
 
         '<div class="card" style="margin-top:12px;">' +
@@ -1182,6 +1165,20 @@ export function renderStrategyPage(container) {
         capitalInput.addEventListener('change', function() {
             initialCapital = Number(this.value) || 1000000;
             window._initialCapital = initialCapital;
+        });
+    }
+
+    // Slippage dropdown — custom select panel (QtWebEngine does not support datalist)
+    var slippageInput = document.getElementById('slippageInput');
+    if (slippageInput) {
+        slippageInput.addEventListener('click', function() {
+            showCustomSelect(slippageInput, [
+                { value: 'close', label: '收盘价成交（回测默认）' },
+                { value: 'next_open', label: '次日开盘价成交' },
+                { value: 'half_spread', label: '半价差偏移（仅K线图标记）' }
+            ], function(selectedValue) {
+                // value and data-value are already set by showCustomSelect
+            });
         });
     }
 
