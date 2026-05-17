@@ -477,13 +477,15 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
 
 // ---- Config serialization ----
 
-export function serializeConfig(cards, capital, startDate, endDate) {
+export function serializeConfig(cards, capital, startDate, endDate, stockPool, slippage) {
     var config = {
         version: 1,
         cards: cards,
         capital: capital || 1000000,
         startDate: startDate || '2010-01-01',
-        endDate: endDate || new Date().toISOString().slice(0, 10)
+        endDate: endDate || new Date().toISOString().slice(0, 10),
+        stockPool: stockPool || '',
+        slippage: slippage || 'close'
     };
     return JSON.stringify(config);
 }
@@ -499,7 +501,9 @@ export function deserializeConfig(jsonStr) {
             cards: config.cards,
             capital: config.capital || 1000000,
             startDate: config.startDate || '2010-01-01',
-            endDate: config.endDate || new Date().toISOString().slice(0, 10)
+            endDate: config.endDate || new Date().toISOString().slice(0, 10),
+            stockPool: config.stockPool || '',
+            slippage: config.slippage || 'close'
         };
     } catch (e) {
         return null;

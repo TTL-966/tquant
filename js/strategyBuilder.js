@@ -15,6 +15,8 @@ var strategyId = null;
 var initialCapital = window._initialCapital || 1000000;
 var startDate = '2025-01-01';
 var endDate = new Date().toISOString().slice(0, 10);
+var stockPool = '';
+var slippage = 'close';
 var logContainer = null;
 var codeExpanded = false;
 var logExpanded = true;
@@ -657,7 +659,9 @@ function showBacktestModal() {
     window.currentStrategyCode = code;
 
     var stockInput = document.getElementById('stockPoolInput');
-    var defaultStock = (window._defaultStockFromTemplate) || '000001';
+    var pageStockPoolInput = document.getElementById('strategyStockPool');
+    var savedStockPool = pageStockPoolInput ? pageStockPoolInput.value.trim() : '';
+    var defaultStock = savedStockPool || (window._defaultStockFromTemplate) || '000001';
 
     var pageStartInput = document.getElementById('strategyStartDate');
     var pageEndInput = document.getElementById('strategyEndDate');
@@ -1034,7 +1038,11 @@ function saveCurrentStrategy() {
     var endInput = document.getElementById('strategyEndDate');
     var sDate = startInput ? startInput.value : startDate;
     var eDate = endInput ? endInput.value : endDate;
-    var jsonConfig = serializeConfig(cards, cap, sDate, eDate);
+    var stockPoolInput = document.getElementById('strategyStockPool');
+    var sp = stockPoolInput ? stockPoolInput.value.trim() : (stockPool || '');
+    var spInput = document.getElementById('slippageInput');
+    var sl = spInput ? (spInput.getAttribute('data-value') || 'close') : (slippage || 'close');
+    var jsonConfig = serializeConfig(cards, cap, sDate, eDate, sp, sl);
 
     var saveBtn = document.getElementById('saveStrategyBtn');
     var currentId = saveBtn && saveBtn.dataset.currentId ? parseInt(saveBtn.dataset.currentId) : null;
@@ -1071,6 +1079,8 @@ function loadStrategyById(id) {
         initialCapital = config.capital || 1000000;
         startDate = config.startDate || '2010-01-01';
         endDate = config.endDate || new Date().toISOString().slice(0, 10);
+        stockPool = config.stockPool || '';
+        slippage = config.slippage || 'close';
         window.currentStrategyName = obj.name;
 
         var nameInput = document.getElementById('strategyNameInput');
@@ -1081,6 +1091,14 @@ function loadStrategyById(id) {
         if (startInput) startInput.value = startDate;
         var endInput = document.getElementById('strategyEndDate');
         if (endInput) endInput.value = endDate;
+        var spInput = document.getElementById('strategyStockPool');
+        if (spInput) spInput.value = stockPool;
+        var slInput = document.getElementById('slippageInput');
+        if (slInput) {
+            var slOpts = { close: '收盘价成交（回测默认）', next_open: '次日开盘价成交', half_spread: '半价差偏移（仅K线图标记）' };
+            slInput.value = slOpts[slippage] || '收盘价成交（回测默认）';
+            slInput.setAttribute('data-value', slippage || 'close');
+        }
         var saveBtn = document.getElementById('saveStrategyBtn');
         if (saveBtn) saveBtn.dataset.currentId = obj.id;
 
@@ -1095,11 +1113,20 @@ function newStrategy() {
     cards = [];
     strategyName = '';
     strategyId = null;
+    stockPool = '';
+    slippage = 'close';
     window.currentStrategyName = undefined;
     window.currentStrategyCode = undefined;
     window._defaultStockFromTemplate = undefined;
     var nameInput = document.getElementById('strategyNameInput');
     if (nameInput) nameInput.value = '';
+    var spInput = document.getElementById('strategyStockPool');
+    if (spInput) spInput.value = '';
+    var slInput = document.getElementById('slippageInput');
+    if (slInput) {
+        slInput.value = '收盘价成交（回测默认）';
+        slInput.setAttribute('data-value', 'close');
+    }
     var saveBtn = document.getElementById('saveStrategyBtn');
     if (saveBtn) saveBtn.dataset.currentId = '';
     renderCards();
@@ -1136,6 +1163,8 @@ export function renderStrategyPage(container) {
             initialCapital = config.capital || 1000000;
             startDate = config.startDate || '2010-01-01';
             endDate = config.endDate || new Date().toISOString().slice(0, 10);
+            stockPool = config.stockPool || '';
+            slippage = config.slippage || 'close';
         }
     }
 
@@ -1153,6 +1182,11 @@ export function renderStrategyPage(container) {
         '<button id="saveStrategyBtn" style="background:#2a3a5a;">💾 保存</button>' +
         '<button id="newStrategyBtn">📄 新建</button>' +
         '<button id="deleteStrategyBtn">🗑 删除</button>' +
+        '</div>' +
+        '<div class="metric-row" style="margin-top:8px;">' +
+        '<span>默认股票池:</span>' +
+        '<textarea id="strategyStockPool" rows="2" placeholder="输入股票代码，每行一个或用逗号分隔" ' +
+        'style="width:400px;background:#1e253b;border:1px solid #323d5a;border-radius:12px;color:#fff;padding:6px 10px;font-size:12px;font-family:monospace;resize:vertical;">' + escapeHtml(stockPool) + '</textarea>' +
         '</div>' +
         '<div class="metric-row" style="margin-top:8px;">' +
         '<span>初始资金:</span>' +
