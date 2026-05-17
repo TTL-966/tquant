@@ -903,18 +903,67 @@ function showBacktestModal() {
                         }
                     });
                 }
-                // 模拟单股结果格式，复用现有合并逻辑
-                var equityCurve = res.equity_curve || [];
+
                 var signals = res.signals || [];
+                var equityCurve = res.equity_curve || [];
                 var metrics = res.metrics || {};
-                var wrappedResults = [{
+                var stockPerformance = res.stock_performance || [];
+
+                // 多股回测直接使用后端组合结果，不再经过 processSingleStockResults 合并
+                var finalResult = {
                     success: true,
                     signals: signals,
                     equity_curve: equityCurve,
                     metrics: metrics,
-                    stock_performance: res.stock_performance
-                }];
-                processSingleStockResults(wrappedResults, elapsed);
+                    stock_performance: stockPerformance
+                };
+                window._lastBacktestResult = finalResult;
+                window.strategySignals = signals;
+                window._lastBacktestError = null;
+                window.strategyStartDate = start;
+                window.strategyEndDate = end;
+
+                // 计算 topPositionCodes（用于买卖点成交图下拉框排序）
+                var posMap = {};
+                signals.forEach(function(s) {
+                    var c = s.code || '';
+                    if (!posMap[c]) posMap[c] = 0;
+                    if (s.type === 'buy') posMap[c] += (s.price || 0) * (s.shares || 0);
+                    else posMap[c] -= (s.price || 0) * (s.shares || 0);
+                });
+                var posEntries = Object.keys(posMap).map(function(k) { return { code: k, value: posMap[k] }; });
+                posEntries.sort(function(a, b) { return b.value - a.value; });
+                window.topPositionCodes = posEntries.slice(0, 6).map(function(e) { return e.code; });
+
+                // 加载未知股票名称
+                var unknownCodes = [];
+                var seenCodes = {};
+                signals.forEach(function(s) {
+                    var c = s.code || '';
+                    if (c && !stockNameMap[c] && !seenCodes[c]) {
+                        seenCodes[c] = true;
+                        unknownCodes.push(c);
+                    }
+                });
+                if (unknownCodes.length > 0) {
+                    addLog('info', '正在加载 ' + unknownCodes.length + ' 只股票的名称...');
+                    var namePromises = unknownCodes.map(function(c) { return fetchStockName(c, bridge); });
+                    Promise.all(namePromises).then(function() {
+                        addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                        if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
+                        addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
+                        overlay.remove();
+                        modal.remove();
+                        showToast('✅ 回测完成 | ' + codes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
+                    });
+                } else {
+                    addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                    if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
+                    addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
+                    overlay.remove();
+                    modal.remove();
+                    showToast('✅ 回测完成 | ' + codes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
+                }
             }).catch(function(err) {
                 finalizeError(err);
             });
