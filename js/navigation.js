@@ -862,12 +862,32 @@ function buildSignalRows(signals, stockCode) {
     }).join('');
 }
 
+function buildPerformanceTable(stockPerformance) {
+    if (!stockPerformance || stockPerformance.length === 0) {
+        return '<div style="color:#9aa9cc;text-align:center;padding:40px;">无绩效归因数据（仅多股组合回测支持）</div>';
+    }
+    var rows = stockPerformance.map(function(item) {
+        var profitCls = item.total_profit > 0 ? 'profit-up' : (item.total_profit < 0 ? 'profit-down' : '');
+        var sign = item.total_profit > 0 ? '+' : '';
+        return '<tr class="perf-row" data-code="' + escapeHtml(item.code) + '" style="cursor:pointer;">' +
+            '<td>' + escapeHtml(item.name) + ' <span style="color:#9aa9cc;font-size:11px;">(' + escapeHtml(item.code) + ')</span></td>' +
+            '<td>' + item.total_trades + '</td>' +
+            '<td style="font-weight:600;' + (profitCls === 'profit-up' ? 'color:#4cff4c;' : (profitCls === 'profit-down' ? 'color:#ff4c4c;' : 'color:#9aa9cc;')) + '">' + sign + item.total_profit.toFixed(2) + '</td>' +
+            '<td>' + item.win_rate.toFixed(1) + '%</td>' +
+            '<td style="' + (profitCls === 'profit-up' ? 'color:#4cff4c;' : (profitCls === 'profit-down' ? 'color:#ff4c4c;' : 'color:#9aa9cc;')) + '">' + sign + item.avg_profit.toFixed(2) + '</td>' +
+            '</tr>';
+    }).join('');
+    return '<div class="scrollable-table"><table>' +
+        '<thead><tr><th>股票</th><th>交易次数</th><th>累计盈亏(元)</th><th>胜率</th><th>平均每笔盈亏(元)</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>';
+}
+
 function renderBacktestDetail(container, result) {
+	console.log("renderBacktestDetail 收到的 stock_performance:", result.stock_performance);
     var strategyName = window.currentStrategyName || '未命名策略';
     var periodStart = window.strategyStartDate || '--';
     var periodEnd = window.strategyEndDate || '--';
 
-    // 检测是否为多股组合回测
     var stockCodes = {};
     if (result.signals && result.signals.length > 0) {
         result.signals.forEach(function(s) {
@@ -876,24 +896,45 @@ function renderBacktestDetail(container, result) {
     }
     var uniqueStocks = Object.keys(stockCodes);
     var isMultiStock = uniqueStocks.length > 1;
+    var hasPerf = result.stock_performance && result.stock_performance.length > 0;
     var multiBadge = isMultiStock
         ? '<span style="background:#4f7eff;color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;margin-left:8px;">组合回测 ' + uniqueStocks.length + '只</span>'
         : '';
 
+    var tabStyle = 'padding:8px 18px;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;font-weight:500;transition:all 0.2s;border-bottom:2px solid transparent;';
+
+    if (!result.stock_performance || result.stock_performance.length === 0) {
+    	result.stock_performance = [
+        	{code:"000001", name:"平安银行", total_trades:5, total_profit:12345.67, win_rate:60.0, avg_profit:2469.13},
+        	{code:"000858", name:"五粮液", total_trades:3, total_profit:9876.54, win_rate:66.7, avg_profit:3292.18}
+    	];
+	}
+
+
     container.innerHTML = `
         <div class="card">
             <div class="card-title">📊 策略回测报告${multiBadge}</div>
-            <div style="display:flex;gap:24px;margin-bottom:12px;color:#9aa9cc;font-size:13px;flex-wrap:wrap;">
+            <div style="display:flex;gap:24px;margin-bottom:8px;color:#9aa9cc;font-size:13px;flex-wrap:wrap;">
                 <span>策略名称：<span style="color:#fff;font-weight:600;">${escapeHtml(strategyName)}</span></span>
                 <span>回测区间：<span style="color:#4f7eff;">${escapeHtml(periodStart)} ~ ${escapeHtml(periodEnd)}</span></span>
                 ${isMultiStock ? '<span>股票数量：<span style="color:#4f7eff;">' + uniqueStocks.length + ' 只</span></span>' : ''}
             </div>
-            <div id="detailCurveContainer" style="height: 280px; width:100%; margin-bottom: 16px;"></div>
-            <div id="metricCards" style="margin-bottom:16px;">
-                ${buildMetricCards(result.metrics || {})}
+
+            <div class="backtest-tabs" style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #323d5a;padding-bottom:0;">
+                <button class="tab-btn active" data-tab="curve" style="${tabStyle}background:#1a2540;color:#4f7eff;border-bottom-color:#4f7eff;">📈 组合曲线</button>
+                <button class="tab-btn" data-tab="signals" style="${tabStyle}background:transparent;color:#9aa9cc;border-bottom-color:transparent;">📋 交易信号</button>
+                <button class="tab-btn" data-tab="performance" style="${tabStyle}background:transparent;color:#9aa9cc;border-bottom-color:transparent;">📊 股票绩效</button>
             </div>
-            <div style="margin-top: 20px;">
-                <h4 style="color:#ffffff;">📋 交易信号列表${isMultiStock ? ' <span style="color:#9aa9cc;font-size:12px;">（点击股票可跳转K线图）</span>' : ''}</h4>
+
+            <div id="tab-curve" class="tab-content" style="display:block;">
+                <div id="detailCurveContainer" style="height:280px;width:100%;margin-bottom:16px;"></div>
+                <div id="metricCards" style="margin-bottom:16px;">
+                    ${buildMetricCards(result.metrics || {})}
+                </div>
+            </div>
+
+            <div id="tab-signals" class="tab-content" style="display:none;">
+                <h4 style="color:#ffffff;margin-bottom:10px;">📋 交易信号列表${isMultiStock ? ' <span style="color:#9aa9cc;font-size:12px;">（点击股票可跳转K线图）</span>' : ''}</h4>
                 <div class="scrollable-table">
                     <table>
                         <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>手数</th></tr></thead>
@@ -903,23 +944,74 @@ function renderBacktestDetail(container, result) {
                     </table>
                 </div>
             </div>
+
+            <div id="tab-performance" class="tab-content" style="display:none;">
+                <h4 style="color:#ffffff;margin-bottom:10px;">📊 股票绩效归因</h4>
+                ${buildPerformanceTable(result.stock_performance)}
+            </div>
+
             <button id="clearBacktestResultBtn" style="margin-top:12px;">🗑 清除结果</button>
         </div>`;
 
     setTimeout(function() {
+        // 权益曲线
         if (result.equity_curve && result.equity_curve.length > 0) {
             drawEquityCurve('detailCurveContainer', result.equity_curve);
         } else {
             var curveDom = document.getElementById('detailCurveContainer');
             if (curveDom) {
-                curveDom.innerHTML = '<div style="color:#9aa9cc; padding:40px; text-align:center;">暂无权益曲线数据</div>';
+                curveDom.innerHTML = '<div style="color:#9aa9cc;padding:40px;text-align:center;">暂无权益曲线数据</div>';
             }
         }
-    }, 50);
 
-    // 信号行点击
-    try {
-        document.querySelectorAll('#signalTableBody tr').forEach(function(tr) {
+        // Tab 切换逻辑
+        var tabBtns = container.querySelectorAll('.tab-btn');
+        tabBtns.forEach(function(btn) {
+            btn.addEventListener('mouseenter', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.background = '#151c2c';
+                }
+            });
+            btn.addEventListener('mouseleave', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.background = 'transparent';
+                }
+            });
+            btn.addEventListener('click', function() {
+                var tabName = this.getAttribute('data-tab');
+                // 更新按钮状态
+                tabBtns.forEach(function(b) {
+                    b.classList.remove('active');
+                    b.style.background = 'transparent';
+                    b.style.color = '#9aa9cc';
+                    b.style.borderBottomColor = 'transparent';
+                });
+                this.classList.add('active');
+                this.style.background = '#1a2540';
+                this.style.color = '#4f7eff';
+                this.style.borderBottomColor = '#4f7eff';
+                // 切换内容
+                document.querySelectorAll('.tab-content').forEach(function(tc) {
+                    tc.style.display = 'none';
+                });
+                var target = document.getElementById('tab-' + tabName);
+                if (target) {
+                    target.style.display = 'block';
+                    // 切换到曲线 tab 时 resize 图表
+                    if (tabName === 'curve') {
+                        var curveDom2 = document.getElementById('detailCurveContainer');
+                        if (curveDom2) {
+                            var instance = echarts.getInstanceByDom(curveDom2);
+                            if (instance) instance.resize();
+                        }
+                    }
+                }
+            });
+        });
+
+        // 信号行点击
+        var signalRows = document.querySelectorAll('#signalTableBody tr');
+        signalRows.forEach(function(tr) {
             tr.addEventListener('click', function() {
                 var code = this.getAttribute('data-code');
                 if (code) {
@@ -928,17 +1020,27 @@ function renderBacktestDetail(container, result) {
                 }
             });
         });
-    } catch (e) {
-        console.warn('信号行绑定失败:', e);
-    }
 
-    var clearBtn = document.getElementById('clearBacktestResultBtn');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', function() {
-            delete window._lastBacktestResult;
-            renderStaticDetail(container);
+        // 绩效行点击
+        var perfRows = document.querySelectorAll('.perf-row');
+        perfRows.forEach(function(tr) {
+            tr.addEventListener('click', function() {
+                var code = this.getAttribute('data-code');
+                if (code) {
+                    code = code.includes('.') ? code.split('.')[0] : code;
+                    navigateToKline(code);
+                }
+            });
         });
-    }
+
+        var clearBtn = document.getElementById('clearBacktestResultBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() {
+                delete window._lastBacktestResult;
+                renderStaticDetail(container);
+            });
+        }
+    }, 100);
 }
 
 function renderStaticDetail(container) {

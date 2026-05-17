@@ -833,9 +833,9 @@ function showBacktestModal() {
                     return { date: date, value: equityMap[date] };
                 });
 
-                var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: {} };
+                var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: {} ,stock_performance: null};
                 for (var i = 0; i < results.length; i++) {
-                    if (results[i] && results[i].metrics) { mergedResult.metrics = results[i].metrics; break; }
+                    if (results[i] && results[i].stock_performance) { mergedResult.stock_performance = results[i].stock_performance; break; }
                 }
 
                 window._lastBacktestResult = mergedResult;
@@ -911,7 +911,8 @@ function showBacktestModal() {
                     success: true,
                     signals: signals,
                     equity_curve: equityCurve,
-                    metrics: metrics
+                    metrics: metrics,
+                    stock_performance: res.stock_performance
                 }];
                 processSingleStockResults(wrappedResults, elapsed);
             }).catch(function(err) {

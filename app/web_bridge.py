@@ -264,7 +264,8 @@ class WebBridge(QObject):
                 "equity_curve": result.get("equity_curve", []),
                 "metrics": result.get("metrics", {}),
                 "logs": result.get("logs", []),
-                "errors": result.get("errors", [])
+                "errors": result.get("errors", []),
+                "stock_performance": result.get("stock_performance", [])
             })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
