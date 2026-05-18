@@ -204,30 +204,97 @@ function renderKchartPage(container) {
             periodSpan.textContent = s ? (s + ' ~ ' + e) : '未设置';
         }
 
-        // 填充股票 datalist（优先使用回测结果中的 topPositionCodes）
+        // 填充股票 datalist：仅显示有信号的股票，持仓优先 + 信号频率排序
         function refreshKlineDatalist() {
-            var topFromBacktest = window.topPositionCodes || [];
-            var sorted = tradeStockLibrary.slice().sort(function(a, b) { return b.shares - a.shares; });
-            var topCodes = [];
-            var seen = {};
-            topFromBacktest.forEach(function(c) { seen[c] = true; topCodes.push(c); });
-            sorted.forEach(function(t) {
-                if (!seen[t.code]) { seen[t.code] = true; topCodes.push(t.code); }
+            var signals = window.strategySignals || [];
+            if (signals.length === 0) {
+                populateStockDatalist('stockListKline', ['000001']);
+                return;
+            }
+            var freq = {};
+            signals.forEach(function(s) {
+                var code = (s.code || '').split('.')[0];
+                if (code) freq[code] = (freq[code] || 0) + 1;
             });
-            populateStockDatalist('stockListKline', topCodes.slice(0, 6));
+            var uniqueCodes = Object.keys(freq);
+            var topFreq = uniqueCodes.sort(function(a, b) { return freq[b] - freq[a]; }).slice(0, 10);
+
+            if (bridge && typeof bridge.get_portfolio === 'function') {
+                bridge.get_portfolio().then(function(jsonStr) {
+                    var data = JSON.parse(jsonStr);
+                    var holdingCodes = (data.holdings || []).map(function(h) { return h.code; });
+                    var merged = holdingCodes.concat(topFreq);
+                    var seen = {};
+                    var final = [];
+                    merged.forEach(function(c) {
+                        if (!seen[c]) { seen[c] = true; final.push(c); }
+                    });
+                    populateStockDatalist('stockListKline', final.slice(0, 15));
+                }).catch(function() {
+                    populateStockDatalist('stockListKline', topFreq);
+                });
+            } else {
+                populateStockDatalist('stockListKline', topFreq);
+            }
         }
         refreshKlineDatalist();
-        // 若 bridge 已连接，确保名称映射已加载后刷新 datalist
-        if (bridge && typeof bridge.get_traded_stocks === 'function') {
-            bridge.get_traded_stocks().then(function() { refreshKlineDatalist(); }).catch(function() {});
+
+        // 自动选择首只有信号的股票
+        var signals = window.strategySignals || [];
+        var selInput = document.getElementById('stockSelectorKline');
+        if (signals.length > 0) {
+            var signalCodes = {};
+            signals.forEach(function(s) {
+                signalCodes[(s.code || '').split('.')[0]] = true;
+            });
+            var pureCurrent = (currentStockCode || '').split('.')[0];
+            if (!signalCodes[pureCurrent]) {
+                var firstCode = Object.keys(signalCodes)[0];
+                if (firstCode) {
+                    currentStockCode = firstCode;
+                    if (selInput) {
+                        selInput.value = formatStockNameOnly(firstCode);
+                        selInput.setAttribute('data-current-code', firstCode);
+                    }
+                }
+            }
         }
 
-        var selInput = document.getElementById('stockSelectorKline');
         if (selInput) {
             selInput.value = formatStockNameOnly(currentStockCode);
             selInput.setAttribute('data-current-code', currentStockCode);
 
-            selInput.addEventListener('input', function() {});
+            selInput.addEventListener('input', function(e) {
+                clearTimeout(this._searchTimer);
+                var keyword = e.target.value.trim();
+                if (keyword.length < 2) {
+                    refreshKlineDatalist();
+                    return;
+                }
+                var self = this;
+                this._searchTimer = setTimeout(function() {
+                    if (!bridge || typeof bridge.search_stock !== 'function') return;
+                    bridge.search_stock(keyword).then(function(jsonStr) {
+                        var results = JSON.parse(jsonStr);
+                        if (!results || results.length === 0) return;
+                        var signalCodes = {};
+                        (window.strategySignals || []).forEach(function(s) {
+                            signalCodes[(s.code || '').split('.')[0]] = true;
+                        });
+                        var matched = results.filter(function(r) {
+                            return signalCodes[(r.code || '').split('.')[0]];
+                        });
+                        if (matched.length === 0) return;
+                        var datalist = document.getElementById('stockListKline');
+                        if (datalist) {
+                            datalist.innerHTML = matched.map(function(r) {
+                                var pureCode = (r.code || '').split('.')[0];
+                                return '<option value="' + pureCode + '" label="' + r.name + '(' + pureCode + ')"></option>';
+                            }).join('');
+                        }
+                    }).catch(function() {});
+                }, 300);
+            });
             selInput.addEventListener('change', function() {
                 var code = this.value;
                 var dl = document.getElementById('stockListKline');
@@ -282,9 +349,9 @@ function renderKchartPage(container) {
                 sellPoints.length = 0;
                 matched.forEach(function(s) {
                     if (s.type === 'buy') {
-                        buyPoints.push({ date: s.date, code: code, price: s.price, shares: s.shares });
+                        buyPoints.push({ date: s.date, code: code, price: s.price, shares: s.shares, reason: s.reason || '买入信号' });
                     } else {
-                        sellPoints.push({ date: s.date, code: code, price: s.price, shares: s.shares });
+                        sellPoints.push({ date: s.date, code: code, price: s.price, shares: s.shares, reason: s.reason || '卖出信号' });
                     }
                 });
                 if (matched.length === 0) {

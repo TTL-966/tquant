@@ -331,10 +331,16 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         buyHere.forEach(function(b) {
             var lot = Math.floor((b.shares || 0) / 100) || '零股';
             lines.push('<span style="color:#ff4d4f;">B ' + (b.price != null ? b.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
+            if (b.reason) {
+                lines.push('<span style="font-size:10px;color:#ccc;">' + b.reason + '</span>');
+            }
         });
         sellHere.forEach(function(s) {
             var lot = Math.floor((s.shares || 0) / 100) || '零股';
             lines.push('<span style="color:#52c41a;">S ' + (s.price != null ? s.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
+            if (s.reason) {
+                lines.push('<span style="font-size:10px;color:#ccc;">' + s.reason + '</span>');
+            }
         });
         signalCard.innerHTML = lines.join('<br>');
         signalCard.style.display = '';
