@@ -418,17 +418,25 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
         lines.push('        if _buy_blocked:');
         lines.push('            log.info("涨停不买入")');
         lines.push('        else:');
+        if (hasStopLoss) {
+            lines.push('            _current_pos = context.portfolio.get("holdings", {}).get(stock, 0)');
+        }
         lines.push('            order_target_percent(stock, target_percent)');
         if (hasStopLoss) {
-            lines.push('            context._entry_price_dict[stock] = bar_dict["close"]');
-            lines.push('            context._entry_date_dict[stock] = context.current_dt');
+            lines.push('            if _current_pos == 0 and target_percent > 0:');
+            lines.push('                context._entry_price_dict[stock] = bar_dict["close"]');
+            lines.push('                context._entry_date_dict[stock] = context.current_dt');
         }
         lines.push('            log.info("买入信号触发")');
     } else {
+        if (hasStopLoss) {
+            lines.push('        _current_pos = context.portfolio.get("holdings", {}).get(stock, 0)');
+        }
         lines.push('        order_target_percent(stock, target_percent)');
         if (hasStopLoss) {
-            lines.push('        context._entry_price_dict[stock] = bar_dict["close"]');
-            lines.push('        context._entry_date_dict[stock] = context.current_dt');
+            lines.push('        if _current_pos == 0 and target_percent > 0:');
+            lines.push('            context._entry_price_dict[stock] = bar_dict["close"]');
+            lines.push('            context._entry_date_dict[stock] = context.current_dt');
         }
         lines.push('        log.info("买入信号触发")');
     }
