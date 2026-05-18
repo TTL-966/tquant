@@ -888,7 +888,13 @@ function showBacktestModal() {
             // ---- 多股组合回测：共享资金池 ----
             addLog('info', '🚀 启动多股组合回测（共享资金池），共 ' + codes.length + ' 只股票');
             // 发送原始代码（含 STOCK_CODE_PLACEHOLDER），后端逐个替换
-            var multiParams = { code: userCode, stocks: codes, start: start, end: end, cash: cashVal, slippage: slippageType };
+            var commission = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
+            var stampTax = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
+            var slippageCostTypeVal = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
+            var slippageCostValueVal = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+            var multiParams = { code: userCode, stocks: codes, start: start, end: end, cash: cashVal, slippage: slippageType,
+                commission_rate: commission, stamp_tax_rate: stampTax,
+                slippage_cost_type: slippageCostTypeVal, slippage_cost_value: slippageCostValueVal };
             bridge.run_multi_backtest(JSON.stringify(multiParams)).then(function(jsonStr) {
                 var res = JSON.parse(jsonStr);
                 var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -976,7 +982,13 @@ function showBacktestModal() {
             // ---- 单股回测：使用原有接口 ----
             var stock = codes[0];
             var cleanCode = userCode.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
-            var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType };
+            var commission2 = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
+            var stampTax2 = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
+            var slippageCostTypeVal2 = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
+            var slippageCostValueVal2 = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+            var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType,
+                commission_rate: commission2, stamp_tax_rate: stampTax2,
+                slippage_cost_type: slippageCostTypeVal2, slippage_cost_value: slippageCostValueVal2 };
             bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
                 var res = JSON.parse(jsonStr);
                 var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1043,7 +1055,11 @@ function saveCurrentStrategy() {
     var sp = stockPoolInput ? stockPoolInput.value.trim() : (stockPool || '');
     var spInput = document.getElementById('slippageInput');
     var sl = spInput ? (spInput.getAttribute('data-value') || 'close') : (slippage || 'close');
-    var jsonConfig = serializeConfig(cards, cap, sDate, eDate, sp, sl);
+    var commission = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
+    var stampTax = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
+    var slippageCostType = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
+    var slippageCostValue = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+    var jsonConfig = serializeConfig(cards, cap, sDate, eDate, sp, sl, commission, stampTax, slippageCostType, slippageCostValue);
 
     var saveBtn = document.getElementById('saveStrategyBtn');
     var currentId = saveBtn && saveBtn.dataset.currentId ? parseInt(saveBtn.dataset.currentId) : null;
@@ -1100,6 +1116,20 @@ function loadStrategyById(id) {
             slInput.value = slOpts[slippage] || '收盘价成交（回测默认）';
             slInput.setAttribute('data-value', slippage || 'close');
         }
+        if (config.commission_rate !== undefined) {
+            var commEl = document.getElementById('commissionRate');
+            if (commEl) commEl.value = config.commission_rate;
+            var stEl = document.getElementById('stampTaxRate');
+            if (stEl) stEl.value = config.stamp_tax_rate;
+            var sctEl = document.getElementById('slippageCostType');
+            if (sctEl) {
+                var sctVal = config.slippage_cost_type || 'percent';
+                sctEl.value = sctVal === 'fixed' ? '固定点数(元)' : '百分比';
+                sctEl.setAttribute('data-value', sctVal);
+            }
+            var scvEl = document.getElementById('slippageCostValue');
+            if (scvEl) scvEl.value = config.slippage_cost_value;
+        }
         var saveBtn = document.getElementById('saveStrategyBtn');
         if (saveBtn) saveBtn.dataset.currentId = obj.id;
 
@@ -1128,6 +1158,14 @@ function newStrategy() {
         slInput.value = '收盘价成交（回测默认）';
         slInput.setAttribute('data-value', 'close');
     }
+    var commEl = document.getElementById('commissionRate');
+    if (commEl) commEl.value = '0.0003';
+    var stEl = document.getElementById('stampTaxRate');
+    if (stEl) stEl.value = '0.001';
+    var sctEl = document.getElementById('slippageCostType');
+    if (sctEl) { sctEl.value = '百分比'; sctEl.setAttribute('data-value', 'percent'); }
+    var scvEl = document.getElementById('slippageCostValue');
+    if (scvEl) scvEl.value = '0.1';
     var saveBtn = document.getElementById('saveStrategyBtn');
     if (saveBtn) saveBtn.dataset.currentId = '';
     renderCards();
@@ -1203,6 +1241,19 @@ export function renderStrategyPage(container) {
         '<input type="text" id="slippageInput" value="收盘价成交（回测默认）" readonly data-value="close" ' +
         'style="width:180px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 30px 6px 10px; font-size:13px; cursor:pointer; ' +
         'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center;">' +
+        '</div>' +
+        '<div class="metric-row" style="margin-top:8px;">' +
+        '<span>佣金率:</span>' +
+        '<input type="number" id="commissionRate" value="0.0003" step="0.0001" min="0" max="0.003" style="width:100px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
+        '<span>印花税率:</span>' +
+        '<input type="number" id="stampTaxRate" value="0.001" step="0.0001" min="0" max="0.003" style="width:100px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
+        '<span>滑点类型:</span>' +
+        '<input type="text" id="slippageCostType" value="百分比" readonly data-value="percent" ' +
+        'style="width:120px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 30px 6px 10px; font-size:13px; cursor:pointer; ' +
+        'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center;">' +
+        '<span>滑点值:</span>' +
+        '<input type="number" id="slippageCostValue" value="0.1" step="0.01" min="0" style="width:80px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
+        '<span style="font-size:12px; color:#9aa9cc;">(买入增加成本，卖出减少收入，卖出额外加印花税)</span>' +
         '</div></div>' +
 
         '<div class="card" style="margin-top:12px;">' +
@@ -1261,6 +1312,19 @@ export function renderStrategyPage(container) {
                 { value: 'close', label: '收盘价成交（回测默认）' },
                 { value: 'next_open', label: '次日开盘价成交' },
                 { value: 'half_spread', label: '半价差偏移（仅K线图标记）' }
+            ], function(selectedValue) {
+                // value and data-value are already set by showCustomSelect
+            });
+        });
+    }
+
+    // Slippage cost type dropdown — custom select panel
+    var slippageCostTypeInput = document.getElementById('slippageCostType');
+    if (slippageCostTypeInput) {
+        slippageCostTypeInput.addEventListener('click', function() {
+            showCustomSelect(slippageCostTypeInput, [
+                { value: 'percent', label: '百分比' },
+                { value: 'fixed', label: '固定点数(元)' }
             ], function(selectedValue) {
                 // value and data-value are already set by showCustomSelect
             });

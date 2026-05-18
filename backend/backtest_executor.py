@@ -109,14 +109,14 @@ class BacktestExecutor:
     def _order_target_value_wrapper(self, security, value, reason=""):
         """
         目标市值下单，记录信号。股数向下取整到100的整数倍。
-        根据 self.slippage 决定实际成交价：close / next_open / half_spread。
+        根据 self.slippage 决定基础成交价，再应用滑点成本，然后扣除佣金和印花税。
         """
         code = self._normalize_security(security)
         if self.df is None or self.current_idx < 0:
             return
         bar = self.df.iloc[self.current_idx]
         close_price = bar['close']
-        # 计算实际成交价（滑点）
+        # 计算基础成交价
         if self.slippage == 'next_open' and self.current_idx + 1 < len(self.df):
             fill_price = self.df.iloc[self.current_idx + 1]['open']
         else:
@@ -134,13 +134,39 @@ class BacktestExecutor:
             shares_to_trade = int(shares_to_trade / 100) * 100
         if shares_to_trade == 0:
             return
-        # 买入时检查资金是否充足
+
+        # 应用滑点成本
+        if self.slippage_cost_type == "fixed":
+            if shares_to_trade > 0:
+                fill_price += self.slippage_cost_value
+            else:
+                fill_price -= self.slippage_cost_value
+        elif self.slippage_cost_type == "percent":
+            pct = self.slippage_cost_value / 100.0
+            if shares_to_trade > 0:
+                fill_price *= (1 + pct)
+            else:
+                fill_price *= (1 - pct)
+
+        # 计算交易金额与费用
+        trade_amount = abs(shares_to_trade) * fill_price
+        commission = trade_amount * self.commission_rate
+        stamp_tax = 0
+        if shares_to_trade < 0:
+            stamp_tax = trade_amount * self.stamp_tax_rate
+        total_cost = trade_amount + commission + stamp_tax
+
+        cash = self._get_portfolio_cash()
         if shares_to_trade > 0:
-            cost = shares_to_trade * fill_price
-            cash = self._get_portfolio_cash()
-            if cost > cash:
-                self.logs.append(f"[WARN] 资金不足：需要 {cost:.2f}，现金 {cash:.2f}")
+            # 买入：需要扣除总成本
+            if total_cost > cash:
+                self.logs.append(f"[WARN] 资金不足：需要 {total_cost:.2f}，现金 {cash:.2f}")
                 return
+            self._context.portfolio['cash'] -= total_cost
+        else:
+            # 卖出：收入减去佣金和印花税
+            self._context.portfolio['cash'] += (trade_amount - commission - stamp_tax)
+
         self._record_trade(code, shares_to_trade, fill_price, reason)
 
     def _order_target_percent_wrapper(self, security, percent):
@@ -199,17 +225,12 @@ class BacktestExecutor:
 
     def _record_trade(self, security, shares, price, reason=""):
         """
-        更新持仓和现金，并记录信号。
+        更新持仓并记录信号。现金已在 _order_target_value_wrapper 中扣除。
         shares 正数为买入，负数为卖出。
         """
         code = self._normalize_security(security)
         ctx = self._context
-        cash = ctx.portfolio['cash']
         holdings = ctx.portfolio['holdings']
-        # 更新现金
-        cost = shares * price
-        cash -= cost
-        ctx.portfolio['cash'] = cash
         # 更新持仓
         current_shares = holdings.get(code, 0)
         new_shares = current_shares + shares
@@ -231,7 +252,8 @@ class BacktestExecutor:
         })
 
     # ---------- 主执行方法 ----------
-    def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000, slippage="close"):
+    def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000, slippage="close",
+            commission_rate=0.0003, stamp_tax_rate=0.001, slippage_cost_type="percent", slippage_cost_value=0.1):
         """
         :param user_code: 用户策略代码字符串
         :param stock_code: 股票代码，如 "000001"
@@ -239,9 +261,17 @@ class BacktestExecutor:
         :param end_date: 结束日期字符串
         :param initial_cash: 初始资金
         :param slippage: 成交价模式 "close" / "next_open" / "half_spread"
+        :param commission_rate: 佣金率
+        :param stamp_tax_rate: 印花税率
+        :param slippage_cost_type: 滑点类型 "percent" / "fixed"
+        :param slippage_cost_value: 滑点值
         :return: dict 包含 status, signals, equity_curve, metrics, logs
         """
         self.slippage = slippage
+        self.commission_rate = commission_rate
+        self.stamp_tax_rate = stamp_tax_rate
+        self.slippage_cost_type = slippage_cost_type
+        self.slippage_cost_value = slippage_cost_value
         # 重置状态
         self.trade_signals.clear()
         self.logs.clear()

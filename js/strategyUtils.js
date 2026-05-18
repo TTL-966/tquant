@@ -547,7 +547,7 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
 
 // ---- Config serialization ----
 
-export function serializeConfig(cards, capital, startDate, endDate, stockPool, slippage) {
+export function serializeConfig(cards, capital, startDate, endDate, stockPool, slippage, commission, stampTax, slippageCostType, slippageCostValue) {
     var config = {
         version: 1,
         cards: cards,
@@ -555,7 +555,11 @@ export function serializeConfig(cards, capital, startDate, endDate, stockPool, s
         startDate: startDate || '2010-01-01',
         endDate: endDate || new Date().toISOString().slice(0, 10),
         stockPool: stockPool || '',
-        slippage: slippage || 'close'
+        slippage: slippage || 'close',
+        commission_rate: commission !== undefined ? commission : 0.0003,
+        stamp_tax_rate: stampTax !== undefined ? stampTax : 0.001,
+        slippage_cost_type: slippageCostType || 'percent',
+        slippage_cost_value: slippageCostValue !== undefined ? slippageCostValue : 0.1
     };
     return JSON.stringify(config);
 }
@@ -573,7 +577,11 @@ export function deserializeConfig(jsonStr) {
             startDate: config.startDate || '2010-01-01',
             endDate: config.endDate || new Date().toISOString().slice(0, 10),
             stockPool: config.stockPool || '',
-            slippage: config.slippage || 'close'
+            slippage: config.slippage || 'close',
+            commission_rate: config.commission_rate !== undefined ? config.commission_rate : 0.0003,
+            stamp_tax_rate: config.stamp_tax_rate !== undefined ? config.stamp_tax_rate : 0.001,
+            slippage_cost_type: config.slippage_cost_type || 'percent',
+            slippage_cost_value: config.slippage_cost_value !== undefined ? config.slippage_cost_value : 0.1
         };
     } catch (e) {
         return null;

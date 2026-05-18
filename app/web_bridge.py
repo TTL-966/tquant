@@ -186,11 +186,17 @@ class WebBridge(QObject):
             end = params.get("end", "2026-12-31")
             cash = params.get("cash", 1000000)
             slippage = params.get("slippage", "close")
+            commission = params.get("commission_rate", 0.0003)
+            stamp_tax = params.get("stamp_tax_rate", 0.001)
+            slippage_cost_type = params.get("slippage_cost_type", "percent")
+            slippage_cost_value = params.get("slippage_cost_value", 0.1)
 
             # 调试日志：输出接收到的策略代码信息
 
 
-            result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash, slippage=slippage)
+            result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash, slippage=slippage,
+                                                commission_rate=commission, stamp_tax_rate=stamp_tax,
+                                                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value)
 
             # 输出后端日志最后5条
             print(f"[Bridge] 后端日志(最后5条): {result.get('logs', [])[-5:]}", flush=True)
@@ -239,6 +245,10 @@ class WebBridge(QObject):
             end = params.get("end", "2026-12-31")
             cash = params.get("cash", 1000000)
             slippage = params.get("slippage", "close")
+            commission = params.get("commission_rate", 0.0003)
+            stamp_tax = params.get("stamp_tax_rate", 0.001)
+            slippage_cost_type = params.get("slippage_cost_type", "percent")
+            slippage_cost_value = params.get("slippage_cost_value", 0.1)
 
             if not user_code:
                 return json.dumps({"success": False, "error": "策略代码为空"})
@@ -250,7 +260,9 @@ class WebBridge(QObject):
 
             result = self.multi_backtest_executor.run(
                 user_code, stocks, start, end,
-                initial_cash=cash, slippage=slippage
+                initial_cash=cash, slippage=slippage,
+                commission_rate=commission, stamp_tax_rate=stamp_tax,
+                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value
             )
 
             print(f"[Bridge] 多股回测完成: {len(stocks)}只股票, 信号{len(result.get('signals',[]))}个", flush=True)
