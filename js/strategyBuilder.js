@@ -805,7 +805,7 @@ function showBacktestModal() {
                 if (r.signals) {
                     r.signals.forEach(function(s) {
                         var code = s.code || '';
-                        mergedSignals.push({ date: s.date, code: code, type: s.type, price: s.price, shares: s.shares });
+                        mergedSignals.push({ date: s.date, code: code, type: s.type, price: s.price, shares: s.shares, reason: s.reason });
                         if (!positionMap[code]) positionMap[code] = 0;
                         if (s.type === 'buy') {
                             positionMap[code] += (s.price || 0) * (s.shares || 0);
@@ -837,7 +837,8 @@ function showBacktestModal() {
                     return { date: date, value: equityMap[date] };
                 });
 
-                var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: {} ,stock_performance: null};
+                var firstMetrics = (results.length > 0 && results[0] && results[0].metrics) ? results[0].metrics : {};
+                var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: firstMetrics, stock_performance: null};
                 for (var i = 0; i < results.length; i++) {
                     if (results[i] && results[i].stock_performance) { mergedResult.stock_performance = results[i].stock_performance; break; }
                 }

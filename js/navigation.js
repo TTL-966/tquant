@@ -5,7 +5,7 @@ import { renderStockKline, drawDetailCurve, formatStockDisplayHtml, drawEquityCu
 import { renderVolumeSubChart, destroyVolumeSubChart } from './subChartRenderer.js';
 import { bindDatePicker } from './datepicker.js';
 import { stockNameMap, tradeStockLibrary, backtestStrategies, fetchStockName, searchStockSuggestions } from './stockData.js';
-import { formatStockNameOnly, populateStockDatalist, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
+import { formatStockNameOnly, populateStockDatalist, populateStockSelector, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
 import { renderStrategyPage } from './strategyBuilder.js';
 import { renderCodeEditorPage } from './codeEditor.js';
 import { renderTroubleshootPage } from './troubleshoot.js';
@@ -13,6 +13,53 @@ import { CARD_TYPE_META } from './strategyTemplates.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
+
+// ---- 自定义下拉面板（解决 QtWebEngine select/datalist 拉伸问题）----
+function closeStockDropdown() {
+    var panel = document.querySelector('.stock-dropdown-panel');
+    if (panel) panel.remove();
+    document.removeEventListener('click', _onDocClickStockDropdown);
+}
+function _onDocClickStockDropdown(e) {
+    var panel = document.querySelector('.stock-dropdown-panel');
+    if (panel && !panel.contains(e.target) && e.target.id !== 'stockSelectorKline' && e.target.id !== 'stockSelectorArrow') {
+        closeStockDropdown();
+    }
+}
+function showStockDropdown(input, options, onSelect) {
+    closeStockDropdown();
+    if (!options || options.length === 0) return;
+
+    var panel = document.createElement('div');
+    panel.className = 'stock-dropdown-panel';
+    panel.style.cssText = 'position:fixed;z-index:99999;background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:4px 0;max-height:280px;overflow-y:auto;min-width:260px;box-shadow:0 8px 20px rgba(0,0,0,0.5);';
+
+    options.forEach(function(opt) {
+        var item = document.createElement('div');
+        item.style.cssText = 'padding:8px 16px;cursor:pointer;color:#fff;font-size:13px;white-space:nowrap;display:flex;justify-content:space-between;';
+        item.innerHTML = '<span>' + opt.name + '</span><span style="color:#9aa9cc;font-size:11px;">' + opt.code + '</span>';
+        item.addEventListener('mouseenter', function() { item.style.background = '#2d3a5e'; });
+        item.addEventListener('mouseleave', function() { item.style.background = 'transparent'; });
+        item.addEventListener('click', function(e) {
+            e.stopPropagation();
+            input.value = opt.name;
+            input.setAttribute('data-code', opt.code);
+            closeStockDropdown();
+            if (typeof onSelect === 'function') onSelect(opt.code);
+        });
+        panel.appendChild(item);
+    });
+
+    document.body.appendChild(panel);
+
+    var rect = input.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + 'px';
+
+    setTimeout(function() {
+        document.addEventListener('click', _onDocClickStockDropdown);
+    }, 0);
+}
 
 // ---- Toast 提示 ----
 function showToast(msg, isError) {
@@ -177,8 +224,11 @@ function renderKchartPage(container) {
             <div class="legend-sign"><span><i class="buy-point"></i> 买入 (B)</span><span><i class="sell-point"></i> 卖出 (S)</span></div>
             <div class="metric-row">
                 <span>当前股票:</span>
-                <input type="text" id="stockSelectorKline" list="stockListKline" placeholder="输入或选择股票" style="width:130px;">
-                <datalist id="stockListKline"></datalist>
+                <div style="position:relative;display:inline-block;">
+                    <input type="text" id="stockSelectorKline" readonly placeholder="选择股票" style="width:150px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 32px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
+                    <span id="stockSelectorArrow" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
+                </div>
+                <button id="searchStockBtn" style="margin-left:4px; background:#2d3a5e; color:#fff; border:none; border-radius:30px; padding:6px 12px; cursor:pointer; font-size:13px;">🔍</button>
                 <button id="loadStrategySignalsBtn">📊 加载策略信号</button>
                 <button id="gotoStrategyBtn">📝 跳转到策略页</button>
                 <button id="refreshKlineBtn">刷新K线</button>
@@ -204,11 +254,36 @@ function renderKchartPage(container) {
             periodSpan.textContent = s ? (s + ' ~ ' + e) : '未设置';
         }
 
-        // 填充股票 datalist：仅显示有信号的股票，持仓优先 + 信号频率排序
-        function refreshKlineDatalist() {
+        // 股票选项存储（供下拉面板使用）
+        var _stockOptions = [];
+
+        function _codesToOptions(codes) {
+            return codes.map(function(c) {
+                return { code: c, name: formatStockNameOnly(c) };
+            });
+        }
+
+        function _ensureOptionsContain(code) {
+            for (var i = 0; i < _stockOptions.length; i++) {
+                if (_stockOptions[i].code === code) return;
+            }
+            _stockOptions.push({ code: code, name: formatStockNameOnly(code) });
+        }
+
+        function _updateStockInput(code) {
+            var input = document.getElementById('stockSelectorKline');
+            if (input) {
+                input.value = formatStockNameOnly(code);
+                input.setAttribute('data-code', code);
+            }
+        }
+
+        // 构建股票选项列表：仅显示有信号的股票，持仓优先 + 信号频率排序
+        function refreshStockSelect() {
             var signals = window.strategySignals || [];
             if (signals.length === 0) {
-                populateStockDatalist('stockListKline', ['000001']);
+                _stockOptions = [{ code: '000001', name: formatStockNameOnly('000001') }];
+                _updateStockInput('000001');
                 return;
             }
             var freq = {};
@@ -218,6 +293,11 @@ function renderKchartPage(container) {
             });
             var uniqueCodes = Object.keys(freq);
             var topFreq = uniqueCodes.sort(function(a, b) { return freq[b] - freq[a]; }).slice(0, 10);
+
+            function applyOptions(codes) {
+                _stockOptions = _codesToOptions(codes);
+                _updateStockInput(currentStockCode);
+            }
 
             if (bridge && typeof bridge.get_portfolio === 'function') {
                 bridge.get_portfolio().then(function(jsonStr) {
@@ -229,15 +309,15 @@ function renderKchartPage(container) {
                     merged.forEach(function(c) {
                         if (!seen[c]) { seen[c] = true; final.push(c); }
                     });
-                    populateStockDatalist('stockListKline', final.slice(0, 15));
+                    applyOptions(final.slice(0, 15));
                 }).catch(function() {
-                    populateStockDatalist('stockListKline', topFreq);
+                    applyOptions(topFreq);
                 });
             } else {
-                populateStockDatalist('stockListKline', topFreq);
+                applyOptions(topFreq);
             }
         }
-        refreshKlineDatalist();
+        refreshStockSelect();
 
         // 自动选择首只有信号的股票
         var signals = window.strategySignals || [];
@@ -252,74 +332,41 @@ function renderKchartPage(container) {
                 var firstCode = Object.keys(signalCodes)[0];
                 if (firstCode) {
                     currentStockCode = firstCode;
-                    if (selInput) {
-                        selInput.value = formatStockNameOnly(firstCode);
-                        selInput.setAttribute('data-current-code', firstCode);
-                    }
                 }
             }
         }
-
         if (selInput) {
-            selInput.value = formatStockNameOnly(currentStockCode);
-            selInput.setAttribute('data-current-code', currentStockCode);
+            _updateStockInput(currentStockCode);
+        }
 
-            selInput.addEventListener('input', function(e) {
-                clearTimeout(this._searchTimer);
-                var keyword = e.target.value.trim();
-                if (keyword.length < 2) {
-                    refreshKlineDatalist();
-                    return;
-                }
-                var self = this;
-                this._searchTimer = setTimeout(function() {
-                    if (!bridge || typeof bridge.search_stock !== 'function') return;
-                    bridge.search_stock(keyword).then(function(jsonStr) {
-                        var results = JSON.parse(jsonStr);
-                        if (!results || results.length === 0) return;
-                        var signalCodes = {};
-                        (window.strategySignals || []).forEach(function(s) {
-                            signalCodes[(s.code || '').split('.')[0]] = true;
-                        });
-                        var matched = results.filter(function(r) {
-                            return signalCodes[(r.code || '').split('.')[0]];
-                        });
-                        if (matched.length === 0) return;
-                        var datalist = document.getElementById('stockListKline');
-                        if (datalist) {
-                            datalist.innerHTML = matched.map(function(r) {
-                                var pureCode = (r.code || '').split('.')[0];
-                                return '<option value="' + pureCode + '" label="' + r.name + '(' + pureCode + ')"></option>';
-                            }).join('');
-                        }
-                    }).catch(function() {});
-                }, 300);
-            });
-            selInput.addEventListener('change', function() {
-                var code = this.value;
-                var dl = document.getElementById('stockListKline');
-                if (dl) {
-                    for (var i = 0; i < dl.options.length; i++) {
-                        if (dl.options[i].label === this.value || dl.options[i].value === this.value) {
-                            code = dl.options[i].value;
-                            break;
-                        }
-                    }
-                }
+        // 点击输入框或箭头 → 弹出下拉面板
+        function _openStockDropdown() {
+            if (_stockOptions.length === 0) return;
+            showStockDropdown(selInput, _stockOptions, function(code) {
                 currentStockCode = code;
-                this.setAttribute('data-current-code', code);
-                var displayName = formatStockNameOnly(code);
-                if (this.value !== displayName) this.value = displayName;
                 buyPoints.length = 0;
                 sellPoints.length = 0;
-                fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd);
+                fetchAndRenderKline(code, backtestStart, backtestEnd);
             });
-            selInput.addEventListener('focus', function() { this.value = ''; });
-            selInput.addEventListener('blur', function() {
-                if (this.value.trim() === '') {
-                    this.value = formatStockNameOnly(currentStockCode);
-                    this.setAttribute('data-current-code', currentStockCode);
-                }
+        }
+
+        if (selInput) {
+            selInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+                // 刷新选项（可能信号已更新）
+                if (_stockOptions.length === 0) refreshStockSelect();
+                _openStockDropdown();
+            });
+        }
+
+        var arrowEl = document.getElementById('stockSelectorArrow');
+        if (arrowEl) {
+            arrowEl.style.pointerEvents = 'auto';
+            arrowEl.style.cursor = 'pointer';
+            arrowEl.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (_stockOptions.length === 0) refreshStockSelect();
+                _openStockDropdown();
             });
         }
 
@@ -329,6 +376,46 @@ function renderKchartPage(container) {
             refreshBtn.onclick = function() {
                 fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd);
             };
+        }
+
+        // 搜索按钮：按关键词搜索，通过下拉面板展示结果
+        var searchBtn = document.getElementById('searchStockBtn');
+        if (searchBtn) {
+            searchBtn.addEventListener('click', function() {
+                var keyword = prompt('输入股票代码或名称搜索:');
+                if (!keyword || !keyword.trim()) return;
+                keyword = keyword.trim();
+                searchStockSuggestions(keyword, bridge).then(function(list) {
+                    if (!list || list.length === 0) {
+                        showToast('未找到匹配股票', true);
+                        return;
+                    }
+                    var searchOptions = [];
+                    list.forEach(function(item) {
+                        var code = (item.code || '').split('.')[0];
+                        if (code) {
+                            searchOptions.push({ code: code, name: item.name || formatStockNameOnly(code) });
+                        }
+                    });
+                    if (searchOptions.length === 0) {
+                        showToast('未找到匹配股票', true);
+                        return;
+                    }
+                    var input = document.getElementById('stockSelectorKline');
+                    if (!input) return;
+                    showStockDropdown(input, searchOptions, function(code) {
+                        // 将选中股票加入主选项列表（去重）
+                        _ensureOptionsContain(code);
+                        currentStockCode = code;
+                        _updateStockInput(code);
+                        buyPoints.length = 0;
+                        sellPoints.length = 0;
+                        fetchAndRenderKline(code, backtestStart, backtestEnd);
+                    });
+                }).catch(function() {
+                    showToast('搜索失败，请确认 Bridge 已连接', true);
+                });
+            });
         }
 
         // 加载策略信号按钮
@@ -370,6 +457,7 @@ function renderKchartPage(container) {
                 } else {
                     fetchAndRenderKline(code, backtestStart, backtestEnd);
                 }
+                refreshStockSelect();
                 showToast('已加载 ' + matched.length + ' 个信号', false);
             });
         }
@@ -867,7 +955,7 @@ function buildMetricCards(metrics) {
         );
     }
     function fmtPct(val) {
-        if (val == null) return 'N/A';
+        if (val === undefined || val === null || isNaN(val)) return 'N/A';
         return (val >= 0 ? '+' : '') + val.toFixed(2) + '%';
     }
     var tr = metrics.total_return;
@@ -926,6 +1014,7 @@ function buildSignalRows(signals, stockCode) {
             '<td>' + typeText + '</td>' +
             '<td>' + (s.price != null ? s.price.toFixed(2) : '--') + '</td>' +
             '<td>' + lotDisplay + '</td>' +
+            '<td>' + escapeHtml(s.reason || '--') + '</td>' +
             '</tr>';
     }).join('');
 }
@@ -1088,7 +1177,7 @@ function renderBacktestDetail(container, result) {
                 </div>
                 <div class="scrollable-table">
                     <table>
-                        <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>手数</th></tr></thead>
+                        <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>手数</th><th>原因</th></tr></thead>
                         <tbody id="signalTableBody">
                             ${buildSignalRows(result.signals)}
                         </tbody>

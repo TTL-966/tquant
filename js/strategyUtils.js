@@ -42,7 +42,10 @@ function genMACross(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + fast + '_ma_prev >= ' + slow + '_ma_prev and ' + fast + '_ma < ' + slow + '_ma)');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'golden'
+        ? 'MA' + p.fastPeriod + '上穿MA' + p.slowPeriod + '金叉' + (card.action === 'buy' ? '买入' : '卖出')
+        : 'MA' + p.fastPeriod + '下穿MA' + p.slowPeriod + '死叉' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genRSI(card, idx) {
@@ -71,7 +74,10 @@ function genRSI(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'rsi') + ' > ' + overboughtP + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'oversold_buy'
+        ? 'RSI(' + p.period + ')超卖(' + p.oversold + ')' + (card.action === 'buy' ? '买入' : '卖出')
+        : 'RSI(' + p.period + ')超买(' + p.overbought + ')' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genMACD(card, idx) {
@@ -102,7 +108,10 @@ function genMACD(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'dif_prev') + ' >= ' + contextName(idx, 'dea_prev') + ' and ' + contextName(idx, 'dif_cur') + ' < ' + contextName(idx, 'dea_cur') + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'golden'
+        ? 'MACD金叉' + (card.action === 'buy' ? '买入' : '卖出')
+        : 'MACD死叉' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genBollinger(card, idx) {
@@ -127,7 +136,10 @@ function genBollinger(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'last_close') + ' > ' + contextName(idx, 'upper') + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'lower_breakout'
+        ? '布林带下轨突破' + (card.action === 'buy' ? '买入' : '卖出')
+        : '布林带上轨突破' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genKDJ(card, idx) {
@@ -161,7 +173,10 @@ function genKDJ(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'k_prev') + ' >= ' + contextName(idx, 'd_prev') + ' and ' + contextName(idx, 'k_cur') + ' < ' + contextName(idx, 'd_cur') + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'golden'
+        ? 'KDJ金叉' + (card.action === 'buy' ? '买入' : '卖出')
+        : 'KDJ死叉' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genVolume(card, idx) {
@@ -179,7 +194,8 @@ function genVolume(card, idx) {
     lines.push('    ' + contextName(idx, 'avg_vol') + ' = ' + vols + '[:-1].mean()');
     lines.push('    ' + contextName(idx, 'cur_vol') + ' = ' + vols + '[-1]');
     lines.push('    ' + sigVar + '.append(' + contextName(idx, 'cur_vol') + ' > ' + contextName(idx, 'avg_vol') + ' * ' + multP + ')');
-    return { code: lines, cond: '' };
+    var reason = '成交量放大' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genATRBreakout(card, idx) {
@@ -212,7 +228,10 @@ function genATRBreakout(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'last_close') + ' < ' + contextName(idx, 'lower') + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'upper_breakout'
+        ? 'ATR上轨突破' + (card.action === 'buy' ? '买入' : '卖出')
+        : 'ATR下轨突破' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genCCI(card, idx) {
@@ -241,7 +260,10 @@ function genCCI(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'cci') + ' > ' + overboughtP + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'oversold_buy'
+        ? 'CCI(' + p.period + ')超卖(' + p.oversold + ')' + (card.action === 'buy' ? '买入' : '卖出')
+        : 'CCI(' + p.period + ')超买(' + p.overbought + ')' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 function genMAAlignment(card, idx) {
@@ -265,7 +287,10 @@ function genMAAlignment(card, idx) {
     } else {
         lines.push('    ' + sigVar + '.append(' + contextName(idx, 'ma_fast') + ' < ' + contextName(idx, 'ma_mid') + ' and ' + contextName(idx, 'ma_mid') + ' < ' + contextName(idx, 'ma_slow') + ')');
     }
-    return { code: lines, cond: '' };
+    var reason = p.direction === 'bullish'
+        ? '均线多头排列' + (card.action === 'buy' ? '买入' : '卖出')
+        : '均线空头排列' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
 }
 
 // ---- Main code generation ----
@@ -364,6 +389,9 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
     }
     lines.push('');
 
+    var entryReasons = [];
+    var exitReasons = [];
+
     // Generate each card's condition block
     for (var i = 0; i < cards.length; i++) {
         var card = cards[i];
@@ -391,6 +419,14 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
             default: continue;
         }
 
+        if (genResult && genResult.reason) {
+            if (card.action === 'buy') {
+                entryReasons.push(genResult.reason);
+            } else {
+                exitReasons.push(genResult.reason);
+            }
+        }
+
         for (var li = 0; li < genResult.code.length; li++) {
             lines.push('    ' + genResult.code[li]);
         }
@@ -413,6 +449,7 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
 
     // Execute entry
     lines.push('    # 执行入场信号');
+    var entryReasonLine = entryReasons.length > 0 ? 'context._last_signal_reason = "' + entryReasons.join('+') + '"' : null;
     lines.push('    if len(entry_signals) > 0 and all(entry_signals):');
     if (hasPriceLimit) {
         lines.push('        if _buy_blocked:');
@@ -421,6 +458,7 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
         if (hasStopLoss) {
             lines.push('            _current_pos = context.portfolio.get("holdings", {}).get(stock, 0)');
         }
+        if (entryReasonLine) lines.push('            ' + entryReasonLine);
         lines.push('            order_target_percent(stock, target_percent)');
         if (hasStopLoss) {
             lines.push('            if _current_pos == 0 and target_percent > 0:');
@@ -432,6 +470,7 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
         if (hasStopLoss) {
             lines.push('        _current_pos = context.portfolio.get("holdings", {}).get(stock, 0)');
         }
+        if (entryReasonLine) lines.push('        ' + entryReasonLine);
         lines.push('        order_target_percent(stock, target_percent)');
         if (hasStopLoss) {
             lines.push('        if _current_pos == 0 and target_percent > 0:');
@@ -444,11 +483,13 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
 
     // Execute exit from exit conditions
     lines.push('    # 执行离场信号');
+    var exitReasonLine = exitReasons.length > 0 ? 'context._last_signal_reason = "' + exitReasons.join('+') + '"' : null;
     lines.push('    if len(exit_signals) > 0 and all(exit_signals):');
     if (hasPriceLimit) {
         lines.push('        if _sell_blocked:');
         lines.push('            log.info("跌停不卖出")');
         lines.push('        else:');
+        if (exitReasonLine) lines.push('            ' + exitReasonLine);
         lines.push('            order_target_percent(stock, 0)');
         if (hasStopLoss) {
             lines.push('            context._entry_price_dict.pop(stock, None)');
@@ -456,6 +497,7 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
         }
         lines.push('            log.info("卖出信号触发")');
     } else {
+        if (exitReasonLine) lines.push('        ' + exitReasonLine);
         lines.push('        order_target_percent(stock, 0)');
         if (hasStopLoss) {
             lines.push('        context._entry_price_dict.pop(stock, None)');
@@ -483,6 +525,12 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
         lines.push('            days_triggered = hold_days >= max_days');
         lines.push('            log.info("DEBUG: 持有天数={}, max_days={}, days_triggered={}".format(hold_days, max_days, days_triggered))');
         lines.push('        if sl_triggered or tp_triggered or days_triggered:');
+        lines.push('            if sl_triggered:');
+        lines.push('                context._last_signal_reason = "止损卖出"');
+        lines.push('            elif tp_triggered:');
+        lines.push('                context._last_signal_reason = "止盈卖出"');
+        lines.push('            else:');
+        lines.push('                context._last_signal_reason = "持仓天数到期卖出"');
         lines.push('            order_target_percent(stock, 0)');
         lines.push('            context._entry_price_dict.pop(stock, None)');
         lines.push('            context._entry_date_dict.pop(stock, None)');

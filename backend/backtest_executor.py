@@ -106,7 +106,7 @@ class BacktestExecutor:
         # 返回最近 min(count, len(vals)) 个值
         return vals[-min(count, len(vals)):]
 
-    def _order_target_value_wrapper(self, security, value):
+    def _order_target_value_wrapper(self, security, value, reason=""):
         """
         目标市值下单，记录信号。股数向下取整到100的整数倍。
         根据 self.slippage 决定实际成交价：close / next_open / half_spread。
@@ -141,7 +141,7 @@ class BacktestExecutor:
             if cost > cash:
                 self.logs.append(f"[WARN] 资金不足：需要 {cost:.2f}，现金 {cash:.2f}")
                 return
-        self._record_trade(code, shares_to_trade, fill_price)
+        self._record_trade(code, shares_to_trade, fill_price, reason)
 
     def _order_target_percent_wrapper(self, security, percent):
         """
@@ -159,7 +159,9 @@ class BacktestExecutor:
             total_holding_value += h_shares * current_price
         total_assets = cash + total_holding_value
         target_value = total_assets * percent
-        self._order_target_value_wrapper(code, target_value)
+        reason = getattr(self._context, '_last_signal_reason', '')
+        self._order_target_value_wrapper(code, target_value, reason)
+
 
     def _get_current_data_wrapper(self, security):
         """
@@ -195,7 +197,7 @@ class BacktestExecutor:
             return self._context.portfolio.get('holdings', {})
         return {}
 
-    def _record_trade(self, security, shares, price):
+    def _record_trade(self, security, shares, price, reason=""):
         """
         更新持仓和现金，并记录信号。
         shares 正数为买入，负数为卖出。
@@ -224,7 +226,8 @@ class BacktestExecutor:
             'code': code,
             'type': trade_type,
             'price': round(price, 2),
-            'shares': round(abs(shares), 2)   # 保留两位小数
+            'shares': round(abs(shares), 2),
+            'reason': reason or "测试原因(MA5金叉)"
         })
 
     # ---------- 主执行方法 ----------
@@ -245,7 +248,6 @@ class BacktestExecutor:
         self.daily_functions.clear()
         self.current_idx = -1
         self.df = None
-
         # 1. 获取K线数据
         try:
             raw_str = self.data_source.get_kline_json(stock_code, start_date, end_date, limit=0)
@@ -394,6 +396,8 @@ class BacktestExecutor:
             'metrics': metrics,
             'logs': logs
         }
+        # 在 return result 之前
+        print("DEBUG metrics:", metrics)
         return result
 
     # ---------- 辅助方法 ----------
@@ -452,21 +456,50 @@ class BacktestExecutor:
             annual_vol = np.std(returns, ddof=1) * np.sqrt(250.0) * 100.0
         else:
             annual_vol = 0.0
-        # 信息比率（无基准时设为0）
-        information_ratio = 0.0
-        # 胜率（简化为盈利交易比例，这里未记录单笔盈亏，暂设0）
-        win_rate = 0.0
-        # 总交易次数
-        total_trades = len(self.trade_signals)
+
+        # ---------- 新增：计算胜率（基于买卖配对）----------
+        # 按股票分组，使用 FIFO 队列配对
+        from collections import defaultdict
+        buy_queues = defaultdict(list)  # key: code, value: list of {'price': price, 'shares': shares}
+        win_trades = 0
+        total_trades = 0
+
+        for sig in self.trade_signals:
+            code = sig['code']
+            if sig['type'] == 'buy':
+                buy_queues[code].append({'price': sig['price'], 'shares': sig['shares']})
+            elif sig['type'] == 'sell':
+                sell_price = sig['price']
+                sell_shares = sig['shares']
+                queue = buy_queues.get(code, [])
+                while sell_shares > 1e-8 and queue:
+                    buy = queue[0]
+                    matched = min(buy['shares'], sell_shares)
+                    profit = (sell_price - buy['price']) * matched
+                    if profit > 0:
+                        win_trades += 1
+                    total_trades += 1
+                    buy['shares'] -= matched
+                    sell_shares -= matched
+                    if buy['shares'] < 1e-8:
+                        queue.pop(0)
+        win_rate = round(win_trades / total_trades * 100, 2) if total_trades > 0 else 0.0
+
+        # ---------- 信息比率（使用年化收益率/年化波动率，无风险利率=0）----------
+        if annual_vol > 0:
+            information_ratio = round(annual_ret / annual_vol, 2)
+        else:
+            information_ratio = 0.0
+
         metrics = {
-            'total_return': round(total_return,2),
-            'annual_return': round(annual_ret,2),
-            'max_drawdown': round(max_drawdown,2),
+            'total_return': round(total_return, 2),
+            'annual_return': round(annual_ret, 2),
+            'max_drawdown': round(max_drawdown, 2),
             'max_drawdown_duration': drawdown_duration,
-            'sharpe_ratio': round(sharpe,2),
-            'annual_volatility': round(annual_vol,2),
-            'information_ratio': round(information_ratio,2),
-            'win_rate': round(win_rate,2),
+            'sharpe_ratio': round(sharpe, 2),
+            'annual_volatility': round(annual_vol, 2),
+            'information_ratio': information_ratio,
+            'win_rate': win_rate,
             'total_trades': total_trades
         }
         return metrics

@@ -21,8 +21,8 @@ function formatStockDisplay(code) {
 }
 
 // ---- 填充买卖点成交图下拉框 ----
-function populateStockSelector(selectorId, stocks) {
-    var sel = document.getElementById(selectorId);
+export function populateStockSelector(selectId, stocks) {
+    var sel = document.getElementById(selectId);
     if (!sel) return;
     sel.innerHTML = '';
     var seen = {};
