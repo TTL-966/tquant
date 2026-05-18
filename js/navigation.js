@@ -1121,6 +1121,24 @@ function executeSignalsToSimulation(signals, container) {
 
 function renderBacktestDetail(container, result) {
 	console.log("renderBacktestDetail 收到的 stock_performance:", result.stock_performance);
+	// 兜底：如果 metrics 为空，从 equity_curve 和 signals 手动计算
+	if (!result.metrics || Object.keys(result.metrics).length === 0) {
+		var ec = result.equity_curve || [];
+		var sigs = result.signals || [];
+		var initialCash = 1000000;
+		var finalVal = ec.length > 0 ? ec[ec.length - 1].value : initialCash;
+		result.metrics = {
+			total_return: parseFloat(((finalVal / initialCash - 1) * 100).toFixed(2)),
+			total_trades: sigs.length,
+			annual_return: 0,
+			max_drawdown: 0,
+			max_drawdown_duration: 0,
+			sharpe_ratio: 0,
+			annual_volatility: 0,
+			information_ratio: 0,
+			win_rate: 0
+		};
+	}
     var strategyName = window.currentStrategyName || '未命名策略';
     var periodStart = window.strategyStartDate || '--';
     var periodEnd = window.strategyEndDate || '--';

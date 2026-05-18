@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "id": 1,
+    "name": "RSI 超买超卖策略1",
+    "code": "{\"version\":1,\"cards\":[{\"id\":\"card_mpb76nj9_u60zd7\",\"type\":\"rsi\",\"action\":\"buy\",\"params\":{\"period\":14,\"oversold\":30,\"overbought\":70,\"direction\":\"oversold_buy\"}},{\"id\":\"card_mpb76nja_aynect\",\"type\":\"rsi\",\"action\":\"sell\",\"params\":{\"period\":14,\"oversold\":30,\"overbought\":70,\"direction\":\"overbought_sell\"}},{\"id\":\"card_mpb76nja_bushm5\",\"type\":\"stop_loss_profit\",\"action\":\"sell\",\"params\":{\"stopLossPercent\":5,\"takeProfitPercent\":15,\"maxHoldDays\":20}},{\"id\":\"card_mpb76nja_fefxj9\",\"type\":\"position\",\"action\":null,\"params\":{\"positionType\":\"fixed\",\"fixedPercent\":0.8}}],\"capital\":1000000,\"startDate\":\"2025-01-01\",\"endDate\":\"2026-05-18\",\"stockPool\":\"\",\"slippage\":\"close\"}"
+  }
+]
