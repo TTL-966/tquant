@@ -4,12 +4,14 @@ class TradeSimulation:
         self.holdings = {}             # 持仓：key: code, value: {shares, cost}
         self.history = []              # 交易记录列表
 
-    def execute_trade(self, code, action, shares, price):
+    def execute_trade(self, code, action, shares, price, trade_date=None):
         """
         执行模拟交易
         action: 'buy' 或 'sell'
+        trade_date: 'YYY-MM-DD' 格式的交易日期，为 None 时使用当前日期
         returns: dict {success: bool, message: str}
         """
+        record_date = trade_date if trade_date is not None else self._today()
         if action == 'buy':
             cost = round(price * shares, 2)
             if cost > self.cash:
@@ -24,7 +26,7 @@ class TradeSimulation:
                 self.holdings[code] = {'shares': shares, 'cost': price}
             self.cash = round(self.cash - cost, 2)
             self.history.append({
-                'date': self._today(),
+                'date': record_date,
                 'type': '买入',
                 'code': code,
                 'price': price,
@@ -42,7 +44,7 @@ class TradeSimulation:
                 del self.holdings[code]
             self.cash = round(self.cash + price * shares, 2)
             self.history.append({
-                'date': self._today(),
+                'date': record_date,
                 'type': '卖出',
                 'code': code,
                 'price': price,

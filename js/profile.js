@@ -3,6 +3,8 @@ import { formatStockDisplayHtml } from './chartRenderer.js';
 import { populateStockDatalist, profitClass, formatStockNameOnly } from './main.js';
 import { dailyHoldings } from './stockData.js';
 
+var _tradeHistoryExpanded = false;
+
 export function renderProfile() {
     if (bridge) {
         bridge.get_portfolio().then(function(jsonStr) {
@@ -54,10 +56,20 @@ function renderProfileWithData(data) {
         var profitCls = h.profit >= 0 ? 'profit-positive' : 'profit-negative';
         return '<tr><td>' + formatStockDisplayHtml(h.code) + '</td><td>' + h.shares + '</td><td>' + h.cost.toFixed(2) + '</td><td class="' + profitCls + '">' + h.profit.toFixed(2) + '</td></tr>';
     }).join('');
-    var tradeRows = data.history.map(function(t) {
+    var DEFAULT_VISIBLE = 5;
+    _tradeHistoryExpanded = false;
+
+    var historySorted = (data.history || []).slice().sort(function(a, b) {
+        return b.date.localeCompare(a.date);
+    });
+    var allTradeRows = historySorted.map(function(t) {
         var typeCls = t.type === '买入' ? 'profit-positive' : 'profit-negative';
         return '<tr><td>' + t.date + '</td><td class="' + typeCls + '">' + t.type + '</td><td>' + formatStockDisplayHtml(t.code) + '</td><td>' + t.price.toFixed(2) + '</td><td>' + t.shares + '</td></tr>';
-    }).join('');
+    });
+    var totalTradeCount = allTradeRows.length;
+    var allTradeRowsHtml = allTradeRows.join('');
+    var visibleTradeRowsHtml = totalTradeCount > DEFAULT_VISIBLE ? allTradeRows.slice(0, DEFAULT_VISIBLE).join('') : allTradeRowsHtml;
+    var showTradeToggle = totalTradeCount > DEFAULT_VISIBLE;
     var totalReturn = (data.total_assets - 1000000) / 1000000 * 100;
     var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
     var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
@@ -71,7 +83,8 @@ function renderProfileWithData(data) {
             <div class="card">
                 <div class="card-title">📜 交易记录</div>
                 <table><thead><tr><th>日期</th><th>类型</th><th>代码</th><th>价格</th><th>数量</th></tr></thead>
-                <tbody>${tradeRows}</tbody></table>
+                <tbody id="tradeHistoryTbody">${visibleTradeRowsHtml}</tbody></table>
+                ${showTradeToggle ? '<div style="text-align:right;margin-top:8px;"><button id="toggleTradeHistoryBtn" style="background:#2d3a5e;color:#fff;border:none;border-radius:30px;padding:6px 18px;font-size:13px;cursor:pointer;">▼ 查看更多 (共 ' + totalTradeCount + ' 条)</button></div>' : ''}
             </div>
             <div class="card">
                 <div class="card-title">💰 账户概况</div>
@@ -103,6 +116,23 @@ function renderProfileWithData(data) {
                 <div id="tradeResult" style="margin-top:8px; font-size:13px;"></div>
             </div>
         `;
+    var toggleBtn = document.getElementById('toggleTradeHistoryBtn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            var tbody = document.getElementById('tradeHistoryTbody');
+            if (!tbody) return;
+            if (_tradeHistoryExpanded) {
+                tbody.innerHTML = visibleTradeRowsHtml;
+                toggleBtn.textContent = '▼ 查看更多 (共 ' + totalTradeCount + ' 条)';
+                _tradeHistoryExpanded = false;
+            } else {
+                tbody.innerHTML = allTradeRowsHtml;
+                toggleBtn.textContent = '▲ 收起';
+                _tradeHistoryExpanded = true;
+            }
+        });
+    }
+
     populateStockDatalist('tradeStockList', tradeCodes);
     document.getElementById('tradeStockSelect').value = formatStockNameOnly(tradeCodes[0]);
 
@@ -115,7 +145,7 @@ function doTrade(action) {
     var shares = parseInt(document.getElementById('tradeShares').value);
     var price = parseFloat(document.getElementById('tradePrice').value);
     if (!bridge) { document.getElementById('tradeResult').innerText = 'bridge未连接'; return; }
-    bridge.execute_trade(code, action, shares, price).then(function(jsonStr) {
+    bridge.execute_trade(code, action, shares, price, "").then(function(jsonStr) {
         var res = JSON.parse(jsonStr);
         document.getElementById('tradeResult').innerText = res.message;
         renderProfile();

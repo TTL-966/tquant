@@ -279,10 +279,10 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
 
-    @Slot(str, str, int, float, result=str)
-    def execute_trade(self, code, action, shares, price):
+    @Slot(str, str, int, float, str, result=str)
+    def execute_trade(self, code, action, shares, price, trade_date=""):
         try:
-            return json.dumps(self.trade.execute_trade(code, action, shares, price))
+            return json.dumps(self.trade.execute_trade(code, action, shares, price, trade_date if trade_date else None))
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "message": str(e)})

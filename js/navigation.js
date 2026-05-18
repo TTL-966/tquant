@@ -12,6 +12,7 @@ import { renderTroubleshootPage } from './troubleshoot.js';
 import { CARD_TYPE_META } from './strategyTemplates.js';
 
 var currentStockCode = "000001";
+var _syncingToSimulation = false;
 
 // ---- Toast 提示 ----
 function showToast(msg, isError) {
@@ -882,6 +883,86 @@ function buildPerformanceTable(stockPerformance) {
         '<tbody>' + rows + '</tbody></table></div>';
 }
 
+function executeSignalsToSimulation(signals, container) {
+    if (_syncingToSimulation) {
+        showToast('正在执行模拟盘同步，请稍候...', true);
+        return;
+    }
+    if (!signals || signals.length === 0) {
+        showToast('无信号可发送', true);
+        return;
+    }
+    if (!bridge || typeof bridge.execute_trade !== 'function') {
+        showToast('Bridge 未连接，无法执行模拟交易', true);
+        return;
+    }
+
+    var sorted = signals.slice().sort(function(a, b) {
+        return a.date.localeCompare(b.date);
+    });
+
+    if (!confirm('确定要将 ' + sorted.length + ' 条信号全部发送到模拟盘吗？')) {
+        return;
+    }
+
+    _syncingToSimulation = true;
+    showToast('正在执行 ' + sorted.length + ' 笔模拟交易...', false);
+
+    var successCount = 0;
+    var failCount = 0;
+
+    function executeNext(index) {
+        if (index >= sorted.length) {
+            _syncingToSimulation = false;
+            var msg = '模拟盘执行完成：成功 ' + successCount + ' 笔';
+            if (failCount > 0) {
+                msg += '，失败 ' + failCount + ' 笔';
+            }
+            showToast(msg, failCount > 0);
+
+            var activePage = document.querySelector('.nav-item.active');
+            if (activePage && activePage.getAttribute('data-page') === 'profile') {
+                renderProfile();
+            } else if (successCount > 0) {
+                setTimeout(function() {
+                    showToast('请切换到个人中心查看最新持仓', false);
+                }, 2500);
+            }
+            return;
+        }
+
+        var sig = sorted[index];
+        var action = sig.type === 'buy' ? 'buy' : 'sell';
+        var shares = Math.floor(sig.shares);
+
+        console.log('[模拟盘] 执行第 ' + (index + 1) + '/' + sorted.length + ' 笔: ' +
+            sig.date + ' ' + action + ' ' + sig.code + ' ' + shares + '股 @' + sig.price);
+
+        bridge.execute_trade(sig.code, action, shares, sig.price, sig.date).then(function(jsonStr) {
+            try {
+                var res = JSON.parse(jsonStr);
+                if (res.error) {
+                    failCount++;
+                    console.error('[模拟盘] 失败: ' + sig.code + ' ' + action + ' - ' + res.error);
+                } else {
+                    successCount++;
+                    console.log('[模拟盘] 成功: ' + sig.code + ' ' + action + ' - ' + (res.message || 'OK'));
+                }
+            } catch (e) {
+                successCount++;
+                console.log('[模拟盘] 完成: ' + sig.code + ' ' + action);
+            }
+            executeNext(index + 1);
+        }).catch(function(err) {
+            failCount++;
+            console.error('[模拟盘] 异常: ' + sig.code + ' ' + action + ' - ' + (err.message || err));
+            executeNext(index + 1);
+        });
+    }
+
+    executeNext(0);
+}
+
 function renderBacktestDetail(container, result) {
 	console.log("renderBacktestDetail 收到的 stock_performance:", result.stock_performance);
     var strategyName = window.currentStrategyName || '未命名策略';
@@ -934,7 +1015,10 @@ function renderBacktestDetail(container, result) {
             </div>
 
             <div id="tab-signals" class="tab-content" style="display:none;">
-                <h4 style="color:#ffffff;margin-bottom:10px;">📋 交易信号列表${isMultiStock ? ' <span style="color:#9aa9cc;font-size:12px;">（点击股票可跳转K线图）</span>' : ''}</h4>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <h4 style="color:#ffffff;margin:0;">📋 交易信号列表${isMultiStock ? ' <span style="color:#9aa9cc;font-size:12px;">（点击股票可跳转K线图）</span>' : ''}</h4>
+                    <button id="sendToSimulationBtn" style="background:#4cff4c;color:#000;border:none;border-radius:8px;padding:4px 16px;cursor:pointer;font-weight:600;font-size:13px;">🚀 发送到模拟盘</button>
+                </div>
                 <div class="scrollable-table">
                     <table>
                         <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>手数</th></tr></thead>
@@ -1008,6 +1092,14 @@ function renderBacktestDetail(container, result) {
                 }
             });
         });
+
+        // 发送到模拟盘按钮
+        var sendBtn = document.getElementById('sendToSimulationBtn');
+        if (sendBtn) {
+            sendBtn.addEventListener('click', function() {
+                executeSignalsToSimulation(result.signals, container);
+            });
+        }
 
         // 信号行点击
         var signalRows = document.querySelectorAll('#signalTableBody tr');
