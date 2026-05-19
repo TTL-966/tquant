@@ -41,7 +41,35 @@ class DataFeed:
         hi = bisect.bisect_right(dates, end)
         return dates[lo:hi], values[lo:hi]
 
-    def get_kline_json(self, code, start_date=None, end_date=None, limit=0):
+    def _aggregate_to_period(self, df, period):
+        """将日线 DataFrame 聚合成周线或月线"""
+        if period == 'daily':
+            return df
+        df_copy = df.copy()
+        agg_dict = {
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
+        }
+        if period == 'weekly':
+            df_copy['_group'] = df_copy.index.to_period('W').start_time
+        elif period == 'monthly':
+            df_copy['_group'] = df_copy.index.to_period('M').start_time
+        else:
+            return df
+        result = df_copy.groupby('_group').agg(agg_dict)
+        result.index = pd.to_datetime(result.index)
+        # 重新排列列顺序以匹配缓存格式: open, close, low, high, volume
+        result = result[['open', 'close', 'low', 'high', 'volume']]
+        # 确保数据类型正确
+        for col in ['open', 'close', 'low', 'high']:
+            result[col] = result[col].astype(float).round(2)
+        result['volume'] = result['volume'].astype(int)
+        return result
+
+    def get_kline_json(self, code, start_date=None, end_date=None, limit=0, period='daily'):
         """获取K线数据 JSON，支持缓存，根据日期范围过滤，并支持限制行数"""
         code_pure = code.split('.')[0]
 
@@ -89,6 +117,23 @@ class DataFeed:
             if end_date is None:
                 end_date = "2026-12-31"
             filtered_dates, filtered_values = self._slice_by_date_range(cached, start_date, end_date)
+
+        # 聚合到目标周期（周线/月线）
+        if period != 'daily' and len(filtered_dates) > 0:
+            df = pd.DataFrame(filtered_values, columns=['open', 'close', 'low', 'high', 'volume'])
+            df.index = pd.to_datetime(filtered_dates)
+            df_agg = self._aggregate_to_period(df, period)
+            filtered_dates = [d.strftime('%Y-%m-%d') for d in df_agg.index]
+            # 按缓存列顺序提取: open, close, low, high, volume
+            filtered_values = []
+            for _, row in df_agg.iterrows():
+                filtered_values.append([
+                    float(row['open']),
+                    float(row['close']),
+                    float(row['low']),
+                    float(row['high']),
+                    int(row['volume'])
+                ])
 
         # 如果 limit > 0，取尾部 limit 条
         if limit > 0 and len(filtered_dates) > limit:

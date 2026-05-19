@@ -27,10 +27,10 @@ class WebBridge(QObject):
     def ping(self):
         return "pong"
 
-    @Slot(str, str, str, int, result=str)
-    def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0):
+    @Slot(str, str, str, int, str, result=str)
+    def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0, period="daily"):
         try:
-            raw = self.data_feed.get_kline_json(code, start_date, end_date, limit)
+            raw = self.data_feed.get_kline_json(code, start_date, end_date, limit, period)
             parsed = json.loads(raw)
             if isinstance(parsed, dict) and 'dates' in parsed and 'values' in parsed:
                 return raw

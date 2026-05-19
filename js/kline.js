@@ -21,8 +21,13 @@ export var buyPoints = [];
 export var sellPoints = [];
 export var autoRunBacktest = false;
 export var autoBacktestScheduled = false;
+export var currentPeriod = 'daily';
 
-export function fetchAndRenderKline(code, startDate, endDate) {
+export function setPeriod(period) {
+    currentPeriod = period;
+}
+
+export function fetchAndRenderKline(code, startDate, endDate, period) {
     if (!bridge) {
         var container = document.getElementById('klineMainChart');
         if (container) {
@@ -30,8 +35,9 @@ export function fetchAndRenderKline(code, startDate, endDate) {
         }
         return;
     }
-    log("请求 K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
-    bridge.get_kline_data(code, startDate, endDate, 0).then(function(jsonStr) {
+    period = period || currentPeriod;
+    log("请求 K线数据: " + code + " 周期 " + period + " 范围 " + startDate + " ~ " + endDate);
+    bridge.get_kline_data(code, startDate, endDate, 0, period).then(function(jsonStr) {
         var data = JSON.parse(jsonStr);
         if (data.error) {
             log("后端错误: " + data.error);

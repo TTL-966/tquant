@@ -1,5 +1,5 @@
 import { bridge } from './bridge.js';
-import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, currentKlineDates, currentKlineValues } from './kline.js';
+import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, currentKlineDates, currentKlineValues, currentPeriod, setPeriod } from './kline.js';
 import { renderProfile } from './profile.js';
 import { renderStockKline, drawDetailCurve, formatStockDisplayHtml, drawEquityCurve, renderKlineWithSignals } from './chartRenderer.js';
 import { renderVolumeSubChart, destroyVolumeSubChart } from './subChartRenderer.js';
@@ -15,6 +15,57 @@ var currentStockCode = "000001";
 var _syncingToSimulation = false;
 
 // ---- 自定义下拉面板（解决 QtWebEngine select/datalist 拉伸问题）----
+var periodOptions = [
+    { label: '日线', value: 'daily' },
+    { label: '周线', value: 'weekly' },
+    { label: '月线', value: 'monthly' }
+];
+
+function closeCustomDropdown(cls) {
+    var panel = document.querySelector('.' + (cls || 'custom-dropdown-panel'));
+    if (panel) panel.remove();
+    document.removeEventListener('click', _onDocClickCustomDropdown);
+}
+function _onDocClickCustomDropdown(e) {
+    var panel = document.querySelector('.custom-dropdown-panel');
+    if (panel && !panel.contains(e.target)) {
+        closeCustomDropdown('custom-dropdown-panel');
+    }
+}
+function showCustomDropdown(input, options, onSelect) {
+    closeCustomDropdown('custom-dropdown-panel');
+    if (!options || options.length === 0) return;
+
+    var panel = document.createElement('div');
+    panel.className = 'custom-dropdown-panel';
+    panel.style.cssText = 'position:fixed;z-index:99999;background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:4px 0;max-height:250px;overflow-y:auto;min-width:100px;box-shadow:0 8px 20px rgba(0,0,0,0.5);';
+
+    options.forEach(function(opt) {
+        var item = document.createElement('div');
+        item.style.cssText = 'padding:8px 16px;cursor:pointer;color:#fff;font-size:13px;white-space:nowrap;';
+        item.textContent = opt.label;
+        item.addEventListener('mouseenter', function() { item.style.background = '#2d3a5e'; });
+        item.addEventListener('mouseleave', function() { item.style.background = 'transparent'; });
+        item.addEventListener('click', function(e) {
+            e.stopPropagation();
+            input.value = opt.label;
+            input.setAttribute('data-value', opt.value);
+            closeCustomDropdown('custom-dropdown-panel');
+            if (typeof onSelect === 'function') onSelect(opt.value);
+        });
+        panel.appendChild(item);
+    });
+
+    document.body.appendChild(panel);
+    var rect = input.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + 'px';
+
+    setTimeout(function() {
+        document.addEventListener('click', _onDocClickCustomDropdown);
+    }, 0);
+}
+
 function closeStockDropdown() {
     var panel = document.querySelector('.stock-dropdown-panel');
     if (panel) panel.remove();
@@ -232,6 +283,10 @@ function renderKchartPage(container) {
                 <button id="loadStrategySignalsBtn">📊 加载策略信号</button>
                 <button id="gotoStrategyBtn">📝 跳转到策略页</button>
                 <button id="refreshKlineBtn">刷新K线</button>
+                <div style="position:relative;display:inline-block;">
+                    <input type="text" id="periodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
+                    <span id="periodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
+                </div>
             </div>
             <div id="klineMainChart" class="kline-container"></div>
             <div id="volumeSubChart" style="width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
@@ -378,6 +433,34 @@ function renderKchartPage(container) {
             };
         }
 
+        // 周期切换（自定义下拉，避免QtWebEngine原生select拉伸）
+        var periodInput = document.getElementById('periodInput');
+        var periodArrow = document.getElementById('periodArrow');
+        function applyPeriod(period) {
+            setPeriod(period);
+            buyPoints.length = 0;
+            sellPoints.length = 0;
+            fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd, period);
+        }
+        if (periodInput) {
+            // 根据 currentPeriod 设置初始显示
+            var curOpt = periodOptions.find(function(o) { return o.value === currentPeriod; });
+            if (curOpt) {
+                periodInput.value = curOpt.label;
+                periodInput.setAttribute('data-value', curOpt.value);
+            }
+            periodInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomDropdown(periodInput, periodOptions, applyPeriod);
+            });
+            periodArrow.style.pointerEvents = 'auto';
+            periodArrow.style.cursor = 'pointer';
+            periodArrow.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomDropdown(periodInput, periodOptions, applyPeriod);
+            });
+        }
+
         // 搜索按钮：按关键词搜索，通过下拉面板展示结果
         var searchBtn = document.getElementById('searchStockBtn');
         if (searchBtn) {
@@ -510,6 +593,13 @@ function renderStockPage(container) {
                 </div>
             </div>
             <div id="stockInfoArea" style="margin-bottom:12px; color:#9aa9cc;">请输入股票代码查询</div>
+            <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
+                <span style="color:#9aa9cc; font-size:13px;">K线周期：</span>
+                <div style="position:relative;display:inline-block;">
+                    <input type="text" id="stockPeriodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
+                    <span id="stockPeriodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
+                </div>
+            </div>
             <div id="stockKlineChart" style="width:100%;"></div>
             <div id="stockVolumeSubChart" style="width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
             <div id="indicatorArea" style="margin-top:12px; padding:16px; background:#151c2c; border:1px solid #242a40; border-radius:16px; color:#9aa9cc; text-align:center;">
@@ -606,8 +696,10 @@ function renderStockPage(container) {
             }
             // 加载K线
             var today = new Date().toISOString().slice(0, 10);
+            var periodEl = document.getElementById('stockPeriodInput');
+            var reqPeriod = periodEl ? (periodEl.getAttribute('data-value') || 'daily') : 'daily';
             if (bridge) {
-                bridge.get_kline_data(code, '2010-01-01', today, 0).then(function(jsonStr) {
+                bridge.get_kline_data(code, '2010-01-01', today, 0, reqPeriod).then(function(jsonStr) {
                     var data = JSON.parse(jsonStr);
                     if (data.error) {
                         var chartDom = document.getElementById('stockKlineChart');
@@ -665,6 +757,31 @@ function renderStockPage(container) {
                 }).catch(function(err) {
                     showToast('获取行业数据失败: ' + err.message, true);
                 });
+            });
+        }
+
+        // 个股详情页周期切换（自定义下拉，避免QtWebEngine原生select拉伸）
+        var stockPeriodInput = document.getElementById('stockPeriodInput');
+        var stockPeriodArrow = document.getElementById('stockPeriodArrow');
+        function applyStockPeriod(period) {
+            setPeriod(period);
+            loadStock(currentStockCode);
+        }
+        if (stockPeriodInput) {
+            var stockCurOpt = periodOptions.find(function(o) { return o.value === currentPeriod; });
+            if (stockCurOpt) {
+                stockPeriodInput.value = stockCurOpt.label;
+                stockPeriodInput.setAttribute('data-value', stockCurOpt.value);
+            }
+            stockPeriodInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomDropdown(stockPeriodInput, periodOptions, applyStockPeriod);
+            });
+            stockPeriodArrow.style.pointerEvents = 'auto';
+            stockPeriodArrow.style.cursor = 'pointer';
+            stockPeriodArrow.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomDropdown(stockPeriodInput, periodOptions, applyStockPeriod);
             });
         }
 
