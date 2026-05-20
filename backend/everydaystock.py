@@ -5,19 +5,13 @@ from datetime import datetime, timedelta
 import time
 
 # ==================== 配置 ====================
-MYSQL_CONFIG = {
-    'user': 'root',
-    'password': '998867',
-    'host': '127.0.0.1',
-    'port': 3306,
-    'database': 'studb',
-}
 TABLE_NAME = 'stock_daily_qfq_with_name'
 # =============================================
 
-engine = create_engine(
-    f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}@{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}?charset=utf8mb4"
-)
+import os
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+db_path = os.path.join(base_dir, 'tquant.db')
+engine = create_engine(f'sqlite:///{db_path}?check_same_thread=False')
 
 print("=" * 60)
 print("Baostock 每日增量更新（增强版）")

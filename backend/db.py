@@ -1,21 +1,69 @@
+import os
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
+
 class Database:
     def __init__(self):
-        self.engine = None
-        try:
-            self.engine = create_engine(
-                'mysql+pymysql://root:998867@localhost:3306/studb?charset=utf8mb4',
-                echo=False
-            )
-            with self.engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-        except Exception as e:
-            print("数据库连接失败，将使用模拟数据:", e)
-            self.engine = None
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        db_path = os.path.join(base_dir, 'tquant.db')
+        self.db_path = db_path
+        self.engine = create_engine(f'sqlite:///{db_path}?check_same_thread=False', echo=False)
+        self._init_tables()
+
+    def _init_tables(self):
+        with self.engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_daily_qfq_with_name (
+                    ts_code TEXT,
+                    name TEXT,
+                    trade_date TEXT,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    close REAL,
+                    vol INTEGER,
+                    amount REAL,
+                    PRIMARY KEY (ts_code, trade_date)
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_ts_code_trade_date
+                ON stock_daily_qfq_with_name(ts_code, trade_date)
+            """))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_basic (
+                    code TEXT PRIMARY KEY,
+                    name TEXT
+                )
+            """))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_industry (
+                    ts_code TEXT PRIMARY KEY,
+                    stock_name TEXT,
+                    industry TEXT,
+                    industry_classification TEXT
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_stock_industry_industry
+                ON stock_industry(industry)
+            """))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS index_components (
+                    index_code TEXT,
+                    stock_code TEXT,
+                    update_date TEXT,
+                    PRIMARY KEY (index_code, stock_code)
+                )
+            """))
+
+            conn.commit()
 
     def _get_stock_suffix(self, code):
         code = str(code).zfill(6)
@@ -68,7 +116,6 @@ class Database:
         try:
             return do_query()
         except OperationalError:
-            # 连接丢失，释放连接池后重试一次
             self.engine.dispose()
             return do_query()
 
@@ -77,8 +124,6 @@ class Database:
             start_date = "2010-01-01"
         if end_date is None:
             end_date = "2026-12-31"
-        if self.engine is None:
-            return self._generate_mock_data()
         original_code = code
         if '.' not in code:
             suffix = self._get_stock_suffix(code)
@@ -131,17 +176,17 @@ class Database:
         return df
 
     def connection_status(self):
-        if self.engine is None:
-            return {"connected": False, "message": "无数据库连接（将使用模拟数据）"}
+        if not os.path.exists(self.db_path):
+            return {"connected": False, "message": f"数据库文件不存在: {self.db_path}"}
         try:
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            return {"connected": True, "message": "数据库连接正常"}
+            return {"connected": True, "message": f"SQLite 数据库连接正常 ({self.db_path})"}
         except Exception as e:
             return {"connected": False, "message": f"数据库连接异常: {str(e)}"}
 
     def search_stock(self, keyword):
-        if self.engine is None or not keyword:
+        if not keyword:
             return []
         like = f"%{keyword}%"
         sql = text("""
@@ -165,8 +210,6 @@ class Database:
             return do_query()
 
     def get_name_by_code(self, code):
-        if self.engine is None:
-            return code
         for suffix in ('.SZ', '.SH', '.BJ'):
             ts_code_candidate = f"{code}{suffix}"
             sql = text("""
@@ -198,55 +241,11 @@ class Database:
             pass
         return code
 
-    # ---------- 股票状态查询 ----------
     def get_stock_status(self, code):
-        """根据股票代码（纯数字）获取上市日期和退市日期。
+        """返回默认值。当前 stock_basic 表仅有 code/name 字段，无 list_date/delist_date。"""
+        return {'listed': '1900-01-01', 'delisted': None}
 
-        返回字典: {'listed': 'YYYY-MM-DD', 'delisted': 'YYYY-MM-DD' or None}
-        若数据库不可用或缺少相关字段，返回默认值（上市 1900-01-01，未退市）。
-        """
-        if self.engine is None:
-            return {'listed': '1900-01-01', 'delisted': None}
-
-        code_str = str(code).zfill(6)
-        suffix = self._get_stock_suffix(code_str)
-        ts_code = f"{code_str}{suffix}"
-
-        def _format_date(val):
-            if val is None:
-                return None
-            s = str(val).strip()
-            if len(s) == 8 and s.isdigit():
-                return f"{s[:4]}-{s[4:6]}-{s[6:]}"
-            if len(s) == 10 and s[4] == '-' and s[7] == '-':
-                return s
-            return s
-
-        try:
-            sql = text("""
-                SELECT list_date, delist_date FROM stock_basic
-                WHERE ts_code = :ts_code
-                LIMIT 1
-            """)
-            with self.engine.connect() as conn:
-                rows = conn.execute(sql, {"ts_code": ts_code}).fetchall()
-            if rows:
-                raw_list = rows[0][0]
-                raw_delist = rows[0][1] if len(rows[0]) > 1 else None
-                return {
-                    'listed': _format_date(raw_list) if raw_list else '1900-01-01',
-                    'delisted': _format_date(raw_delist),
-                }
-            return {'listed': '1900-01-01', 'delisted': None}
-        except Exception:
-            # stock_basic 表可能不存在或缺少字段，返回默认值
-            return {'listed': '1900-01-01', 'delisted': None}
-
-    # ---------- 新增行业相关方法 ----------
     def get_industry_by_code(self, code):
-        """根据股票代码（纯数字）查询行业名称"""
-        if self.engine is None:
-            return None
         suffix = self._get_stock_suffix(code)
         ts_code = f"{code}{suffix}"
         sql = text("SELECT industry FROM stock_industry WHERE ts_code = :ts_code LIMIT 1")
@@ -260,9 +259,6 @@ class Database:
             return None
 
     def get_stocks_by_industry(self, industry_name):
-        """根据行业名称查询同行业股票列表"""
-        if self.engine is None:
-            return []
         like = f"%{industry_name}%"
         sql = text("SELECT ts_code, stock_name FROM stock_industry WHERE industry LIKE :industry LIMIT 20")
         try:
@@ -270,7 +266,7 @@ class Database:
                 rows = conn.execute(sql, {"industry": like}).fetchall()
             result = []
             for row in rows:
-                ts_code = row[0]  # e.g. "000001.SZ"
+                ts_code = row[0]
                 name = row[1]
                 pure_code = ts_code.split('.')[0] if '.' in ts_code else ts_code
                 result.append({"code": pure_code, "name": name})
@@ -278,28 +274,19 @@ class Database:
         except Exception:
             return []
 
-    # ---------- 指数成分股 ----------
     def get_index_stocks(self, index_code):
-        """获取指数成分股列表（纯数字代码）。
+        try:
+            sql = text(
+                "SELECT stock_code FROM index_components "
+                "WHERE index_code = :index_code ORDER BY stock_code"
+            )
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, {"index_code": index_code}).fetchall()
+            if rows:
+                return [row[0].split('.')[0] if '.' in str(row[0]) else str(row[0]) for row in rows]
+        except Exception:
+            pass
 
-        :param index_code: 指数代码，如 '000300.XSHG'（沪深300）
-        :return: list of str，如 ['000001', '000002', ...]
-        """
-        # 优先尝试从数据库查询
-        if self.engine is not None:
-            try:
-                sql = text(
-                    "SELECT stock_code FROM index_components "
-                    "WHERE index_code = :index_code ORDER BY stock_code"
-                )
-                with self.engine.connect() as conn:
-                    rows = conn.execute(sql, {"index_code": index_code}).fetchall()
-                if rows:
-                    return [row[0].split('.')[0] if '.' in str(row[0]) else str(row[0]) for row in rows]
-            except Exception:
-                pass
-
-        # 内置 mock 数据（常见指数代表性成分股）
         mock_indices = {
             '000300.XSHG': [
                 '000001', '000002', '000063', '000333', '000651', '000725', '000858',

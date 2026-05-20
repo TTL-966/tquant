@@ -4,18 +4,11 @@ from sqlalchemy import create_engine, text
 from datetime import datetime
 
 # ==================== 配置 ====================
-MYSQL_CONFIG = {
-    'user': 'root',
-    'password': '998867',
-    'host': '127.0.0.1',
-    'port': 3306,
-    'database': 'studb',
-}
+import os
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+db_path = os.path.join(base_dir, 'tquant.db')
+engine = create_engine(f'sqlite:///{db_path}?check_same_thread=False')
 # =============================================
-
-engine = create_engine(
-    f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}@{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}?charset=utf8mb4"
-)
 
 print("=" * 60)
 print("新股同步工具（从 Baostock 更新 stock_basic）")
@@ -110,10 +103,12 @@ bs.logout()
 print("\n更新日线表中的新股名称...")
 with engine.connect() as conn:
     result = conn.execute(text("""
-        UPDATE stock_daily_qfq_with_name d
-        JOIN stock_basic b ON SUBSTRING_INDEX(d.ts_code, '.', 1) = b.code
-        SET d.name = b.name
-        WHERE d.name IS NULL
+        UPDATE stock_daily_qfq_with_name
+        SET name = (
+            SELECT stock_basic.name FROM stock_basic
+            WHERE substr(stock_daily_qfq_with_name.ts_code, 1, instr(stock_daily_qfq_with_name.ts_code, '.') - 1) = stock_basic.code
+        )
+        WHERE name IS NULL
     """))
     print(f"✓ 更新了 {result.rowcount} 条日线数据的名称")
 
