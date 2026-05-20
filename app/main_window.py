@@ -40,11 +40,10 @@ class MainWindow(QMainWindow):
         html_path = os.path.join(base_dir, "..", "Tquant.html")  # 注意路径
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
 
-        # 数据更新调度器
+        # 数据更新调度器（QObject + QTimer，自动启动定时器）
         self.scheduler = DataUpdateScheduler(self.bridge.db.engine)
         self.scheduler.update_started.connect(self.on_update_started)
         self.scheduler.update_finished.connect(self.on_update_finished)
-        self.scheduler.start()
 
         # F12 快捷键
         shortcut = QShortcut(QKeySequence("F12"), self)

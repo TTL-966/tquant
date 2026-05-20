@@ -1,5 +1,8 @@
 import json
 import sys
+import os
+import subprocess
+import threading
 import traceback
 import numpy as np
 import pandas as pd
@@ -22,6 +25,7 @@ class WebBridge(QObject):
         self.strategy_storage = StrategyStorage()
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
+        self._update_process = None   # 数据更新子进程句柄
 
     @Slot(result=str)
     def ping(self):
@@ -432,11 +436,46 @@ class WebBridge(QObject):
 
     @Slot(result=str)
     def trigger_data_update(self):
-        """手动触发数据更新"""
-        if hasattr(self, 'main_window') and hasattr(self.main_window, 'scheduler'):
-            self.main_window.scheduler.trigger_manual_update()
-            return json.dumps({"success": True, "message": "数据更新已开始，请查看后端日志"})
-        return json.dumps({"success": False, "message": "更新调度器未就绪"})
+        """手动触发数据更新（独立子进程，避免 Baostock 与 QtWebEngine 冲突）"""
+        if self._update_process is not None and self._update_process.poll() is None:
+            return json.dumps({"success": False, "message": "已有更新进程正在运行，请稍后再试"})
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script_path = os.path.join(base_dir, 'backend', 'standalone_updater.py')
+        if not os.path.exists(script_path):
+            return json.dumps({"success": False, "message": f"更新脚本不存在: {script_path}"})
+
+        try:
+            startupinfo = None
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+            self._update_process = subprocess.Popen(
+                [sys.executable, script_path, '--quiet'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                startupinfo=startupinfo
+            )
+            self._read_update_output()
+            return json.dumps({"success": True, "message": "数据更新已在后台启动，请稍后查看后端日志"})
+        except Exception as e:
+            return json.dumps({"success": False, "message": f"启动更新失败: {str(e)}"})
+
+    def _read_update_output(self):
+        """读取子进程输出并打印到控制台（后台线程，不阻塞 UI）"""
+        def read_output():
+            proc = self._update_process
+            if proc is None:
+                return
+            for line in proc.stdout:
+                print(f"[Updater] {line.decode('utf-8').strip()}")
+            for line in proc.stderr:
+                print(f"[Updater Error] {line.decode('utf-8').strip()}")
+            proc.wait()
+            print(f"[Updater] 子进程退出，返回码: {proc.returncode}")
+            self._update_process = None
+        threading.Thread(target=read_output, daemon=True).start()
 
     def _get_equity_curve(self, code):
         try:
