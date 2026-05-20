@@ -7,6 +7,7 @@ import { escapeHtml } from './main.js';
 import { generateCardId, CARD_TYPE_META, STRATEGY_TEMPLATES, createDefaultCard } from './strategyTemplates.js';
 import { generateCode, serializeConfig, deserializeConfig, validateCards } from './strategyUtils.js';
 import { stockNameMap, fetchStockName } from './stockData.js';
+import { Logger } from './logger.js';
 
 // ---- State ----
 var cards = [];
@@ -20,6 +21,7 @@ var slippage = 'close';
 var logContainer = null;
 var codeExpanded = false;
 var logExpanded = true;
+var strategyLogger = null;
 
 // ---- Custom Select Panel ----
 
@@ -74,28 +76,12 @@ function closeCustomSelect() {
 
 // ---- Logging & Toast ----
 
-function nowTimestamp() {
-    var d = new Date();
-    function pad(n) { return n < 10 ? '0' + n : '' + n; }
-    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-}
-
 function addLog(level, text) {
-    if (!logContainer) return;
-    var color = '#4f7eff';
-    var prefix = '[INFO]';
-    if (level === 'warn') { color = '#f2c94c'; prefix = '[WARN]'; }
-    else if (level === 'error') { color = '#ff4c4c'; prefix = '[ERROR]'; }
-    else if (level === 'success') { color = '#4cff4c'; prefix = '[SUCCESS]'; }
-    var line = document.createElement('div');
-    line.style.cssText = 'color:' + color + '; margin-bottom:2px; word-break:break-all;';
-    line.textContent = '[' + nowTimestamp() + '] ' + prefix + ' ' + text;
-    logContainer.appendChild(line);
-    logContainer.scrollTop = logContainer.scrollHeight;
+    if (strategyLogger) strategyLogger.addLog(level, text);
 }
 
 function clearLog() {
-    if (logContainer) logContainer.innerHTML = '';
+    if (strategyLogger) strategyLogger.clearLog();
 }
 
 function showToast(msg, isError, duration) {
@@ -1274,17 +1260,23 @@ export function renderStrategyPage(container) {
         '<div class="card" style="margin-top:12px;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
         '<h4 style="color:#ffffff;margin:0;">📋 回测日志</h4>' +
-        '<div>' +
-        '<button id="toggleLogBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;margin-right:8px;">🔼 折叠</button>' +
+        '<div style="display:flex;gap:8px;">' +
+        '<button id="toggleLogBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;">🔼 折叠</button>' +
+        '<button id="exportLogBtn" style="background:transparent;border:1px solid #4f7eff;color:#4f7eff;">📄 导出</button>' +
         '<button id="clearLogBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;">清除</button>' +
         '</div></div>' +
+        '<div id="strategyLogWrapper">' +
+        '<div id="strategyLogToolbar"></div>' +
         '<div id="strategyLogBox" style="height:200px;overflow-y:auto;background:#0e1220;border:1px solid #323d5a;border-radius:12px;padding:8px;color:#9aa9cc;font-size:12px;font-family:monospace;"></div>' +
+        '</div>' +
         '</div>';
 
     container.innerHTML = html;
 
     // Reference DOM elements
     logContainer = document.getElementById('strategyLogBox');
+    strategyLogger = new Logger('strategyLogBox', 'strategyLogToolbar', { maxEntries: 500 });
+    strategyLogger.init();
 
     // Bind date pickers
     var startDateInput = document.getElementById('strategyStartDate');
@@ -1375,12 +1367,17 @@ export function renderStrategyPage(container) {
     var clearLogBtn = document.getElementById('clearLogBtn');
     if (clearLogBtn) clearLogBtn.addEventListener('click', clearLog);
 
+    var exportLogBtn = document.getElementById('exportLogBtn');
+    if (exportLogBtn) exportLogBtn.addEventListener('click', function() {
+        strategyLogger.exportLog();
+    });
+
     var toggleLogBtn = document.getElementById('toggleLogBtn');
     if (toggleLogBtn) {
         toggleLogBtn.addEventListener('click', function() {
             logExpanded = !logExpanded;
-            var box = document.getElementById('strategyLogBox');
-            if (box) box.style.display = logExpanded ? 'block' : 'none';
+            var wrapper = document.getElementById('strategyLogWrapper');
+            if (wrapper) wrapper.style.display = logExpanded ? 'block' : 'none';
             toggleLogBtn.textContent = logExpanded ? '🔼 折叠' : '🔽 展开';
         });
     }
