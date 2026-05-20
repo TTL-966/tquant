@@ -170,6 +170,66 @@ class DataFeed:
             "change_pct": change_pct
         }
 
+    def get_realtime_price(self, code):
+        """从腾讯财经 HTTP 接口获取实时行情。
+
+        :param code: 纯数字股票代码（如 '000001'），自动转换为 sh/sz 前缀
+        :return: dict 或 None（失败时）
+            字段: price, prev_close, change_pct, high, low, volume(手), amount(万元)
+        """
+        from urllib import request
+        import re
+
+        code_pure = code.split('.')[0]
+        if code_pure.startswith(('60', '68')):
+            q_code = f'sh{code_pure}'
+        else:
+            q_code = f'sz{code_pure}'
+
+        url = f'https://web.sqt.gtimg.cn/q={q_code}'
+        try:
+            req = request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with request.urlopen(req, timeout=3) as resp:
+                raw = resp.read()
+            text = raw.decode('gbk', errors='replace')
+
+            # 解析 ~ 分隔的字段: v_shXXXXXX="1~名称~代码~最新价~昨收~..."
+            m = re.search(r'="(.+)"', text)
+            if not m:
+                return None
+            fields = m.group(1).split('~')
+            if len(fields) < 38:
+                return None
+
+            def _f(i):
+                try:
+                    return float(fields[i]) if fields[i] else 0.0
+                except ValueError:
+                    return 0.0
+
+            def _i(i):
+                try:
+                    return int(float(fields[i])) if fields[i] else 0
+                except ValueError:
+                    return 0
+
+            price = _f(3)
+            prev_close = _f(4)
+            if price <= 0 or prev_close <= 0:
+                return None
+
+            return {
+                'price': price,
+                'prev_close': prev_close,
+                'change_pct': _f(32),
+                'high': _f(33),
+                'low': _f(34),
+                'volume': _i(36),       # 手
+                'amount': _f(37),       # 万元
+            }
+        except Exception:
+            return None
+
     def _mock_kline_json(self, code):
         """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线JSON（周线，数据量可控）"""
         import numpy as np

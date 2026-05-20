@@ -15,7 +15,9 @@ from backend.trade_simulation import TradeSimulation
 from backend.db import Database
 from backend.strategy_storage import StrategyStorage
 from backend.backtest_executor import BacktestExecutor   # 新增导入
-from backend.multi_backtest_executor import MultiBacktestExecutor   # 多股回测
+from backend.multi_backtest_executor import MultiBacktestExecutor # 多股回测
+
+from backend.data_feed import DataFeed#测试
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
@@ -28,6 +30,9 @@ class WebBridge(QObject):
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
         self._update_process = None   # 数据更新子进程句柄
+
+        df = DataFeed()
+        print(df.get_realtime_price('000001'))
 
     @Slot(result=str)
     def ping(self):
@@ -72,6 +77,38 @@ class WebBridge(QObject):
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
+
+    @Slot(str, result=str)
+    def get_realtime_quote(self, code):
+        """获取实时行情（腾讯接口优先），失败时降级到数据库最近收盘价。"""
+        try:
+            result = self.data_feed.get_realtime_price(code)
+            if result and result.get('price', 0) > 0:
+                change = round(result['price'] - result['prev_close'], 2)
+                return json.dumps({
+                    "success": True,
+                    "source": "realtime",
+                    "code": code,
+                    "price": result['price'],
+                    "prev_close": result['prev_close'],
+                    "change": change,
+                    "change_pct": result.get('change_pct', 0),
+                    "high": result.get('high', 0),
+                    "low": result.get('low', 0),
+                    "volume": result.get('volume', 0),
+                    "amount": result.get('amount', 0),
+                })
+            # 降级：使用数据库中的最近收盘价
+            fallback = self.data_feed.get_latest_price(code)
+            if 'error' not in fallback:
+                fallback['success'] = True
+                fallback['source'] = 'db'
+                fallback['code'] = code
+                return json.dumps(fallback)
+            return json.dumps({"success": False, "error": fallback.get('error', '获取行情失败')})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
 
     @Slot(str, str, result=str)
     def get_limit_status(self, code, target_date=""):

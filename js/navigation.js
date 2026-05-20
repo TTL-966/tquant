@@ -13,6 +13,7 @@ import { CARD_TYPE_META } from './strategyTemplates.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
+var _quotePollTimer = null;
 
 // ---- 自定义下拉面板（解决 QtWebEngine select/datalist 拉伸问题）----
 var periodOptions = [
@@ -214,8 +215,12 @@ export function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
     if (!container) return;
 
-    // 切换页面时清理旧副图实例
+    // 切换页面时清理旧副图实例和行情轮询
     destroyVolumeSubChart();
+    if (pageId !== 'stock' && _quotePollTimer) {
+        clearInterval(_quotePollTimer);
+        _quotePollTimer = null;
+    }
 
     if (pageId === 'profile') {
         renderProfile();
@@ -719,15 +724,38 @@ function renderStockPage(container) {
                     if (chartDom) chartDom.innerHTML = '<div style="color:#ff6b6b;padding:20px;">加载失败: ' + err.message + '</div>';
                 });
             }
-            // 获取实时行情
-            if (bridge) {
-                bridge.get_latest_price(code).then(function(jsonStr) {
-                    var data = JSON.parse(jsonStr);
-                    updatePriceBar(data);
-                }).catch(function() {
-                    updatePriceBar(null);
-                });
+            // 开启实时行情轮询（初始立即获取一次，之后每5秒刷新）
+            startQuotePolling(code);
+        }
+
+        function startQuotePolling(code) {
+            if (_quotePollTimer) {
+                clearInterval(_quotePollTimer);
+                _quotePollTimer = null;
             }
+            fetchAndUpdateQuote(code);
+            _quotePollTimer = setInterval(function() {
+                fetchAndUpdateQuote(code);
+            }, 5000);
+        }
+
+        function fetchAndUpdateQuote(code) {
+            if (!bridge || typeof bridge.get_realtime_quote !== 'function') return;
+            bridge.get_realtime_quote(code).then(function(jsonStr) {
+                try {
+                    var data = JSON.parse(jsonStr);
+                    if (data.success) {
+                        if (data.change === undefined && data.price != null && data.prev_close != null) {
+                            data.change = parseFloat((data.price - data.prev_close).toFixed(2));
+                        }
+                        updatePriceBar(data);
+                    }
+                } catch (e) {
+                    console.log('[Quote] 解析行情数据失败:', e);
+                }
+            }).catch(function(err) {
+                console.log('[Quote] 请求行情失败:', err);
+            });
         }
 
         window._loadStockRef = loadStock;
