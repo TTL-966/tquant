@@ -10,6 +10,7 @@ from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtCore import QUrl
 from app.web_bridge import WebBridge
+from backend.data_updater import DataUpdateScheduler
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -31,6 +32,7 @@ class MainWindow(QMainWindow):
 
         self.channel = QWebChannel()
         self.bridge = WebBridge()
+        self.bridge.main_window = self
         self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
@@ -38,9 +40,22 @@ class MainWindow(QMainWindow):
         html_path = os.path.join(base_dir, "..", "Tquant.html")  # 注意路径
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
 
+        # 数据更新调度器
+        self.scheduler = DataUpdateScheduler(self.bridge.db.engine)
+        self.scheduler.update_started.connect(self.on_update_started)
+        self.scheduler.update_finished.connect(self.on_update_finished)
+        self.scheduler.start()
+
         # F12 快捷键
         shortcut = QShortcut(QKeySequence("F12"), self)
         shortcut.activated.connect(lambda: self.web_view.page().triggerAction(QWebEnginePage.InspectElement))
+
+    def on_update_started(self, name):
+        print(f"[DataUpdate] {name} 开始更新")
+
+    def on_update_finished(self, name, success, msg):
+        status = "成功" if success else "失败"
+        print(f"[DataUpdate] {name} 更新{status}: {msg}")
 
 # 入口代码（关键！）
 if __name__ == "__main__":

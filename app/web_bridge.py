@@ -430,6 +430,14 @@ class WebBridge(QObject):
             return json.dumps({"success": False, "message": str(e)})
     # ----------------------------------------
 
+    @Slot(result=str)
+    def trigger_data_update(self):
+        """手动触发数据更新"""
+        if hasattr(self, 'main_window') and hasattr(self.main_window, 'scheduler'):
+            self.main_window.scheduler.trigger_manual_update()
+            return json.dumps({"success": True, "message": "数据更新已开始，请查看后端日志"})
+        return json.dumps({"success": False, "message": "更新调度器未就绪"})
+
     def _get_equity_curve(self, code):
         try:
             df = self.data_feed.get_kline_json(code)
