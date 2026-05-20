@@ -17,7 +17,7 @@ from backend.strategy_storage import StrategyStorage
 from backend.backtest_executor import BacktestExecutor   # 新增导入
 from backend.multi_backtest_executor import MultiBacktestExecutor # 多股回测
 
-from backend.data_feed import DataFeed#测试
+
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
@@ -31,8 +31,7 @@ class WebBridge(QObject):
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
         self._update_process = None   # 数据更新子进程句柄
 
-        df = DataFeed()
-        print(df.get_realtime_price('000001'))
+
 
     @Slot(result=str)
     def ping(self):
