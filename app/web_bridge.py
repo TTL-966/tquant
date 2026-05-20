@@ -1,6 +1,8 @@
 import json
 import sys
 import os
+import time
+import shutil
 import subprocess
 import threading
 import traceback
@@ -461,6 +463,54 @@ class WebBridge(QObject):
             return json.dumps({"success": True, "message": "数据更新已在后台启动，请稍后查看后端日志"})
         except Exception as e:
             return json.dumps({"success": False, "message": f"启动更新失败: {str(e)}"})
+
+    # ---------- 报告导出 ----------
+    @Slot(str, result=str)
+    def export_report(self, data_json):
+        """接收回测数据 JSON，生成 Excel 和 PDF 报告，弹出目录选择对话框保存。"""
+        try:
+            data = json.loads(data_json)
+            from backend.report_exporter import export_to_excel, export_to_pdf
+            from PySide6.QtWidgets import QFileDialog
+
+            base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_reports')
+            os.makedirs(base_dir, exist_ok=True)
+
+            timestamp = int(time.time())
+            excel_name = f'report_{timestamp}.xlsx'
+            pdf_name = f'report_{timestamp}.pdf'
+            excel_path = os.path.join(base_dir, excel_name)
+            pdf_path = os.path.join(base_dir, pdf_name)
+
+            export_to_excel(data, excel_path)
+            export_to_pdf(data, pdf_path)
+
+            # 弹出目录选择对话框
+            dest_dir = QFileDialog.getExistingDirectory(None, '选择保存目录')
+            if not dest_dir:
+                # 用户取消，清理临时文件
+                os.remove(excel_path)
+                os.remove(pdf_path)
+                return json.dumps({"success": False, "cancelled": True})
+
+            # 复制文件到目标目录
+            dest_excel = os.path.join(dest_dir, excel_name)
+            dest_pdf = os.path.join(dest_dir, pdf_name)
+            shutil.copy2(excel_path, dest_excel)
+            shutil.copy2(pdf_path, dest_pdf)
+
+            # 清理临时文件
+            os.remove(excel_path)
+            os.remove(pdf_path)
+
+            return json.dumps({
+                "success": True,
+                "excel": dest_excel,
+                "pdf": dest_pdf,
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
 
     def _read_update_output(self):
         """读取子进程输出并打印到控制台（后台线程，不阻塞 UI）"""

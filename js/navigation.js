@@ -1316,7 +1316,9 @@ function renderBacktestDetail(container, result) {
 
     container.innerHTML = `
         <div class="card">
-            <div class="card-title">📊 策略回测报告${multiBadge}</div>
+            <div class="card-title">📊 策略回测报告${multiBadge}
+                <button id="exportReportBtn" style="background:#4f7eff;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;font-size:13px;margin-left:12px;vertical-align:middle;">📄 导出报告</button>
+            </div>
             <div style="display:flex;gap:24px;margin-bottom:8px;color:#9aa9cc;font-size:13px;flex-wrap:wrap;">
                 <span>策略名称：<span style="color:#fff;font-weight:600;">${escapeHtml(strategyName)}</span></span>
                 <span>回测区间：<span style="color:#4f7eff;">${escapeHtml(periodStart)} ~ ${escapeHtml(periodEnd)}</span></span>
@@ -1452,6 +1454,48 @@ function renderBacktestDetail(container, result) {
             clearBtn.addEventListener('click', function() {
                 delete window._lastBacktestResult;
                 renderStaticDetail(container);
+            });
+        }
+
+        // 导出报告按钮
+        var exportBtn = document.getElementById('exportReportBtn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', function() {
+                if (!bridge || typeof bridge.export_report !== 'function') {
+                    showToast('当前环境不支持导出功能', true);
+                    return;
+                }
+                exportBtn.disabled = true;
+                exportBtn.textContent = '⏳ 生成中...';
+
+                var reportData = {
+                    strategyName: window.currentStrategyName || '未命名策略',
+                    periodStart: window.strategyStartDate || '--',
+                    periodEnd: window.strategyEndDate || '--',
+                    equityCurve: result.equity_curve || [],
+                    metrics: result.metrics || {},
+                    signals: result.signals || [],
+                    stockPerformance: result.stock_performance || []
+                };
+
+                bridge.export_report(JSON.stringify(reportData)).then(function(jsonStr) {
+                    var res = JSON.parse(jsonStr);
+                    exportBtn.disabled = false;
+                    exportBtn.textContent = '📄 导出报告';
+                    if (!res.success) {
+                        if (res.cancelled) {
+                            showToast('已取消导出', false);
+                        } else {
+                            showToast('导出失败: ' + (res.error || '未知错误'), true);
+                        }
+                        return;
+                    }
+                    showToast('报告已保存到: ' + (res.excel || ''), false);
+                }).catch(function(err) {
+                    showToast('导出异常: ' + err, true);
+                    exportBtn.disabled = false;
+                    exportBtn.textContent = '📄 导出报告';
+                });
             });
         }
     }, 100);
