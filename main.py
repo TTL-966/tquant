@@ -21,7 +21,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWebEngineCore import QWebEngineProfile
         profile = QWebEngineProfile.defaultProfile()
         profile.setHttpCacheType(QWebEngineProfile.NoCache)
-        profile.setPersistentStoragePath("")
+        profile.setPersistentStoragePath ("")
         print("QtWebEngine 缓存已禁用")
         layout.addWidget(self.web_view)
 
