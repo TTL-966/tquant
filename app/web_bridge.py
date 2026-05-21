@@ -1,11 +1,13 @@
 import json
 import sys
 import os
+import re
 import time
 import shutil
 import subprocess
 import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import QObject, Slot
@@ -326,6 +328,112 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
+    # ---- 多策略对比回测 ----
+
+    @Slot(str, result=str)
+    def run_compare_backtest(self, params_json):
+        """
+        接收 JSON 字符串，格式:
+        {
+            "stock_code": "000001",
+            "start": "2020-01-01",
+            "end": "2025-12-31",
+            "cash": 1000000,
+            "slippage": "close",
+            "commission_rate": 0.0003,
+            "stamp_tax_rate": 0.001,
+            "slippage_cost_type": "percent",
+            "slippage_cost_value": 0.1,
+            "variations": [
+                { "name": "MA5-MA20", "code": "import numpy as np\\n..." },
+                { "name": "MA10-MA30", "code": "import numpy as np\\n..." }
+            ]
+        }
+        返回 JSON:
+        {
+            "success": true,
+            "results": [{ name, equity_curve, metrics, signals }],
+            "errors": []
+        }
+        """
+        try:
+            params = json.loads(params_json)
+            stock_code = params.get("stock_code", "000001")
+            start = params.get("start", "2010-01-01")
+            end = params.get("end", "2026-12-31")
+            cash = params.get("cash", 1000000)
+            slippage = params.get("slippage", "close")
+            commission = params.get("commission_rate", 0.0003)
+            stamp_tax = params.get("stamp_tax_rate", 0.001)
+            slippage_cost_type = params.get("slippage_cost_type", "percent")
+            slippage_cost_value = params.get("slippage_cost_value", 0.1)
+            variations = params.get("variations", [])
+
+            if not variations or len(variations) == 0:
+                return json.dumps({"success": False, "error": "变体列表为空"})
+
+            results = []
+            errors = []
+
+            def run_single_variation(variation):
+                """执行单个变体回测，返回 (name, result_dict, error_str)。"""
+                name = variation.get("name", "未命名")
+                code = variation.get("code", "")
+                try:
+                    if not code:
+                        return (name, None, "变体代码为空")
+
+                    from backend.data_feed import DataFeed
+                    from backend.backtest_executor import BacktestExecutor
+                    data_feed = DataFeed()
+                    executor = BacktestExecutor(data_feed)
+                    result = executor.run(
+                        code, stock_code, start, end,
+                        initial_cash=cash, slippage=slippage,
+                        commission_rate=commission, stamp_tax_rate=stamp_tax,
+                        slippage_cost_type=slippage_cost_type,
+                        slippage_cost_value=slippage_cost_value
+                    )
+
+                    if "error" in result:
+                        return (name, None, result["error"])
+
+                    return (name, {
+                        "name": name,
+                        "equity_curve": result.get("equity_curve", []),
+                        "metrics": result.get("metrics", {}),
+                        "signals": result.get("signals", []),
+                        "logs": result.get("logs", [])
+                    }, None)
+                except Exception as e:
+                    traceback.print_exc(file=sys.stderr)
+                    return (name, None, str(e))
+
+            # 并行执行（最多5个线程）
+            with ThreadPoolExecutor(max_workers=min(len(variations), 5)) as executor:
+                futures = {executor.submit(run_single_variation, v): v for v in variations}
+                for future in as_completed(futures):
+                    name, result_dict, error_str = future.result()
+                    if result_dict is not None:
+                        results.append(result_dict)
+                    if error_str is not None:
+                        errors.append({"name": name, "error": error_str})
+
+            # 保持变体原始顺序
+            results.sort(key=lambda r: [v.get("name", "") for v in variations].index(r["name"])
+                         if r["name"] in [v.get("name", "") for v in variations] else 999)
+
+            print(f"[Bridge] 对比回测完成: {len(results)}/{len(variations)} 成功, {len(errors)} 失败", flush=True)
+
+            return json.dumps({
+                "success": True,
+                "results": results,
+                "errors": errors
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
     @Slot(str, result=str)
     def get_signals(self, code):
         try:
@@ -545,6 +653,26 @@ class WebBridge(QObject):
                 "excel": dest_excel,
                 "pdf": dest_pdf,
             })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, str, result=str)
+    def save_text_file(self, content, suggested_name):
+        """弹出原生保存对话框，将文本内容写入用户选择的文件。"""
+        try:
+            from PySide6.QtWidgets import QFileDialog
+
+            dest_path, _ = QFileDialog.getSaveFileName(
+                None, "保存文件", suggested_name, "文本文件 (*.txt);;Python 文件 (*.py);;所有文件 (*)"
+            )
+            if not dest_path:
+                return json.dumps({"success": False, "cancelled": True})
+
+            with open(dest_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            return json.dumps({"success": True, "path": dest_path})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})

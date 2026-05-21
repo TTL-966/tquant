@@ -8,12 +8,13 @@ import { generateCardId, CARD_TYPE_META, STRATEGY_TEMPLATES, createDefaultCard }
 import { generateCode, serializeConfig, deserializeConfig, validateCards } from './strategyUtils.js';
 import { stockNameMap, fetchStockName } from './stockData.js';
 import { Logger } from './logger.js';
+import { showCompareBacktestModal } from './compareStrategy.js';
 
 // ---- State ----
 var cards = [];
 var strategyName = '';
 var strategyId = null;
-var initialCapital = window._initialCapital || 1000000;
+var initialCapital = window._initialCapital || 100000;
 var startDate = '2025-01-01';
 var endDate = new Date().toISOString().slice(0, 10);
 var stockPool = '';
@@ -1253,6 +1254,7 @@ export function renderStrategyPage(container) {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
         '<button id="toggleCodePreviewBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:6px 14px;border-radius:20px;cursor:pointer;">📝 预览代码</button>' +
         '<button id="runBacktestBtn" style="background:#4f7eff;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;">▶ 运行回测</button>' +
+        '<button id="compareBacktestBtn" style="background:transparent;border:1px solid #f2c94c;padding:6px 16px;border-radius:30px;color:#f2c94c;font-weight:600;cursor:pointer;">🔬 对比回测</button>' +
         '</div>' +
         '<pre id="codePreviewArea" style="display:none;max-height:300px;overflow-y:auto;background:#0e1220;border:1px solid #323d5a;border-radius:12px;padding:12px;color:#9aa9cc;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-all;"></pre>' +
         '</div>' +
@@ -1363,6 +1365,55 @@ export function renderStrategyPage(container) {
 
     var runBtn = document.getElementById('runBacktestBtn');
     if (runBtn) runBtn.addEventListener('click', showBacktestModal);
+
+    var compareBtn = document.getElementById('compareBacktestBtn');
+    if (compareBtn) {
+        compareBtn.addEventListener('click', function() {
+            var validation = validateCards(cards);
+            if (!validation.valid) {
+                showToast(validation.errors[0], true);
+                return;
+            }
+            if (cards.length === 0) {
+                showToast('请先添加策略卡片', true);
+                return;
+            }
+
+            // Read page params
+            var pageStockPoolInput = document.getElementById('strategyStockPool');
+            var savedStockPool = pageStockPoolInput ? pageStockPoolInput.value.trim() : '';
+            var defaultStock = savedStockPool || (window._defaultStockFromTemplate) || '000001';
+
+            var pageStartInput = document.getElementById('strategyStartDate');
+            var pageEndInput = document.getElementById('strategyEndDate');
+            var startDt = pageStartInput ? pageStartInput.value : startDate;
+            var endDt = pageEndInput ? pageEndInput.value : endDate;
+
+            var capitalInput = document.getElementById('initialCapitalInput');
+            var cashVal = capitalInput ? (Number(capitalInput.value) || 100000) : initialCapital;
+
+            var slippageInput = document.getElementById('slippageInput');
+            var slippageType = slippageInput ? (slippageInput.getAttribute('data-value') || 'close') : 'close';
+
+            var commissionInput = document.getElementById('commissionRate');
+            var commissionVal = commissionInput ? (Number(commissionInput.value) || 0.0003) : 0.0003;
+
+            var stampTaxInput = document.getElementById('stampTaxRate');
+            var stampTaxVal = stampTaxInput ? (Number(stampTaxInput.value) || 0.001) : 0.001;
+
+            var slCostTypeInput = document.getElementById('slippageCostType');
+            var slCostTypeVal = slCostTypeInput ? (slCostTypeInput.getAttribute('data-value') || 'percent') : 'percent';
+
+            var slCostValueInput = document.getElementById('slippageCostValue');
+            var slCostValueVal = slCostValueInput ? (Number(slCostValueInput.value) || 0.1) : 0.1;
+
+            // Set strategy name
+            window.currentStrategyName = strategyName || '未命名策略';
+
+            showCompareBacktestModal(cards, defaultStock, startDt, endDt, cashVal, slippageType,
+                commissionVal, stampTaxVal, slCostTypeVal, slCostValueVal);
+        });
+    }
 
     var clearLogBtn = document.getElementById('clearLogBtn');
     if (clearLogBtn) clearLogBtn.addEventListener('click', clearLog);

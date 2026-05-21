@@ -10,6 +10,7 @@ import { renderStrategyPage } from './strategyBuilder.js';
 import { renderCodeEditorPage } from './codeEditor.js';
 import { renderTroubleshootPage } from './troubleshoot.js';
 import { CARD_TYPE_META } from './strategyTemplates.js';
+import { renderCompareView } from './compareView.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
@@ -1626,6 +1627,13 @@ function renderStaticDetail(container) {
 }
 
 function renderDetailPage(container) {
+    // 优先检查对比回测结果
+    var compareResult = window._lastCompareResult;
+    if (compareResult && compareResult.success && compareResult.results && compareResult.results.length > 0) {
+        renderCompareView(container, compareResult);
+        return;
+    }
+
     var result = window._lastBacktestResult;
     if (result && result.success) {
         renderBacktestDetail(container, result);
