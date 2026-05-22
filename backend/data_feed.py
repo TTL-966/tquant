@@ -221,11 +221,12 @@ class DataFeed:
             return {
                 'price': price,
                 'prev_close': prev_close,
+                'open': _f(5),           # 今开
                 'change_pct': _f(32),
                 'high': _f(33),
                 'low': _f(34),
-                'volume': _i(36),       # 手
-                'amount': _f(37),       # 万元
+                'volume': _i(36),        # 手
+                'amount': _f(37),        # 万元
             }
         except Exception:
             return None

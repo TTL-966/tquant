@@ -175,40 +175,49 @@ function calcMAHelper(values, period) {
 
 // ---- 实时行情栏更新 ----
 function updatePriceBarName(name, code) {
-    var nameEl = document.getElementById('stockPriceBarName');
-    var codeEl = document.getElementById('stockPriceBarCode');
-    if (nameEl) nameEl.textContent = name || '--';
-    if (codeEl) codeEl.textContent = code || '--';
+    var display = document.getElementById('stockNameDisplay');
+    if (display) display.textContent = (name || '--') + ' (' + (code || '--') + ')';
 }
 
 function updatePriceBar(data) {
-    var priceEl = document.getElementById('stockPriceBarPrice');
-    var changeEl = document.getElementById('stockPriceBarChange');
-    var changePctEl = document.getElementById('stockPriceBarChangePct');
+    var co = document.getElementById('compactOpen');
+    var ch = document.getElementById('compactHigh');
+    var cl = document.getElementById('compactLow');
+    var cv = document.getElementById('compactVol');
+    var ca = document.getElementById('compactAmt');
+    var cp = document.getElementById('compactChangePct');
 
     if (!data || data.error) {
-        if (priceEl) { priceEl.textContent = '--'; priceEl.className = 'latest-price price-flat'; }
-        if (changeEl) { changeEl.textContent = '--'; changeEl.className = ''; }
-        if (changePctEl) { changePctEl.textContent = '--'; changePctEl.className = ''; }
+        if (cp) { cp.textContent = '--'; cp.className = 'price-flat'; }
         return;
     }
 
-    var change = data.change || 0;
     var changePct = data.change_pct || 0;
-    var cls = change > 0 ? 'price-up' : (change < 0 ? 'price-down' : 'price-flat');
+    var cls = (data.change || 0) > 0 ? 'price-up' : ((data.change || 0) < 0 ? 'price-down' : 'price-flat');
 
-    if (priceEl) {
-        priceEl.textContent = data.price != null ? data.price.toFixed(2) : '--';
-        priceEl.className = 'latest-price ' + cls;
+    if (co) { co.textContent = data.open != null ? data.open.toFixed(2) : '--'; co.className = ''; }
+    if (ch) { ch.textContent = data.high != null ? data.high.toFixed(2) : '--'; ch.className = 'price-up'; }
+    if (cl) { cl.textContent = data.low != null ? data.low.toFixed(2) : '--'; cl.className = 'price-down'; }
+    if (cv) { cv.textContent = data.volume != null ? fmtVolume(data.volume) : '--'; cv.className = ''; }
+    if (ca) { ca.textContent = data.amount != null ? fmtAmount(data.amount) : '--'; ca.className = ''; }
+    if (cp) {
+        cp.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+        cp.className = cls;
     }
-    if (changeEl) {
-        changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2);
-        changeEl.className = cls;
-    }
-    if (changePctEl) {
-        changePctEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
-        changePctEl.className = cls;
-    }
+}
+
+// 格式化成交量（手 → 万手/亿手）
+function fmtVolume(vol) {
+    if (vol >= 1e8) return (vol / 1e8).toFixed(2) + '亿手';
+    if (vol >= 1e4) return (vol / 1e4).toFixed(1) + '万手';
+    return vol + '手';
+}
+
+// 格式化成交额（万元 → 亿/万）
+function fmtAmount(amt) {
+    if (amt >= 1e4) return (amt / 1e4).toFixed(2) + '亿元';
+    if (amt >= 1) return amt.toFixed(0) + '万元';
+    return amt + '万元';
 }
 
 // ========== 主路由 ==========
@@ -341,6 +350,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-values" id="kchartSubChart1Values"></div>
                 <div class="subchart-chart-container" id="kchartSubChart1" style="width:100%; flex:1;"></div>
             </div>
             <div class="subchart-wrapper" data-subchart="kchartSub2">
@@ -352,6 +362,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-values" id="kchartSubChart2Values"></div>
                 <div class="subchart-chart-container" id="kchartSubChart2" style="width:100%; flex:1;"></div>
             </div>
             <p class="kchart-bottom-text" style="margin-top:6px; color:#9aa9cc;">若无买卖点，请先在策略页运行回测并保存信号，再点击"加载策略信号"。</p>
@@ -650,25 +661,24 @@ function renderStockPage(container) {
                     <button id="stockIndustryBtn" style="background:#2a3a5a;">🏭 同行业股票</button>
                 </div>
             </div>
-            <div id="stockPriceBar" class="stock-price-bar">
-                <div class="stock-name-code">
-                    <span class="stock-name-large" id="stockPriceBarName">--</span>
-                    <span class="stock-code-small" id="stockPriceBarCode">--</span>
-                </div>
-                <div class="stock-price-info">
-                    <span class="latest-price" id="stockPriceBarPrice">--</span>
-                    <div class="change-row">
-                        <span id="stockPriceBarChange">--</span>
-                        <span id="stockPriceBarChangePct">--</span>
+            <div class="stock-info-row">
+                <div class="stock-name-large" id="stockNameDisplay">--</div>
+                <div class="stock-controls">
+                    <div class="period-wrapper">
+                        <span style="color:#9aa9cc;font-size:13px;">K线周期：</span>
+                        <div style="position:relative;display:inline-block;">
+                            <input type="text" id="stockPeriodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
+                            <span id="stockPeriodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
+                        </div>
                     </div>
-                </div>
-            </div>
-            <div id="stockInfoArea" style="margin-bottom:12px; color:#9aa9cc;">请输入股票代码查询</div>
-            <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
-                <span style="color:#9aa9cc; font-size:13px;">K线周期：</span>
-                <div style="position:relative;display:inline-block;">
-                    <input type="text" id="stockPeriodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
-                    <span id="stockPeriodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
+                    <div class="stock-quote-compact" id="stockQuoteCompact">
+                        <div class="quote-item"><span class="quote-label">开盘</span><span id="compactOpen">--</span></div>
+                        <div class="quote-item"><span class="quote-label">最高</span><span id="compactHigh">--</span></div>
+                        <div class="quote-item"><span class="quote-label">最低</span><span id="compactLow">--</span></div>
+                        <div class="quote-item"><span class="quote-label">成交量</span><span id="compactVol">--</span></div>
+                        <div class="quote-item"><span class="quote-label">成交额</span><span id="compactAmt">--</span></div>
+                        <div class="quote-item"><span class="quote-label">涨跌幅</span><span id="compactChangePct">--</span></div>
+                    </div>
                 </div>
             </div>
             <div id="stockKlineChart" style="width:100%; flex:3; min-height:0;"></div>
@@ -681,6 +691,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-values" id="stockSubChart1Values"></div>
                 <div class="subchart-chart-container" id="stockSubChart1" style="width:100%; flex:1;"></div>
             </div>
             <div class="subchart-wrapper" data-subchart="stockSub2">
@@ -692,6 +703,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-values" id="stockSubChart2Values"></div>
                 <div class="subchart-chart-container" id="stockSubChart2" style="width:100%; flex:1;"></div>
             </div>
         </div>`;
@@ -710,7 +722,6 @@ function renderStockPage(container) {
 
         var codeInput = document.getElementById('stockCodeInput');
         var searchBtn = document.getElementById('stockSearchBtn');
-        var infoArea = document.getElementById('stockInfoArea');
         var industryBtn = document.getElementById('stockIndustryBtn');
         var industryLabel = document.getElementById('stockIndustryLabel');
 
@@ -766,10 +777,6 @@ function renderStockPage(container) {
             fetchStockName(code, bridge).then(function(fetchedName) {
                 if (fetchedName) stockNameMap[code] = fetchedName;
                 var name = stockNameMap[code] || code;
-                if (infoArea) {
-                    infoArea.innerHTML = '<span style="color:#fff;font-weight:600;">' + name + '</span> <span style="color:#9aa9cc;">(' + code + ')</span>';
-                }
-                // 更新实时行情栏中的股票名称和代码
                 updatePriceBarName(name, code);
             });
 

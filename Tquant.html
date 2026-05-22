@@ -608,7 +608,8 @@
         .subchart-wrapper.collapsed {
             flex: 0 0 auto !important;
         }
-        .subchart-wrapper.collapsed .subchart-chart-container {
+        .subchart-wrapper.collapsed .subchart-chart-container,
+        .subchart-wrapper.collapsed .subchart-values {
             display: none;
         }
 
@@ -669,26 +670,120 @@
 
         /* 个股详情页 flex 分配 */
         #stockCard #stockKlineChart {
-            flex: 3;
+            flex: 2.5;
             height: auto !important;
             min-height: 0;
             width: 100% !important;
         }
         #stockCard .subchart-wrapper {
-            flex: 1;
+            flex: 1.5;
         }
 
         /* 买卖点成交图页 flex 分配 */
         #kchartCard #klineMainChart {
-            flex: 4;
+            flex: 3;
             height: auto !important;
             min-height: 0;
             margin: 4px 0 2px 0;
             width: 100% !important;
         }
         #kchartCard .subchart-wrapper {
-            flex: 1.2;
+            flex: 1.5;
         }
+
+        /* 副图容器最小高度 */
+        .subchart-chart-container {
+            min-height: 120px;
+        }
+
+        /* ──────── 个股详情页顶部紧凑布局 ──────── */
+        .stock-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px 20px;
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a314a;
+        }
+
+        /* 股票名称（左侧装饰条） */
+        .stock-info-row .stock-name-large {
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            border-left: 3px solid #4f7eff;
+            padding-left: 12px;
+            line-height: 1.2;
+            flex-shrink: 0;
+        }
+
+        /* 右侧控制区（周期 + 行情卡片） */
+        .stock-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* 紧凑行情卡片（横向 flex） */
+        .stock-quote-compact {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            background: #0e1220;
+            border-radius: 8px;
+            padding: 5px 12px;
+        }
+
+        .quote-item {
+            display: flex;
+            gap: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .quote-label {
+            color: #9aa9cc;
+        }
+
+        .quote-item span:last-child {
+            color: #ffffff;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-weight: 500;
+        }
+        .quote-item span:last-child.price-up   { color: #ef5350; }
+        .quote-item span:last-child.price-down { color: #26a69a; }
+
+        /* ──────── 副图数值行 ──────── */
+        .subchart-values {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 14px;
+            padding: 3px 10px;
+            background: #0e1220;
+            border-bottom: 1px solid #1e253b;
+            flex-shrink: 0;
+            min-height: 22px;
+            align-items: center;
+        }
+        .subchart-values .val-item {
+            font-size: 11px;
+            color: #9aa9cc;
+            white-space: nowrap;
+        }
+        .subchart-values .val-item .val-label {
+            color: #6a7a9a;
+        }
+        .subchart-values .val-item .val-num {
+            color: #ffffff;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-left: 2px;
+        }
+        .subchart-values .val-item .val-num.up { color: #ef5350; }
+        .subchart-values .val-item .val-num.down { color: #26a69a; }
 
     </style>
 </head>

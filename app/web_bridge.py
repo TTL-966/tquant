@@ -93,6 +93,7 @@ class WebBridge(QObject):
                     "code": code,
                     "price": result['price'],
                     "prev_close": result['prev_close'],
+                    "open": result.get('open', 0),
                     "change": change,
                     "change_pct": result.get('change_pct', 0),
                     "high": result.get('high', 0),
