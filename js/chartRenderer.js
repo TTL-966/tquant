@@ -278,10 +278,18 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     chart.setOption(option);
     console.log("图表设置完成");
 
-    // 通知副图模块渲染成交量（通过全局函数注入，避免循环依赖）
+    // 通知副图管理器（SubChartManager）
+    console.log('[chartRenderer] renderKlineWithSignals -> onMainChartReady', {
+        containerId: 'klineMainChart',
+        datesLen: dates ? dates.length : 0,
+        valuesLen: values ? values.length : 0,
+        valuesSample: values ? values.slice(0, 2) : null
+    });
     setTimeout(function() {
-        if (window.renderVolumeSubChart && typeof window.renderVolumeSubChart === 'function') {
-            window.renderVolumeSubChart('volumeSubChart', dates, values, chart);
+        if (window.subChartManager) {
+            window.subChartManager.onMainChartReady('klineMainChart', chart, dates, values);
+        } else {
+            console.warn('[chartRenderer] window.subChartManager not available');
         }
     }, 50);
 
@@ -305,23 +313,6 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         if (!date) {
             signalCard.style.display = 'none';
             return;
-        }
-
-        var dataIdx = params.dataIndex;
-        if (dataIdx !== undefined) {
-            setTimeout(function() {
-                var volContainer = document.getElementById('volumeSubChart');
-                if (volContainer && window._volumeChartInstances && window._volumeChartInstances['volumeSubChart']) {
-                    var volChart = window._volumeChartInstances['volumeSubChart'];
-                    if (volChart && !volChart.isDisposed()) {
-                        volChart.dispatchAction({
-                            type: 'showTip',
-                            seriesIndex: 0,
-                            dataIndex: dataIdx
-                        });
-                    }
-                }
-            }, 5);
         }
 
         var buyHere = buyPts ? buyPts.filter(function(b) { return b.date === date; }) : [];
@@ -539,33 +530,20 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         };
         chart.setOption(option, true);
 
-        // 通知副图模块渲染成交量（通过全局函数注入，避免循环依赖）
+        // 通知副图管理器（SubChartManager）
+        console.log('[chartRenderer] renderStockKline -> onMainChartReady', {
+            containerId: containerId,
+            datesLen: dates ? dates.length : 0,
+            valuesLen: values ? values.length : 0,
+            valuesSample: values ? values.slice(0, 2) : null
+        });
         setTimeout(function() {
-            if (window.renderVolumeSubChart && typeof window.renderVolumeSubChart === 'function') {
-                window.renderVolumeSubChart('stockVolumeSubChart', dates, values, chart);
+            if (window.subChartManager) {
+                window.subChartManager.onMainChartReady(containerId, chart, dates, values);
+            } else {
+                console.warn('[chartRenderer] window.subChartManager not available');
             }
         }, 50);
-
-        chart.off('mousemove');  // 避免重复绑定
-        chart.on('mousemove', function(params) {
-            if (!params || params.dataIndex === undefined) return;
-            var dataIdx = params.dataIndex;
-            if (dataIdx !== undefined) {
-                setTimeout(function() {
-                    var volContainer = document.getElementById('stockVolumeSubChart');
-                    if (volContainer && window._volumeChartInstances && window._volumeChartInstances['stockVolumeSubChart']) {
-                        var volChart = window._volumeChartInstances['stockVolumeSubChart'];
-                        if (volChart && !volChart.isDisposed()) {
-                            volChart.dispatchAction({
-                                type: 'showTip',
-                                seriesIndex: 0,
-                                dataIndex: dataIdx
-                            });
-                        }
-                    }
-                }, 5);
-            }
-        })
 
         setTimeout(function() { chart.resize(); }, 100);
     }, 10);

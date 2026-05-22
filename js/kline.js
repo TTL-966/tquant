@@ -49,7 +49,8 @@ export function fetchAndRenderKline(code, startDate, endDate, period) {
         }
         if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
             data.values = data.dates.map(function(_, i) {
-                return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
+                var vol = data.volumes ? data.volumes[i] : 0;
+                return [data.opens[i], data.closes[i], data.lows[i], data.highs[i], vol];
             });
         }
         if (!data.dates || !data.values) {
@@ -62,6 +63,17 @@ export function fetchAndRenderKline(code, startDate, endDate, period) {
         }
         currentKlineDates = data.dates;
         currentKlineValues = data.values;
+
+        // 预配置副图：供 renderKlineWithSignals 内部的 onMainChartReady 回调使用
+        var mgr = window.subChartManager;
+        if (mgr) {
+            mgr._pendingSubs = [
+                { id: 'kchartSubChart1', type: 'volume' },
+                { id: 'kchartSubChart2', type: 'rsi' }
+            ];
+            mgr._stockCode = code;
+        }
+
         setTimeout(function() {
             var maData = {
                 dates: data.dates,
@@ -100,6 +112,15 @@ export function runBacktest(code, startDate, endDate) {
             var maData = res.ma_data;
             log("回测完成，买入 " + buyPoints.length + " 卖出 " + sellPoints.length);
             if (currentKlineDates.length > 0) {
+                // 确保副图管理器有 pending subs（兼容直接调用场景）
+                var mgr = window.subChartManager;
+                if (mgr && mgr.instances.size === 0) {
+                    mgr._pendingSubs = [
+                        { id: 'kchartSubChart1', type: 'volume' },
+                        { id: 'kchartSubChart2', type: 'rsi' }
+                    ];
+                    mgr._stockCode = code;
+                }
                 renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints, maData);
             } else {
                 fetchAndRenderKline(code, startDate, endDate);
@@ -178,6 +199,15 @@ export function runCustomBacktest(stockCode, startDate, endDate, strategyName, c
                 ma20: calcMA(currentKlineValues, 20),
                 ma30: calcMA(currentKlineValues, 30)
             };
+            // 确保副图管理器有 pending subs（兼容直接调用场景）
+            var mgr = window.subChartManager;
+            if (mgr && mgr.instances.size === 0) {
+                mgr._pendingSubs = [
+                    { id: 'kchartSubChart1', type: 'volume' },
+                    { id: 'kchartSubChart2', type: 'rsi' }
+                ];
+                mgr._stockCode = stockCode;
+            }
             renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints, maData);
         }
         return res;

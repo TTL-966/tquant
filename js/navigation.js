@@ -2,7 +2,7 @@ import { bridge } from './bridge.js';
 import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, currentKlineDates, currentKlineValues, currentPeriod, setPeriod } from './kline.js';
 import { renderProfile } from './profile.js';
 import { renderStockKline, drawDetailCurve, formatStockDisplayHtml, drawEquityCurve, renderKlineWithSignals } from './chartRenderer.js';
-import { renderVolumeSubChart, destroyVolumeSubChart } from './subChartRenderer.js';
+import { SubChartManager } from './SubChartManager.js';
 import { bindDatePicker } from './datepicker.js';
 import { stockNameMap, tradeStockLibrary, backtestStrategies, fetchStockName, searchStockSuggestions } from './stockData.js';
 import { formatStockNameOnly, populateStockDatalist, populateStockSelector, profitClass, escapeHtml, loadAvatarPreview, saveAvatarToStorage } from './main.js';
@@ -217,7 +217,10 @@ export function loadPage(pageId) {
     if (!container) return;
 
     // 切换页面时清理旧副图实例和行情轮询
-    destroyVolumeSubChart();
+    if (window.subChartManager) {
+        window.subChartManager.destroyAll();
+        window.subChartManager = null;
+    }
     if (pageId !== 'stock' && _quotePollTimer) {
         clearInterval(_quotePollTimer);
         _quotePollTimer = null;
@@ -261,6 +264,40 @@ export function navigateToKline(code) {
     loadPage('kchart');
 }
 
+// ---- 副图工具栏事件绑定（公共）----
+function _bindSubchartToolbar(mgr, containerId, stockCode) {
+    var wrapper = document.querySelector('.subchart-wrapper[data-subchart="' + containerId.replace('SubChart', 'Sub') + '"]');
+    // 兼容 stock/kchart 命名差异
+    if (!wrapper) {
+        // 尝试备用选择
+        var chartContainer = document.getElementById(containerId);
+        if (chartContainer) wrapper = chartContainer.closest('.subchart-wrapper');
+    }
+    if (!wrapper) return;
+
+    // 类型切换按钮
+    var typeBtns = wrapper.querySelectorAll('.subchart-type-btn');
+    typeBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var newType = this.getAttribute('data-type');
+            if (!newType) return;
+            // 更新 active 状态
+            typeBtns.forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            // 切换指标
+            mgr.switchType(containerId, newType);
+        });
+    });
+
+    // 折叠按钮
+    var collapseBtn = wrapper.querySelector('.collapse-btn');
+    if (collapseBtn) {
+        collapseBtn.addEventListener('click', function() {
+            mgr.toggleCollapse(containerId);
+        });
+    }
+}
+
 // ========== 买卖点成交图页 (K线) ==========
 function renderKchartPage(container) {
     // 获取回测时间段
@@ -295,13 +332,41 @@ function renderKchartPage(container) {
                 </div>
             </div>
             <div id="klineMainChart" class="kline-container"></div>
-            <div id="volumeSubChart" style="width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
+            <div class="subchart-wrapper" data-subchart="kchartSub1">
+                <div class="subchart-toolbar">
+                    <span class="subchart-label">副图1</span>
+                    <button class="subchart-type-btn active" data-type="volume">成交量</button>
+                    <button class="subchart-type-btn" data-type="macd">MACD</button>
+                    <button class="subchart-type-btn" data-type="rsi">RSI</button>
+                    <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="collapse-btn">▲ 折叠</button>
+                </div>
+                <div class="subchart-chart-container" id="kchartSubChart1" style="width:100%; flex:1;"></div>
+            </div>
+            <div class="subchart-wrapper" data-subchart="kchartSub2">
+                <div class="subchart-toolbar">
+                    <span class="subchart-label">副图2</span>
+                    <button class="subchart-type-btn" data-type="volume">成交量</button>
+                    <button class="subchart-type-btn" data-type="macd">MACD</button>
+                    <button class="subchart-type-btn active" data-type="rsi">RSI</button>
+                    <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="collapse-btn">▲ 折叠</button>
+                </div>
+                <div class="subchart-chart-container" id="kchartSubChart2" style="width:100%; flex:1;"></div>
+            </div>
             <p class="kchart-bottom-text" style="margin-top:6px; color:#9aa9cc;">若无买卖点，请先在策略页运行回测并保存信号，再点击"加载策略信号"。</p>
         </div>`;
 
     setTimeout(function() {
-        // 挂载副图渲染函数到全局，供 chartRenderer.js 在 setOption 后回调
-        window.renderVolumeSubChart = renderVolumeSubChart;
+        // 初始化副图管理器
+        if (!window.subChartManager) {
+            window.subChartManager = new SubChartManager();
+        }
+        var mgr = window.subChartManager;
+
+        // 绑定副图工具栏事件（kchart 页面）
+        _bindSubchartToolbar(mgr, 'kchartSubChart1', currentStockCode);
+        _bindSubchartToolbar(mgr, 'kchartSubChart2', currentStockCode);
 
         // 策略名称显示
         var nameSpan = document.getElementById('currentStrategyName');
@@ -606,16 +671,42 @@ function renderStockPage(container) {
                     <span id="stockPeriodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
                 </div>
             </div>
-            <div id="stockKlineChart" style="width:100%;"></div>
-            <div id="stockVolumeSubChart" style="width:100%;background:#0e1220;border-radius:0 0 20px 20px;margin-top:2px;"></div>
-            <div id="indicatorArea" style="margin-top:12px; padding:16px; background:#151c2c; border:1px solid #242a40; border-radius:16px; color:#9aa9cc; text-align:center;">
-                MACD / KDJ 等指标区域（即将开放）
+            <div id="stockKlineChart" style="width:100%; flex:3; min-height:0;"></div>
+            <div class="subchart-wrapper" data-subchart="stockSub1">
+                <div class="subchart-toolbar">
+                    <span class="subchart-label">副图1</span>
+                    <button class="subchart-type-btn active" data-type="volume">成交量</button>
+                    <button class="subchart-type-btn" data-type="macd">MACD</button>
+                    <button class="subchart-type-btn" data-type="rsi">RSI</button>
+                    <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="collapse-btn">▲ 折叠</button>
+                </div>
+                <div class="subchart-chart-container" id="stockSubChart1" style="width:100%; flex:1;"></div>
+            </div>
+            <div class="subchart-wrapper" data-subchart="stockSub2">
+                <div class="subchart-toolbar">
+                    <span class="subchart-label">副图2</span>
+                    <button class="subchart-type-btn" data-type="volume">成交量</button>
+                    <button class="subchart-type-btn" data-type="macd">MACD</button>
+                    <button class="subchart-type-btn active" data-type="rsi">RSI</button>
+                    <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="collapse-btn">▲ 折叠</button>
+                </div>
+                <div class="subchart-chart-container" id="stockSubChart2" style="width:100%; flex:1;"></div>
             </div>
         </div>`;
 
     setTimeout(function() {
         // 挂载副图渲染函数到全局，供 chartRenderer.js 在 setOption 后回调
-        window.renderVolumeSubChart = renderVolumeSubChart;
+        // 初始化副图管理器
+        if (!window.subChartManager) {
+            window.subChartManager = new SubChartManager();
+        }
+        var mgr = window.subChartManager;
+
+        // 绑定副图工具栏事件（stock 页面）
+        _bindSubchartToolbar(mgr, 'stockSubChart1', currentStockCode);
+        _bindSubchartToolbar(mgr, 'stockSubChart2', currentStockCode);
 
         var codeInput = document.getElementById('stockCodeInput');
         var searchBtn = document.getElementById('stockSearchBtn');
@@ -714,10 +805,20 @@ function renderStockPage(container) {
                     }
                     if (data.dates && !data.values && data.opens && data.highs && data.lows && data.closes) {
                         data.values = data.dates.map(function(_, i) {
-                            return [data.opens[i], data.closes[i], data.lows[i], data.highs[i]];
+                            var vol = data.volumes ? data.volumes[i] : 0;
+                            return [data.opens[i], data.closes[i], data.lows[i], data.highs[i], vol];
                         });
                     }
                     if (data.dates && data.values) {
+                        // 预配置副图：类型 + 股票代码，供 onMainChartReady 回调使用
+                        var mgr = window.subChartManager;
+                        if (mgr) {
+                            mgr._pendingSubs = [
+                                { id: 'stockSubChart1', type: 'volume' },
+                                { id: 'stockSubChart2', type: 'rsi' }
+                            ];
+                            mgr._stockCode = code;
+                        }
                         renderStockKline('stockKlineChart', data.dates, data.values, 0);
                     }
                 }).catch(function(err) {

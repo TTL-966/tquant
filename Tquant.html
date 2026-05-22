@@ -164,20 +164,8 @@
         #kchartCard > div[style] {
             flex-shrink: 0;
         }
-        #kchartCard #klineMainChart {
-            flex: 3;
-            height: auto !important;
-            min-height: 0;
-            margin: 4px 0 2px 0;
-            width: 100% !important;
-        }
-        #kchartCard #volumeSubChart {
-            flex: 1;
-            height: auto !important;
-            min-height: 0;
-        }
 
-        /* ---------- stock 页面自适应布局（K线+成交量填满视口，无需滚动）---------- */
+        /* ---------- stock 页面自适应布局（K线+双副图填满视口，无需滚动）---------- */
         #stockCard {
             display: flex;
             flex-direction: column;
@@ -188,19 +176,8 @@
         #stockCard .card-title,
         #stockCard .stock-search-row,
         #stockCard #stockPriceBar,
-        #stockCard #stockInfoArea,
-        #stockCard #indicatorArea {
+        #stockCard #stockInfoArea {
             flex-shrink: 0;
-        }
-        #stockCard #stockKlineChart {
-            flex: 3;
-            height: auto !important;
-            min-height: 0;
-        }
-        #stockCard #stockVolumeSubChart {
-            flex: 1;
-            height: auto !important;
-            min-height: 0;
         }
 
         /* ------------------- 新增规则 start ------------------- */
@@ -614,6 +591,103 @@
         }
         .stock-price-bar .price-flat {
             color: #9aa9cc !important;
+        }
+
+        /* ──────── 双副图布局（个股详情页 + 买卖点成交图页）──────── */
+        .subchart-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            background: #0e1220;
+            border-radius: 0 0 20px 20px;
+            margin-top: 2px;
+            overflow: hidden;
+            transition: flex 0.25s ease;
+        }
+        .subchart-wrapper.collapsed {
+            flex: 0 0 auto !important;
+        }
+        .subchart-wrapper.collapsed .subchart-chart-container {
+            display: none;
+        }
+
+        .subchart-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: #111827;
+            border-bottom: 1px solid #2a314a;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            min-height: 32px;
+        }
+        .subchart-label {
+            color: #9aa9cc;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 4px;
+            white-space: nowrap;
+        }
+        .subchart-type-btn {
+            background: #1e253b;
+            border: 1px solid #323d5a;
+            border-radius: 4px;
+            color: #9aa9cc;
+            font-size: 11px;
+            padding: 2px 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .subchart-type-btn:hover {
+            background: #2d3a5e;
+            color: #fff;
+        }
+        .subchart-type-btn.active {
+            background: #4f7eff;
+            border-color: #4f7eff;
+            color: #fff;
+        }
+        .collapse-btn {
+            background: transparent;
+            border: 1px solid #323d5a;
+            border-radius: 4px;
+            color: #9aa9cc;
+            font-size: 11px;
+            padding: 2px 8px;
+            cursor: pointer;
+            margin-left: auto;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .collapse-btn:hover {
+            background: #2d3a5e;
+            color: #fff;
+        }
+
+        /* 个股详情页 flex 分配 */
+        #stockCard #stockKlineChart {
+            flex: 3;
+            height: auto !important;
+            min-height: 0;
+            width: 100% !important;
+        }
+        #stockCard .subchart-wrapper {
+            flex: 1;
+        }
+
+        /* 买卖点成交图页 flex 分配 */
+        #kchartCard #klineMainChart {
+            flex: 4;
+            height: auto !important;
+            min-height: 0;
+            margin: 4px 0 2px 0;
+            width: 100% !important;
+        }
+        #kchartCard .subchart-wrapper {
+            flex: 1.2;
         }
 
     </style>
