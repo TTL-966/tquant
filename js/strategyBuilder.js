@@ -279,16 +279,16 @@ function showAddCardModal() {
     closeBtn.onclick = function() { overlay.remove(); modal.remove(); };
 
     var grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;';
 
-    var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'kdj', 'volume', 'atr_breakout', 'cci', 'ma_alignment', 'stop_loss_profit', 'position', 'price_limit'];
+    var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'bollinger_width', 'kdj', 'volume', 'volume_contraction', 'day_of_week', 'sar', 'obv', 'hammer_hanging', 'atr_breakout', 'cci', 'ma_alignment', 'stop_loss_profit', 'position', 'price_limit'];
     typeKeys.forEach(function(key) {
         var meta = CARD_TYPE_META[key];
         var item = document.createElement('div');
-        item.style.cssText = 'background:#0e1220;border:1px solid #323d5a;border-radius:10px;padding:14px 10px;cursor:pointer;text-align:center;transition:background 0.2s;';
-        item.innerHTML = '<div style="font-size:28px;">' + meta.icon + '</div>' +
-            '<div style="color:#fff;font-weight:600;margin-top:4px;">' + meta.label + '</div>' +
-            '<div style="color:#9aa9cc;font-size:11px;margin-top:2px;">' + meta.description + '</div>';
+        item.style.cssText = 'background:#0e1220;border:1px solid #323d5a;border-radius:10px;padding:10px 8px;cursor:pointer;text-align:center;transition:background 0.2s;';
+        item.title = meta.description;
+        item.innerHTML = '<div style="font-size:24px;">' + meta.icon + '</div>' +
+            '<div style="color:#fff;font-weight:600;font-size:13px;margin-top:3px;">' + meta.label + '</div>';
         item.onmouseenter = function() { item.style.background = '#1a2540'; };
         item.onmouseleave = function() { item.style.background = '#0e1220'; };
         item.onclick = function() {

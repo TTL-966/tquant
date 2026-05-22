@@ -976,14 +976,20 @@ function renderApiPage(container) {
         rsi: 'RSI(14) < 30 → 超卖买入',
         macd: 'DIF 上穿 DEA → MACD 金叉',
         bollinger: '收盘价 < 布林下轨 → 突破买入',
+        bollinger_width: '布林带宽度 < 0.1% → 挤压突破买入',
         kdj: 'K 上穿 D → KDJ 金叉',
         volume: '当日成交量 > 20日均量 × 1.5',
+        volume_contraction: '当日成交量 < 20日均量 × 0.6 → 缩量买入',
+        day_of_week: '当前为周五 → 周几效应买入',
         atr_breakout: '收盘价 > ATR 上轨 → 突破买入',
         cci: 'CCI(20) < -100 → 超卖买入',
         ma_alignment: 'MA5 > MA10 > MA20 → 多头排列',
         stop_loss_profit: '持仓后自动止损-5% / 止盈+10% / 最大持有20天',
         position: '固定仓位 100% / 凯利公式仓位',
-        price_limit: '涨停不买 / 跌停不卖'
+        price_limit: '涨停不买 / 跌停不卖',
+        sar: '收盘价从下方上穿SAR → 转向买入',
+        obv: 'OBV上穿20日均线 → 金叉买入',
+        hammer_hanging: '下影线/实体 ≥ 0.6 且 实体占比 ≤ 0.3 → 锤子线买入'
     };
 
     cardTypeKeys.forEach(function(key) {

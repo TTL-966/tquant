@@ -198,6 +198,189 @@ function genVolume(card, idx) {
     return { code: lines, cond: '', reason: reason };
 }
 
+function genBollingerWidth(card, idx) {
+    var p = card.params;
+    var closes = contextName(idx, 'closes');
+    var periodP = ctxParam(idx, 'period');
+    var stdP = ctxParam(idx, 'stdMultiplier');
+    var thresP = ctxParam(idx, 'widthThreshold');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var lines = [];
+    lines.push('# Card ' + idx + ': 布林带宽度');
+    lines.push(closes + ' = history_bars(stock, ' + periodP + ', \'1d\', \'close\')');
+    lines.push('if len(' + closes + ') < ' + periodP + ':');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + contextName(idx, 'mid') + ' = ' + closes + '.mean()');
+    lines.push('    ' + contextName(idx, 'std') + ' = ' + closes + '.std()');
+    lines.push('    ' + contextName(idx, 'width') + ' = (2 * ' + stdP + ' * ' + contextName(idx, 'std') + ') / ' + contextName(idx, 'mid'));
+    lines.push('    ' + sigVar + '.append(' + contextName(idx, 'width') + ' < ' + thresP + ' / 100.0)');
+    var reason = '布林带宽度低于' + p.widthThreshold + '%' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genVolumeContraction(card, idx) {
+    var p = card.params;
+    var vols = contextName(idx, 'vols');
+    var periodP = ctxParam(idx, 'period');
+    var ratioP = ctxParam(idx, 'ratio');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var lines = [];
+    lines.push('# Card ' + idx + ': 成交量萎缩');
+    lines.push(vols + ' = history_bars(stock, ' + periodP + ' + 1, \'1d\', \'volume\')');
+    lines.push('if len(' + vols + ') < ' + periodP + ' + 1:');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + contextName(idx, 'avg_vol') + ' = ' + vols + '[:-1].mean()');
+    lines.push('    ' + contextName(idx, 'cur_vol') + ' = ' + vols + '[-1]');
+    lines.push('    ' + sigVar + '.append(' + contextName(idx, 'cur_vol') + ' < ' + contextName(idx, 'avg_vol') + ' * ' + ratioP + ')');
+    var reason = '成交量萎缩（低于' + p.period + '日均量×' + p.ratio + '）' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genDayOfWeek(card, idx) {
+    var p = card.params;
+    var targetP = ctxParam(idx, 'targetDay');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var lines = [];
+    lines.push('# Card ' + idx + ': 周几效应');
+    lines.push(contextName(idx, 'weekday') + ' = context.current_dt.weekday()');
+    lines.push(sigVar + '.append(' + contextName(idx, 'weekday') + ' == ' + targetP + ')');
+    var weekdays = ['周一', '周二', '周三', '周四', '周五'];
+    var reason = weekdays[p.targetDay] + '信号' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genSAR(card, idx) {
+    var p = card.params;
+    var accP = ctxParam(idx, 'acceleration');
+    var maxAccP = ctxParam(idx, 'maxAcceleration');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var high = contextName(idx, 'high');
+    var low = contextName(idx, 'low');
+    var close = contextName(idx, 'close');
+    var ep = contextName(idx, 'ep');
+    var sv = contextName(idx, 'sv');
+    var af = contextName(idx, 'af');
+    var up = contextName(idx, 'up');
+    var ls = contextName(idx, 'ls');
+    var lines = [];
+    lines.push('# Card ' + idx + ': 抛物线转向(SAR)');
+    lines.push(high + ' = history_bars(stock, 100, \'1d\', \'high\')');
+    lines.push(low + ' = history_bars(stock, 100, \'1d\', \'low\')');
+    lines.push(close + ' = history_bars(stock, 100, \'1d\', \'close\')');
+    lines.push('if len(' + close + ') < 20:');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + ep + ' = ' + high + '[0]');
+    lines.push('    ' + sv + ' = ' + low + '[0]');
+    lines.push('    ' + af + ' = ' + accP);
+    lines.push('    ' + up + ' = True');
+    lines.push('    for i in range(1, len(' + close + ')):');
+    lines.push('        if ' + up + ':');
+    lines.push('            ' + sv + ' = ' + sv + ' + ' + af + ' * (' + ep + ' - ' + sv + ')');
+    lines.push('            if ' + high + '[i] > ' + ep + ':');
+    lines.push('                ' + ep + ' = ' + high + '[i]');
+    lines.push('                ' + af + ' = min(' + af + ' + ' + accP + ', ' + maxAccP + ')');
+    lines.push('            if ' + low + '[i] < ' + sv + ':');
+    lines.push('                ' + up + ' = False');
+    lines.push('                ' + sv + ' = ' + ep);
+    lines.push('                ' + ep + ' = ' + low + '[i]');
+    lines.push('                ' + af + ' = ' + accP);
+    lines.push('        else:');
+    lines.push('            ' + sv + ' = ' + sv + ' + ' + af + ' * (' + ep + ' - ' + sv + ')');
+    lines.push('            if ' + low + '[i] < ' + ep + ':');
+    lines.push('                ' + ep + ' = ' + low + '[i]');
+    lines.push('                ' + af + ' = min(' + af + ' + ' + accP + ', ' + maxAccP + ')');
+    lines.push('            if ' + high + '[i] > ' + sv + ':');
+    lines.push('                ' + up + ' = True');
+    lines.push('                ' + sv + ' = ' + ep);
+    lines.push('                ' + ep + ' = ' + high + '[i]');
+    lines.push('                ' + af + ' = ' + accP);
+    lines.push('    ' + ls + ' = ' + sv);
+    if (card.action === 'buy') {
+        lines.push('    ' + sigVar + '.append(' + close + '[-1] > ' + ls + ')');
+    } else {
+        lines.push('    ' + sigVar + '.append(' + close + '[-1] < ' + ls + ')');
+    }
+    var reason = 'SAR转向信号' + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genOBV(card, idx) {
+    var p = card.params;
+    var periodP = ctxParam(idx, 'period');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var close = contextName(idx, 'close');
+    var vol = contextName(idx, 'vol');
+    var obv = contextName(idx, 'obv');
+    var obvSeries = contextName(idx, 'obv_series');
+    var obvMa = contextName(idx, 'obv_ma');
+    var prevObv = contextName(idx, 'prev_obv');
+    var prevMa = contextName(idx, 'prev_ma');
+    var lines = [];
+    lines.push('# Card ' + idx + ': 能量潮(OBV)');
+    lines.push(close + ' = history_bars(stock, ' + periodP + ' + 2, \'1d\', \'close\')');
+    lines.push(vol + ' = history_bars(stock, ' + periodP + ' + 2, \'1d\', \'volume\')');
+    lines.push('if len(' + close + ') < ' + periodP + ' + 2:');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + obv + ' = [0]');
+    lines.push('    for i in range(1, len(' + close + ')):');
+    lines.push('        if ' + close + '[i] > ' + close + '[i-1]:');
+    lines.push('            ' + obv + '.append(' + obv + '[-1] + ' + vol + '[i])');
+    lines.push('        elif ' + close + '[i] < ' + close + '[i-1]:');
+    lines.push('            ' + obv + '.append(' + obv + '[-1] - ' + vol + '[i])');
+    lines.push('        else:');
+    lines.push('            ' + obv + '.append(' + obv + '[-1])');
+    lines.push('    ' + obvSeries + ' = np.array(' + obv + ')');
+    lines.push('    ' + obvMa + ' = ' + obvSeries + '[-' + periodP + ':].mean()');
+    lines.push('    ' + prevObv + ' = ' + obvSeries + '[-2]');
+    lines.push('    ' + prevMa + ' = ' + obvSeries + '[-' + periodP + '-1:-1].mean()');
+    if (card.action === 'buy') {
+        lines.push('    ' + sigVar + '.append(' + prevObv + ' <= ' + prevMa + ' and ' + obvSeries + '[-1] > ' + obvMa + ')');
+    } else {
+        lines.push('    ' + sigVar + '.append(' + prevObv + ' >= ' + prevMa + ' and ' + obvSeries + '[-1] < ' + obvMa + ')');
+    }
+    var reason = (card.action === 'buy' ? 'OBV上穿均线买入' : 'OBV下穿均线卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genHammerHanging(card, idx) {
+    var p = card.params;
+    var bodyRatioP = ctxParam(idx, 'bodyRatio');
+    var shadowRatioP = ctxParam(idx, 'shadowRatio');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var body = contextName(idx, 'body');
+    var range = contextName(idx, 'range');
+    var bodyPct = contextName(idx, 'body_pct');
+    var lShadow = contextName(idx, 'l_shadow');
+    var uShadow = contextName(idx, 'u_shadow');
+    var lines = [];
+    lines.push('# Card ' + idx + ': 锤子线/吊颈线');
+    lines.push('open_p = bar_dict[\'open\']');
+    lines.push('high_p = bar_dict[\'high\']');
+    lines.push('low_p = bar_dict[\'low\']');
+    lines.push('close_p = bar_dict[\'close\']');
+    lines.push(body + ' = abs(close_p - open_p)');
+    lines.push(range + ' = high_p - low_p');
+    lines.push('if ' + range + ' == 0:');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + bodyPct + ' = ' + body + ' / ' + range);
+    lines.push('    ' + lShadow + ' = min(open_p, close_p) - low_p');
+    lines.push('    ' + uShadow + ' = high_p - max(open_p, close_p)');
+    lines.push('    ' + contextName(idx, 'is_hammer') + ' = (' + lShadow + ' >= ' + uShadow + ' * 2) and (' + lShadow + ' / ' + range + ' >= ' + shadowRatioP + ')');
+    lines.push('    ' + contextName(idx, 'is_hanging') + ' = (' + uShadow + ' >= ' + lShadow + ' * 2) and (' + uShadow + ' / ' + range + ' >= ' + shadowRatioP + ')');
+    if (card.action === 'buy') {
+        lines.push('    ' + sigVar + '.append(' + contextName(idx, 'is_hammer') + ' and ' + bodyPct + ' <= ' + bodyRatioP + ')');
+    } else {
+        lines.push('    ' + sigVar + '.append(' + contextName(idx, 'is_hanging') + ' and ' + bodyPct + ' <= ' + bodyRatioP + ')');
+    }
+    var reason = (card.action === 'buy' ? '锤子线买入' : '吊颈线卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
 function genATRBreakout(card, idx) {
     var p = card.params;
     var periodP = ctxParam(idx, 'period');
@@ -403,10 +586,16 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
             case 'rsi': genResult = genRSI(card, i); break;
             case 'macd': genResult = genMACD(card, i); break;
             case 'bollinger': genResult = genBollinger(card, i); break;
+            case 'bollinger_width': genResult = genBollingerWidth(card, i); break;
             case 'kdj': genResult = genKDJ(card, i); break;
             case 'volume': genResult = genVolume(card, i); break;
             case 'atr_breakout': genResult = genATRBreakout(card, i); break;
             case 'cci': genResult = genCCI(card, i); break;
+            case 'volume_contraction': genResult = genVolumeContraction(card, i); break;
+            case 'day_of_week': genResult = genDayOfWeek(card, i); break;
+            case 'sar': genResult = genSAR(card, i); break;
+            case 'obv': genResult = genOBV(card, i); break;
+            case 'hammer_hanging': genResult = genHammerHanging(card, i); break;
             case 'ma_alignment': genResult = genMAAlignment(card, i); break;
             case 'stop_loss_profit':
                 lines.push('    # Card ' + i + ': 止损止盈（参数已记录）');

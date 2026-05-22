@@ -73,6 +73,19 @@ export var CARD_TYPE_META = {
             ], default: 'lower_breakout' }
         ]
     },
+    bollinger_width: {
+        type: 'bollinger_width',
+        label: '布林带宽度',
+        icon: '📏',
+        description: '布林带宽度低于阈值（挤压），预示突破',
+        defaultAction: 'buy',
+        defaultParams: { period: 20, stdMultiplier: 2, widthThreshold: 0.1 },
+        paramFields: [
+            { key: 'period', label: '周期', type: 'number', min: 5, max: 100, default: 20 },
+            { key: 'stdMultiplier', label: '标准差倍数', type: 'number', min: 1, max: 4, step: 0.1, default: 2 },
+            { key: 'widthThreshold', label: '宽度阈值(%)', type: 'number', min: 0.01, max: 0.5, step: 0.01, default: 0.1 }
+        ]
+    },
     kdj: {
         type: 'kdj',
         label: 'KDJ 交叉',
@@ -100,6 +113,32 @@ export var CARD_TYPE_META = {
         paramFields: [
             { key: 'period', label: '均量周期', type: 'number', min: 5, max: 100, default: 20 },
             { key: 'multiple', label: '放大倍数', type: 'number', min: 1.1, max: 10, step: 0.1, default: 1.5 }
+        ]
+    },
+    volume_contraction: {
+        type: 'volume_contraction',
+        label: '成交量萎缩',
+        icon: '📉',
+        description: '成交量低于过去 N 日均量的一定比例',
+        defaultAction: 'buy',
+        defaultParams: { period: 20, ratio: 0.6 },
+        paramFields: [
+            { key: 'period', label: '均量周期', type: 'number', min: 5, max: 100, default: 20 },
+            { key: 'ratio', label: '萎缩比例', type: 'number', min: 0.1, max: 0.9, step: 0.05, default: 0.6 }
+        ]
+    },
+    day_of_week: {
+        type: 'day_of_week',
+        label: '周几效应',
+        icon: '📅',
+        description: '指定星期几触发信号',
+        defaultAction: 'buy',
+        defaultParams: { targetDay: 4 },
+        paramFields: [
+            { key: 'targetDay', label: '目标星期', type: 'select', options: [
+                { value: 0, label: '周一' }, { value: 1, label: '周二' }, { value: 2, label: '周三' },
+                { value: 3, label: '周四' }, { value: 4, label: '周五' }
+            ], default: 4 }
         ]
     },
     atr_breakout: {
@@ -193,6 +232,41 @@ export var CARD_TYPE_META = {
                 { value: 'no_sell_on_limit_down', label: '跌停不卖出' },
                 { value: 'both', label: '涨停不买且跌停不卖' }
             ], default: 'no_buy_on_limit_up' }
+        ]
+    },
+    sar: {
+        type: 'sar',
+        label: '抛物线转向(SAR)',
+        icon: '🔄',
+        description: '价格突破SAR线产生转向信号',
+        defaultAction: 'buy',
+        defaultParams: { acceleration: 0.02, maxAcceleration: 0.2 },
+        paramFields: [
+            { key: 'acceleration', label: '初始加速度', type: 'number', min: 0.01, max: 0.1, step: 0.01, default: 0.02 },
+            { key: 'maxAcceleration', label: '最大加速度', type: 'number', min: 0.05, max: 0.5, step: 0.01, default: 0.2 }
+        ]
+    },
+    obv: {
+        type: 'obv',
+        label: '能量潮(OBV)',
+        icon: '🌊',
+        description: 'OBV上穿/下穿均线信号',
+        defaultAction: 'buy',
+        defaultParams: { period: 20 },
+        paramFields: [
+            { key: 'period', label: '均线周期', type: 'number', min: 5, max: 100, default: 20 }
+        ]
+    },
+    hammer_hanging: {
+        type: 'hammer_hanging',
+        label: '锤子线/吊颈线',
+        icon: '🔨',
+        description: '反转K线形态识别',
+        defaultAction: 'buy',
+        defaultParams: { bodyRatio: 0.3, shadowRatio: 0.6 },
+        paramFields: [
+            { key: 'bodyRatio', label: '实体占比上限', type: 'number', min: 0.1, max: 0.5, step: 0.05, default: 0.3 },
+            { key: 'shadowRatio', label: '影线占比下限', type: 'number', min: 0.4, max: 0.9, step: 0.05, default: 0.6 }
         ]
     }
 };
