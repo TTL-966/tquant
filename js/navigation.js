@@ -989,7 +989,10 @@ function renderApiPage(container) {
         price_limit: '涨停不买 / 跌停不卖',
         sar: '收盘价从下方上穿SAR → 转向买入',
         obv: 'OBV上穿20日均线 → 金叉买入',
-        hammer_hanging: '下影线/实体 ≥ 0.6 且 实体占比 ≤ 0.3 → 锤子线买入'
+        hammer_hanging: '下影线/实体 ≥ 0.6 且 实体占比 ≤ 0.3 → 锤子线买入',
+        williams_r: '威廉%R < -80 → 超卖买入',
+        roc: 'ROC从下向上穿越零轴 → 买入',
+        psy: 'PSY < 25 → 超卖买入'
     };
 
     cardTypeKeys.forEach(function(key) {

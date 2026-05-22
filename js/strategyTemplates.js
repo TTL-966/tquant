@@ -268,6 +268,48 @@ export var CARD_TYPE_META = {
             { key: 'bodyRatio', label: '实体占比上限', type: 'number', min: 0.1, max: 0.5, step: 0.05, default: 0.3 },
             { key: 'shadowRatio', label: '影线占比下限', type: 'number', min: 0.4, max: 0.9, step: 0.05, default: 0.6 }
         ]
+    },
+    williams_r: {
+        type: 'williams_r',
+        label: '威廉指标(%R)',
+        icon: '📊',
+        description: '威廉%R超买超卖信号',
+        defaultAction: 'buy',
+        defaultParams: { period: 14, oversold: -80, overbought: -20 },
+        paramFields: [
+            { key: 'period', label: '计算周期', type: 'number', min: 2, max: 100, default: 14 },
+            { key: 'oversold', label: '超卖阈值', type: 'number', min: -100, max: -50, default: -80 },
+            { key: 'overbought', label: '超买阈值', type: 'number', min: -50, max: 0, default: -20 }
+        ]
+    },
+    roc: {
+        type: 'roc',
+        label: '变动率(ROC)',
+        icon: '📈',
+        description: '价格变化速度，穿越零轴或超阈值信号',
+        defaultAction: 'buy',
+        defaultParams: { period: 12, threshold: 5, useZeroCross: 'true' },
+        paramFields: [
+            { key: 'period', label: '对比周期', type: 'number', min: 2, max: 100, default: 12 },
+            { key: 'threshold', label: '阈值(%)', type: 'number', min: 0.1, max: 20, step: 0.5, default: 5 },
+            { key: 'useZeroCross', label: '使用零轴穿越', type: 'select', options: [
+                { value: 'true', label: '是（零轴穿越）' },
+                { value: 'false', label: '否（阈值突破）' }
+            ], default: 'true' }
+        ]
+    },
+    psy: {
+        type: 'psy',
+        label: '心理线(PSY)',
+        icon: '🧠',
+        description: '基于上涨天数比例的情绪指标',
+        defaultAction: 'buy',
+        defaultParams: { period: 12, oversold: 25, overbought: 75 },
+        paramFields: [
+            { key: 'period', label: '计算周期', type: 'number', min: 5, max: 50, default: 12 },
+            { key: 'oversold', label: '超卖阈值', type: 'number', min: 10, max: 40, default: 25 },
+            { key: 'overbought', label: '超买阈值', type: 'number', min: 60, max: 90, default: 75 }
+        ]
     }
 };
 

@@ -381,6 +381,106 @@ function genHammerHanging(card, idx) {
     return { code: lines, cond: '', reason: reason };
 }
 
+function genWilliamsR(card, idx) {
+    var p = card.params;
+    var periodP = ctxParam(idx, 'period');
+    var oversoldP = ctxParam(idx, 'oversold');
+    var overboughtP = ctxParam(idx, 'overbought');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var high = contextName(idx, 'high');
+    var low = contextName(idx, 'low');
+    var close = contextName(idx, 'close');
+    var hh = contextName(idx, 'hh');
+    var ll = contextName(idx, 'll');
+    var cc = contextName(idx, 'cc');
+    var wr = contextName(idx, 'wr');
+    var lines = [];
+    lines.push('# Card ' + idx + ': 威廉指标(%R)');
+    lines.push(high + ' = history_bars(stock, ' + periodP + ', \'1d\', \'high\')');
+    lines.push(low + ' = history_bars(stock, ' + periodP + ', \'1d\', \'low\')');
+    lines.push(close + ' = history_bars(stock, ' + periodP + ', \'1d\', \'close\')');
+    lines.push('if len(' + high + ') < ' + periodP + ':');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + hh + ' = max(' + high + ')');
+    lines.push('    ' + ll + ' = min(' + low + ')');
+    lines.push('    ' + cc + ' = ' + close + '[-1]');
+    lines.push('    if ' + hh + ' == ' + ll + ':');
+    lines.push('        ' + wr + ' = -50');
+    lines.push('    else:');
+    lines.push('        ' + wr + ' = -100 * (' + hh + ' - ' + cc + ') / (' + hh + ' - ' + ll + ')');
+    if (card.action === 'buy') {
+        lines.push('    ' + sigVar + '.append(' + wr + ' < ' + oversoldP + ')');
+    } else {
+        lines.push('    ' + sigVar + '.append(' + wr + ' > ' + overboughtP + ')');
+    }
+    var reason = (card.action === 'buy' ? '威廉指标超卖买入' : '威廉指标超买卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genROC(card, idx) {
+    var p = card.params;
+    var periodP = ctxParam(idx, 'period');
+    var thresholdP = ctxParam(idx, 'threshold');
+    var useZeroCross = p.useZeroCross !== 'false';
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var close = contextName(idx, 'close');
+    var roc = contextName(idx, 'roc');
+    var prevRoc = contextName(idx, 'prev_roc');
+    var lines = [];
+    lines.push('# Card ' + idx + ': 变动率(ROC)');
+    lines.push(close + ' = history_bars(stock, ' + periodP + ' + 2, \'1d\', \'close\')');
+    lines.push('if len(' + close + ') < ' + periodP + ' + 2:');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + roc + ' = (' + close + '[-1] - ' + close + '[-' + periodP + ' - 1]) / ' + close + '[-' + periodP + ' - 1] * 100');
+    lines.push('    ' + prevRoc + ' = (' + close + '[-2] - ' + close + '[-' + periodP + ' - 2]) / ' + close + '[-' + periodP + ' - 2] * 100');
+    if (useZeroCross) {
+        if (card.action === 'buy') {
+            lines.push('    ' + sigVar + '.append(' + prevRoc + ' <= 0 and ' + roc + ' > 0)');
+        } else {
+            lines.push('    ' + sigVar + '.append(' + prevRoc + ' >= 0 and ' + roc + ' < 0)');
+        }
+    } else {
+        if (card.action === 'buy') {
+            lines.push('    ' + sigVar + '.append(' + roc + ' > ' + thresholdP + ')');
+        } else {
+            lines.push('    ' + sigVar + '.append(' + roc + ' < -' + thresholdP + ')');
+        }
+    }
+    var reason = (card.action === 'buy' ? 'ROC买入信号' : 'ROC卖出信号');
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genPSY(card, idx) {
+    var p = card.params;
+    var periodP = ctxParam(idx, 'period');
+    var oversoldP = ctxParam(idx, 'oversold');
+    var overboughtP = ctxParam(idx, 'overbought');
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var close = contextName(idx, 'close');
+    var upDays = contextName(idx, 'up_days');
+    var psyVal = contextName(idx, 'psy');
+    var lines = [];
+    lines.push('# Card ' + idx + ': 心理线(PSY)');
+    lines.push(close + ' = history_bars(stock, ' + periodP + ' + 1, \'1d\', \'close\')');
+    lines.push('if len(' + close + ') < ' + periodP + ' + 1:');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    ' + upDays + ' = 0');
+    lines.push('    for i in range(1, ' + periodP + ' + 1):');
+    lines.push('        if ' + close + '[-i] > ' + close + '[-i-1]:');
+    lines.push('            ' + upDays + ' += 1');
+    lines.push('    ' + psyVal + ' = ' + upDays + ' / ' + periodP + ' * 100');
+    if (card.action === 'buy') {
+        lines.push('    ' + sigVar + '.append(' + psyVal + ' < ' + oversoldP + ')');
+    } else {
+        lines.push('    ' + sigVar + '.append(' + psyVal + ' > ' + overboughtP + ')');
+    }
+    var reason = (card.action === 'buy' ? '心理线超卖买入' : '心理线超买卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
 function genATRBreakout(card, idx) {
     var p = card.params;
     var periodP = ctxParam(idx, 'period');
@@ -596,6 +696,9 @@ function rebuildOutput(cards, hasStopLoss, stopLossCard, positionCard, targetPer
             case 'sar': genResult = genSAR(card, i); break;
             case 'obv': genResult = genOBV(card, i); break;
             case 'hammer_hanging': genResult = genHammerHanging(card, i); break;
+            case 'williams_r': genResult = genWilliamsR(card, i); break;
+            case 'roc': genResult = genROC(card, i); break;
+            case 'psy': genResult = genPSY(card, i); break;
             case 'ma_alignment': genResult = genMAAlignment(card, i); break;
             case 'stop_loss_profit':
                 lines.push('    # Card ' + i + ': 止损止盈（参数已记录）');

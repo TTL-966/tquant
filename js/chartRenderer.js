@@ -261,7 +261,12 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         dataZoom: [
             {
                 type: 'inside',
-                start: 80,
+                start: (function() {
+                    var total = dates.length;
+                    var defaultCount = 220;
+                    if (total > defaultCount) return (total - defaultCount) / total * 100;
+                    return 0;
+                })(),
                 end: 100,
                 zoomOnMouseWheel: true,
                 moveOnMouseMove: true,
@@ -520,7 +525,12 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             grid: { containLabel: true, backgroundColor: '#0e1220' ,left: '10%',right: '8%',top:30},
             dataZoom: [{
                 type: 'inside',
-                start: 80,
+                start: (function() {
+                    var total = dates.length;
+                    var defaultCount = 220;
+                    if (total > defaultCount) return (total - defaultCount) / total * 100;
+                    return 0;
+                })(),
                 end: 100,
                 zoomOnMouseWheel: true,
                 moveOnMouseMove: true,
