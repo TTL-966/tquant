@@ -315,6 +315,41 @@ class BacktestExecutor:
                     f"{actual_end.strftime('%Y-%m-%d')}, {len(df)}根K线"
                 )
 
+                # ---- 数据完整性检查：直接查询数据库中的实际交易日数量 ----
+                try:
+                    from datetime import datetime
+                    # 解析股票代码后缀
+                    if '.' in stock_code:
+                        db_code = stock_code
+                    else:
+                        suffix = getattr(db, '_get_stock_suffix', None)
+                        if suffix:
+                            db_code = stock_code + suffix(stock_code)
+                        else:
+                            db_code = stock_code + '.SZ'  # 默认深市
+
+                    count_df = pd.read_sql(
+                        "SELECT COUNT(*) as cnt FROM stock_daily_qfq_with_name"
+                        " WHERE ts_code = :code AND trade_date >= :start AND trade_date <= :end",
+                        db.engine,
+                        params={"code": db_code, "start": start_date, "end": end_date}
+                    )
+                    actual_trading_days = int(count_df.iloc[0, 0]) if not count_df.empty else 0
+
+                    d1 = datetime.strptime(start_date, '%Y-%m-%d')
+                    d2 = datetime.strptime(end_date, '%Y-%m-%d')
+                    calendar_days = (d2 - d1).days
+                    # 最少 10 天，或日历天数的 20%（约等于年化 ~50 个交易日）
+                    min_expected = max(10, int(calendar_days * 0.2))
+
+                    if actual_trading_days < min_expected:
+                        return self._error_result(
+                            f"股票 {stock_code} 在 {start_date} ~ {end_date} 范围内数据不足"
+                            f"（仅 {actual_trading_days} 个交易日），请先更新数据后再回测"
+                        )
+                except Exception as e:
+                    self.logs.append(f"[WARN] 数据完整性检查失败: {str(e)}，跳过检查继续回测")
+
             self.df = df
         except Exception as e:
             return self._error_result(f"获取K线数据失败: {str(e)}")
