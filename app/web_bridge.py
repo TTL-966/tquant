@@ -615,6 +615,11 @@ class WebBridge(QObject):
         """接收回测数据 JSON，生成 Excel 和 PDF 报告，弹出目录选择对话框保存。"""
         try:
             data = json.loads(data_json)
+            # 兼容下划线命名（多股回测结果使用 snake_case）
+            if 'equity_curve' in data and 'equityCurve' not in data:
+                data['equityCurve'] = data['equity_curve']
+            if 'stock_performance' in data and 'stockPerformance' not in data:
+                data['stockPerformance'] = data['stock_performance']
             from backend.report_exporter import export_to_excel, export_to_pdf
             from PySide6.QtWidgets import QFileDialog
 
