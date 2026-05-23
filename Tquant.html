@@ -138,6 +138,48 @@
             margin-bottom: 18px;
         }
 
+        /* ──────── kchart 顶部紧凑布局 ──────── */
+        .kchart-header-compact {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2px;
+            font-size: 13px;
+            color: #9aa9cc;
+            flex-shrink: 0;
+        }
+        .strategy-info {
+            display: flex;
+            gap: 6px;
+            align-items: baseline;
+        }
+        .strategy-info .separator {
+            margin: 0 4px;
+            color: #4f7eff;
+        }
+        .legend-sign-compact {
+            display: flex;
+            gap: 12px;
+            font-size: 12px;
+            color: #ffffff;
+        }
+        .buy-point-compact {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #ff4d4f;
+            border-radius: 50%;
+            margin-right: 3px;
+        }
+        .sell-point-compact {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #52c41a;
+            border-radius: 50%;
+            margin-right: 3px;
+        }
+
         .kline-container {
             width: 100%;
             flex: 1;
@@ -157,11 +199,9 @@
             margin-bottom: 0;
         }
         #kchartCard .card-title,
-        #kchartCard #currentStrategyDisplay,
-        #kchartCard .legend-sign,
+        #kchartCard .kchart-header-compact,
         #kchartCard .metric-row,
-        #kchartCard .kchart-bottom-text,
-        #kchartCard > div[style] {
+        #kchartCard .kchart-bottom-text {
             flex-shrink: 0;
         }
 
@@ -218,8 +258,8 @@
         .metric-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 14px;
-            margin: 16px 0;
+            gap: 8px;
+            margin: 6px 0;
             align-items: center;
             min-width: 0;
         }

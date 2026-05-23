@@ -368,25 +368,29 @@ function renderKchartPage(container) {
 
     container.innerHTML = `
         <div class="card" id="kchartCard">
-            <div class="card-title">📈 买卖点成交图 (策略回测生成买卖点)</div>
-            <div id="currentStrategyDisplay" style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                <span style="color:#9aa9cc;">📋 当前回测策略：</span>
-                <span id="currentStrategyName" style="color:#ffffff; font-weight:600;">无</span>
+            <div class="card-title" style="margin-bottom:6px;">📈 买卖点成交图</div>
+            <div class="kchart-header-compact">
+                <div class="strategy-info">
+                    <span style="color:#9aa9cc;">📋</span>
+                    <span id="currentStrategyName" style="color:#ffffff;font-weight:600;">无</span>
+                    <span class="separator">·</span>
+                    <span style="color:#9aa9cc;">回测区间：<span id="backtestPeriodDisplay" style="color:#4f7eff;">${periodText}</span></span>
+                </div>
+                <div class="legend-sign-compact">
+                    <span><i class="buy-point-compact"></i>B</span>
+                    <span><i class="sell-point-compact"></i>S</span>
+                </div>
             </div>
-            <div style="color:#9aa9cc; font-size:13px; margin-bottom:8px;">
-                回测区间：<span id="backtestPeriodDisplay" style="color:#4f7eff;">${periodText}</span>
-            </div>
-            <div class="legend-sign"><span><i class="buy-point"></i> 买入 (B)</span><span><i class="sell-point"></i> 卖出 (S)</span></div>
-            <div class="metric-row">
+            <div class="metric-row" style="margin:4px 0;">
                 <span>当前股票:</span>
                 <div style="position:relative;display:inline-block;">
                     <input type="text" id="stockSelectorKline" readonly placeholder="选择股票" style="width:150px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 32px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
                     <span id="stockSelectorArrow" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
                 </div>
-                <button id="searchStockBtn" style="margin-left:4px; background:#2d3a5e; color:#fff; border:none; border-radius:30px; padding:6px 12px; cursor:pointer; font-size:13px;">🔍</button>
-                <button id="loadStrategySignalsBtn">📊 加载策略信号</button>
-                <button id="gotoStrategyBtn">📝 跳转到策略页</button>
-                <button id="refreshKlineBtn">刷新K线</button>
+                <button id="searchStockBtn" style="margin-left:4px; background:#2d3a5e; color:#fff; border:none; border-radius:30px; padding:4px 10px; cursor:pointer; font-size:12px;">🔍</button>
+                <button id="loadStrategySignalsBtn" style="padding:4px 12px;font-size:12px;">📊 加载策略信号</button>
+                <button id="gotoStrategyBtn" style="padding:4px 12px;font-size:12px;">📝 跳转到策略页</button>
+                <button id="refreshKlineBtn" style="padding:4px 12px;font-size:12px;">刷新K线</button>
                 <div style="position:relative;display:inline-block;">
                     <input type="text" id="periodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
                     <span id="periodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
