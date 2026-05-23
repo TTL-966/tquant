@@ -400,6 +400,10 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="macd">MACD</button>
                     <button class="subchart-type-btn" data-type="rsi">RSI</button>
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="subchart-type-btn" data-type="bollinger">布林带</button>
+                    <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
+                    <button class="subchart-type-btn" data-type="cci">CCI</button>
+                    <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart1Values"></div>
@@ -412,6 +416,10 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="macd">MACD</button>
                     <button class="subchart-type-btn active" data-type="rsi">RSI</button>
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="subchart-type-btn" data-type="bollinger">布林带</button>
+                    <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
+                    <button class="subchart-type-btn" data-type="cci">CCI</button>
+                    <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart2Values"></div>
@@ -741,6 +749,10 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="macd">MACD</button>
                     <button class="subchart-type-btn" data-type="rsi">RSI</button>
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="subchart-type-btn" data-type="bollinger">布林带</button>
+                    <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
+                    <button class="subchart-type-btn" data-type="cci">CCI</button>
+                    <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart1Values"></div>
@@ -753,6 +765,10 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="macd">MACD</button>
                     <button class="subchart-type-btn active" data-type="rsi">RSI</button>
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
+                    <button class="subchart-type-btn" data-type="bollinger">布林带</button>
+                    <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
+                    <button class="subchart-type-btn" data-type="cci">CCI</button>
+                    <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart2Values"></div>
