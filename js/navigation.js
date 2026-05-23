@@ -395,6 +395,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-current-values" id="kchartSubChart1CurrentValues"></div>
                 <div class="subchart-values" id="kchartSubChart1Values"></div>
                 <div class="subchart-chart-container" id="kchartSubChart1" style="width:100%; flex:1;"></div>
             </div>
@@ -407,6 +408,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-current-values" id="kchartSubChart2CurrentValues"></div>
                 <div class="subchart-values" id="kchartSubChart2Values"></div>
                 <div class="subchart-chart-container" id="kchartSubChart2" style="width:100%; flex:1;"></div>
             </div>
@@ -735,6 +737,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-current-values" id="stockSubChart1CurrentValues"></div>
                 <div class="subchart-values" id="stockSubChart1Values"></div>
                 <div class="subchart-chart-container" id="stockSubChart1" style="width:100%; flex:1;"></div>
             </div>
@@ -747,6 +750,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="kdj">KDJ</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
+                <div class="subchart-current-values" id="stockSubChart2CurrentValues"></div>
                 <div class="subchart-values" id="stockSubChart2Values"></div>
                 <div class="subchart-chart-container" id="stockSubChart2" style="width:100%; flex:1;"></div>
             </div>

@@ -609,7 +609,8 @@
             flex: 0 0 auto !important;
         }
         .subchart-wrapper.collapsed .subchart-chart-container,
-        .subchart-wrapper.collapsed .subchart-values {
+        .subchart-wrapper.collapsed .subchart-values,
+        .subchart-wrapper.collapsed .subchart-current-values {
             display: none;
         }
 
@@ -785,6 +786,36 @@
         }
         .subchart-values .val-item .val-num.up { color: #ef5350; }
         .subchart-values .val-item .val-num.down { color: #26a69a; }
+
+        /* ──────── 副图当前值动态行（鼠标悬停）──────── */
+        .subchart-current-values {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 14px;
+            padding: 4px 12px;
+            background: #0e1220;
+            border-bottom: 1px solid #1e253b;
+            font-size: 11px;
+            color: #9aa9cc;
+            font-family: 'Consolas', 'Courier New', monospace;
+            min-height: 22px;
+            align-items: center;
+        }
+        .subchart-current-values .val-item {
+            font-size: 11px;
+            color: #9aa9cc;
+            white-space: nowrap;
+        }
+        .subchart-current-values .val-item .label {
+            color: #6a7a9a;
+        }
+        .subchart-current-values .val-item .value {
+            color: #ffffff;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-left: 4px;
+        }
+        .subchart-current-values .val-item .value.up { color: #ef5350; }
+        .subchart-current-values .val-item .value.down { color: #26a69a; }
 
     </style>
 </head>
