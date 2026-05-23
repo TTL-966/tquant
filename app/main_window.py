@@ -24,6 +24,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.web_view = QWebEngineView()
+        self.web_view.page().javaScriptConsoleMessage = lambda level, msg, line, src: print(f"[JS] {msg}")
         # 关闭OpenGL相关功能以减少崩溃
         settings = self.web_view.settings()
         settings.setAttribute(settings.WebAttribute.Accelerated2dCanvasEnabled, False)

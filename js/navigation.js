@@ -220,6 +220,51 @@ function fmtAmount(amt) {
     return amt + '万元';
 }
 
+// ─── 调试模式开关 ───
+(function initDebugMode() {
+    // 检查 URL 参数 ?debug=1
+    if (/[?&]debug=1(&|$)/.test(window.location.search)) {
+        window.TQUANT_DEBUG = true;
+        try { localStorage.setItem('tquant_debug', '1'); } catch (_) { /* ignore */ }
+    } else {
+        try {
+            if (localStorage.getItem('tquant_debug') === '1') {
+                window.TQUANT_DEBUG = true;
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    // Ctrl+Shift+D 切换调试面板
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            e.preventDefault();
+            window.TQUANT_DEBUG = !window.TQUANT_DEBUG;
+            try { localStorage.setItem('tquant_debug', window.TQUANT_DEBUG ? '1' : '0'); } catch (_) {}
+            if (window.TQUANT_DEBUG) {
+                if (window.subChartManager && window.subChartManager._showDebugInfo) {
+                    window.subChartManager._showDebugInfo('调试模式已开启 (Ctrl+Shift+D 切换)');
+                } else {
+                    // 如果 SubChartManager 尚未初始化，用 toast 提示
+                    var tip = document.createElement('div');
+                    tip.style.cssText = 'position:fixed;bottom:60px;right:8px;z-index:99999;background:rgba(0,0,0,0.85);color:#4cff4c;font:11px monospace;padding:8px 12px;border-radius:6px;border:1px solid #4f7eff;';
+                    tip.textContent = '[调试] 模式已开启，下次刷新页面后生效';
+                    document.body.appendChild(tip);
+                    setTimeout(function() { tip.remove(); }, 3000);
+                }
+            } else {
+                var panel = document.getElementById('tquant-debug-panel');
+                if (panel) panel.remove();
+                if (window.subChartManager) window.subChartManager._debugReady = false;
+                var tip2 = document.createElement('div');
+                tip2.style.cssText = 'position:fixed;bottom:60px;right:8px;z-index:99999;background:rgba(0,0,0,0.85);color:#ff6b6b;font:11px monospace;padding:8px 12px;border-radius:6px;border:1px solid #ff6b6b;';
+                tip2.textContent = '[调试] 模式已关闭';
+                document.body.appendChild(tip2);
+                setTimeout(function() { tip2.remove(); }, 2000);
+            }
+        }
+    });
+})();
+
 // ========== 主路由 ==========
 export function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
@@ -649,7 +694,6 @@ function renderKchartPage(container) {
 function renderStockPage(container) {
     container.innerHTML = `
         <div class="card" id="stockCard">
-            <div class="card-title">📉 个股详情</div>
             <div class="stock-search-row" style="display:flex; justify-content:space-between; align-items:center;">
                 <div style="display:flex; gap:10px; align-items:center; flex:1; position:relative;">
                     <input type="text" id="stockCodeInput" placeholder="输入股票代码或名称搜索" style="flex:1; background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; font-size:13px;">
@@ -681,7 +725,7 @@ function renderStockPage(container) {
                     </div>
                 </div>
             </div>
-            <div id="stockKlineChart" style="width:100%; flex:3; min-height:0;"></div>
+            <div id="stockKlineChart" style="width:100%; min-height:0;"></div>
             <div class="subchart-wrapper" data-subchart="stockSub1">
                 <div class="subchart-toolbar">
                     <span class="subchart-label">副图1</span>
@@ -1202,7 +1246,11 @@ function renderSettingsPage(container) {
             <div class="code-area" style="margin-bottom:12px;">
 Tab (编辑器)     → 插入4个空格
 Enter (搜索框)   → 触发查询
-Esc (弹窗)       → 关闭弹窗</div>
+Esc (弹窗)       → 关闭弹窗
+Ctrl+Shift+D     → 切换调试面板（右下角浮窗）</div>
+
+            <h4 style="color:#4f7eff; margin-top:12px;">${'🐛'} 调试面板</h4>
+            <p style="color:#9aa9cc; margin-bottom:12px;">按 <b>Ctrl+Shift+D</b> 或访问 <b>?debug=1</b> 开启右下角调试面板。面板显示指标计算的原始日期、连续序列、非空值数量等关键信息，用于排查副图不连续问题。双击面板可清空内容。</p>
 
             <!-- 数据管理区域 -->
             <div style="margin-top: 20px; border-top: 1px solid #323d5a; padding-top: 16px;">

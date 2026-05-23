@@ -253,10 +253,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         grid: {
             containLabel: true,
             backgroundColor: '#0e1220',
-            left: '10%',
+            left: '8%',
             right: '8%',
-            top:60
-
+            top: 20,
+            bottom: 8
         },
         dataZoom: [
             {
@@ -345,6 +345,13 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     chart.on('mouseout', function() {
         signalCard.style.display = 'none';
     });
+
+    if (!window._klineResizeBound) {
+        window._klineResizeBound = true;
+        window.addEventListener('resize', function() {
+            if (chart && !chart.isDisposed()) chart.resize();
+        });
+    }
 }
 
 // ---- 个股详情页K线渲染（含均线）----
@@ -513,7 +520,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                 pageIconColor: '#4f7eff',
                 pageTextStyle: { color: '#ffffff' }
             },
-            grid: { containLabel: true, backgroundColor: '#0e1220' ,left: '10%',right: '8%',top:30},
+            grid: { containLabel: true, backgroundColor: '#0e1220', left: '8%', right: '8%', top: 15, bottom: 8 },
             dataZoom: [{
                 type: 'inside',
                 start: (function() {
@@ -546,6 +553,13 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         }, 50);
 
         setTimeout(function() { chart.resize(); }, 100);
+
+        if (!window._stockKlineResizeBound) {
+            window._stockKlineResizeBound = true;
+            window.addEventListener('resize', function() {
+                if (chart && !chart.isDisposed()) chart.resize();
+            });
+        }
     }, 10);
 }
 

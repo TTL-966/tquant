@@ -93,7 +93,6 @@ class DataFeed:
         if code_pure not in self._kline_cache:
             df = self.db.get_kline(code, start_date=None, end_date=None, limit=0)  # 全量
             if df is None or df.empty:
-                # 无数据时，缓存设为空字典，后续直接返回错误
                 self._kline_cache[code_pure] = None
                 return json.dumps({"error": "无数据"})
 
@@ -124,7 +123,6 @@ class DataFeed:
             df.index = pd.to_datetime(filtered_dates)
             df_agg = self._aggregate_to_period(df, period)
             filtered_dates = [d.strftime('%Y-%m-%d') for d in df_agg.index]
-            # 按缓存列顺序提取: open, close, low, high, volume
             filtered_values = []
             for _, row in df_agg.iterrows():
                 filtered_values.append([

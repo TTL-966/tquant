@@ -424,7 +424,7 @@ class WebBridge(QObject):
             results.sort(key=lambda r: [v.get("name", "") for v in variations].index(r["name"])
                          if r["name"] in [v.get("name", "") for v in variations] else 999)
 
-            print(f"[Bridge] 对比回测完成: {len(results)}/{len(variations)} 成功, {len(errors)} 失败", flush=True)
+
 
             return json.dumps({
                 "success": True,
