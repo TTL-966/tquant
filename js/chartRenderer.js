@@ -26,6 +26,126 @@ export function formatStockDisplayHtml(code) {
     return '<div class="stock-display"><span class="stock-name">' + name + '</span><span class="stock-code">' + codeStr + '</span></div>';
 }
 
+// ---- 创建控制面板（左侧按钮）----
+// fullSeries: 所有可能的系列列表（完整、未过滤），用作切换时的数据源
+// position: { top, left } 自定义面板位置
+function createControlPanel(chart, fullSeries, position) {
+    position = position || { top: '10px', left: '8px' };
+
+    // 如果已经存在，则先移除
+    var existing = document.getElementById('klineControlPanel');
+    if (existing) existing.remove();
+
+    var panel = document.createElement('div');
+    panel.id = 'klineControlPanel';
+    panel.style.cssText =
+        'position: absolute;' +
+        'top: ' + position.top + ';' +
+        'left: ' + position.left + ';' +
+        'background: rgba(15, 20, 35, 0.85);' +
+        'backdrop-filter: blur(4px);' +
+        'border-radius: 8px;' +
+        'padding: 6px 12px;' +
+        'border: 1px solid #4f7eff;' +
+        'z-index: 20;' +
+        'font-size: 12px;' +
+        'font-family: monospace;' +
+        'display: flex;' +
+        'flex-direction: column;' +
+        'gap: 4px;' +
+        'pointer-events: auto;';
+
+    // 定义所有可选项及对应的 series name
+    var items = [
+        { name: 'K线', key: 'candle', seriesName: 'K线', default: true },
+        { name: 'MA5', key: 'ma5', seriesName: 'MA5', default: true },
+        { name: 'MA10', key: 'ma10', seriesName: 'MA10', default: true },
+        { name: 'MA20', key: 'ma20', seriesName: 'MA20', default: true },
+        { name: 'MA30', key: 'ma30', seriesName: 'MA30', default: true },
+        { name: 'SAR', key: 'sar', seriesName: 'SAR', default: false }
+    ];
+
+    // 始终保留的系列名称
+    var alwaysKeep = ['买入点', '卖出点'];
+
+    // 可控系列名称集合（用于判断哪些系列受复选框控制）
+    var controllableNames = [];
+    for (var it = 0; it < items.length; it++) {
+        controllableNames.push(items[it].seriesName);
+    }
+
+    function _applyFilter() {
+        if (!chart || chart.isDisposed()) return;
+
+        // 读取所有复选框状态
+        var visibleNames = [];
+        var keyToName = {};
+        for (var ki = 0; ki < items.length; ki++) {
+            keyToName[items[ki].key] = items[ki].seriesName;
+        }
+        var checkboxes = document.querySelectorAll('#klineControlPanel input[type="checkbox"]');
+        for (var ci = 0; ci < checkboxes.length; ci++) {
+            if (checkboxes[ci].checked) {
+                var k = checkboxes[ci].getAttribute('data-key');
+                if (keyToName[k]) visibleNames.push(keyToName[k]);
+            }
+        }
+
+        // 从 fullSeries 过滤（非 chart.getOption()）
+        var newSeriesList = fullSeries.filter(function(s) {
+            var name = s.name;
+            // 始终保留的系列（买卖点等）
+            if (alwaysKeep.indexOf(name) !== -1) return true;
+            // 非可控系列（如额外策略线条）始终保留
+            if (controllableNames.indexOf(name) === -1) return true;
+            // 按复选框状态过滤
+            return visibleNames.indexOf(name) !== -1;
+        });
+
+        // replaceMerge 强制替换 series 数组，解决 merge 模式不删除系列的问题
+        chart.setOption({ series: newSeriesList }, { replaceMerge: ['series'] });
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        (function(item) {
+            // 将 input 包裹在 label 内，原生点击即可切换，无重复事件问题
+            var label = document.createElement('label');
+            label.style.cssText = 'display: flex; align-items: center; gap: 6px; white-space: nowrap; color: #ffffff; cursor: pointer; font-size: 12px;';
+
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = item.default;
+            cb.style.cssText = 'margin: 0; cursor: pointer;';
+            cb.setAttribute('data-key', item.key);
+
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + item.name));
+
+            cb.addEventListener('change', function() {
+                _applyFilter();
+                // 简短 toast 反馈
+                var tip = document.createElement('div');
+                tip.textContent = item.name + (cb.checked ? ' 显示' : ' 隐藏');
+                tip.style.cssText = 'position:fixed;bottom:20px;left:20px;background:rgba(0,0,0,0.75);color:#fff;padding:4px 12px;border-radius:6px;z-index:99999;font-size:12px;';
+                document.body.appendChild(tip);
+                setTimeout(function() { tip.remove(); }, 800);
+            });
+
+            panel.appendChild(label);
+        })(items[i]);
+    }
+
+    // 挂载到图表容器自身（确保相对定位）
+    var container = chart.getDom();
+    container.style.position = 'relative';
+    container.appendChild(panel);
+
+    // 初始应用一次过滤（隐藏默认关闭的 SAR）
+    _applyFilter();
+
+    return panel;
+}
+
 // ---- 渲染K线及买卖点（含均线）----
 export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, extraLines) {
     console.log("=== renderKlineWithSignals 被调用 ===");
@@ -34,17 +154,13 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     console.log("maData:", maData ? "存在" : "无");
 
     var dom = document.getElementById('klineMainChart');
-    console.log("klineMainChart 容器:", dom);
-
     if (!dom) {
         console.error('❌ 找不到 klineMainChart 容器');
         return;
     }
 
-    var rect = dom.getBoundingClientRect();
-    console.log("容器尺寸:", rect.width, "x", rect.height);
-    if (rect.width === 0 || rect.height === 0) {
-        console.warn("容器尺寸为 0，可能被隐藏");
+    // 确保容器尺寸
+    if (dom.clientWidth === 0 || dom.clientHeight === 0) {
         dom.style.height = "460px";
         dom.style.width = "100%";
     }
@@ -59,13 +175,10 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         chart = echarts.init(dom);
     }
 
+    // 构建买卖点数据
     var buySeriesData = [];
     var sellSeriesData = [];
-    var buySeriesRefs = [];
-    var sellSeriesRefs = [];
-
     var halfSpread = (window._slippageMode === 'half_spread');
-
     if (buyPts && buyPts.length > 0) {
         for (var i = 0; i < buyPts.length; i++) {
             var pt = buyPts[i];
@@ -75,9 +188,6 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                 var closeP = values[idx][1];
                 var price = halfSpread ? (high + closeP) / 2 : high + 0.05;
                 buySeriesData.push([idx, price]);
-                buySeriesRefs.push(pt);
-            } else {
-                console.warn("买入点日期未找到:", pt.date);
             }
         }
     }
@@ -90,13 +200,11 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                 var closeP = values[idx][1];
                 var price = halfSpread ? (low + closeP) / 2 : low - 0.05;
                 sellSeriesData.push([idx, price]);
-                sellSeriesRefs.push(pt);
-            } else {
-                console.warn("卖出点日期未找到:", pt.date);
             }
         }
     }
 
+    // 主图系列定义（初始全部可见）
     var candleSeries = {
         name: 'K线',
         type: 'candlestick',
@@ -139,9 +247,42 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         }
     ];
 
-    // SAR 抛物线转向散点
-    var highsSAR = values.map(function(v) { return parseFloat(v[3]) || 0; });
-    var lowsSAR = values.map(function(v) { return parseFloat(v[2]) || 0; });
+    // 添加均线
+    if (maData && maData.ma5 && maData.ma5.length === dates.length) {
+        series.push({
+            name: 'MA5',
+            type: 'line',
+            data: maData.ma5,
+            lineStyle: { width: 1, color: '#f2c94c' },
+            smooth: false,
+            showSymbol: false
+        });
+        series.push({
+            name: 'MA10',
+            type: 'line',
+            data: maData.ma10,
+            lineStyle: { width: 1, color: '#f2994a' },
+            showSymbol: false
+        });
+        series.push({
+            name: 'MA20',
+            type: 'line',
+            data: maData.ma20,
+            lineStyle: { width: 1, color: '#eb5757' },
+            showSymbol: false
+        });
+        series.push({
+            name: 'MA30',
+            type: 'line',
+            data: maData.ma30,
+            lineStyle: { width: 1, color: '#6fcf97' },
+            showSymbol: false
+        });
+    }
+
+    // 添加 SAR（默认不显示，控制面板默认关闭）
+    var highsSAR = values.map(v => parseFloat(v[3]) || 0);
+    var lowsSAR = values.map(v => parseFloat(v[2]) || 0);
     var sarPoints = indicators.calculateSAR(highsSAR, lowsSAR);
     var sarScatter = [];
     for (var si = 0; si < sarPoints.length; si++) {
@@ -162,63 +303,22 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         });
     }
 
-    var legendData = ['K线'];
+    // 保存全系列供控制面板使用（所有系列初始均包含，控制面板负责切换）
+    var allSeries = series.slice();
 
-    if (maData && maData.ma5 && maData.ma5.length === dates.length) {
-        var ma5Name = formatMaLegend(maData.ma5, 'MA5');
-        var ma10Name = formatMaLegend(maData.ma10, 'MA10');
-        var ma20Name = formatMaLegend(maData.ma20, 'MA20');
-        var ma30Name = formatMaLegend(maData.ma30, 'MA30');
-
-        series.push({
-            name: ma5Name,
-            type: 'line',
-            data: maData.ma5,
-            lineStyle: { width: 1, color: '#f2c94c' },
-            smooth: false,
-            showSymbol: false
-        });
-        legendData.push(ma5Name);
-
-        series.push({
-            name: ma10Name,
-            type: 'line',
-            data: maData.ma10,
-            lineStyle: { width: 1, color: '#f2994a' },
-            showSymbol: false
-        });
-        legendData.push(ma10Name);
-
-        series.push({
-            name: ma20Name,
-            type: 'line',
-            data: maData.ma20,
-            lineStyle: { width: 1, color: '#eb5757' },
-            showSymbol: false
-        });
-        legendData.push(ma20Name);
-
-        series.push({
-            name: ma30Name,
-            type: 'line',
-            data: maData.ma30,
-            lineStyle: { width: 1, color: '#6fcf97' },
-            showSymbol: false
-        });
-        legendData.push(ma30Name);
-    }
-
+    // 额外线条（如策略线）
     if (extraLines && extraLines.length > 0) {
         for (var ei = 0; ei < extraLines.length; ei++) {
             var extra = extraLines[ei];
-            series.push({
+            var extraSeries = {
                 name: extra.name,
                 type: 'line',
                 data: extra.data,
                 lineStyle: { width: 1, color: extra.color || '#ffffff' },
                 showSymbol: false
-            });
-            legendData.push(extra.name);
+            };
+            series.push(extraSeries);
+            allSeries.push(extraSeries);
         }
     }
 
@@ -236,9 +336,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                     color: '#ffffff',
                     position: 'bottom',
                     formatter: function(params) {
-                        if (params && params.value) {
-                            return params.value;
-                        }
+                        if (params && params.value) return params.value;
                         return '';
                     }
                 }
@@ -251,29 +349,24 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                 rotate: 0,
                 color: '#ffffff',
                 interval: 'auto',
-                formatter: function(value, index) {
-                    return value.slice(0, 7);
-                }
+                formatter: function(value) { return value.slice(0, 7); }
             }
         },
         yAxis: {
             scale: true,
             axisLabel: { color: '#ffffff' },
-            name: '价格 (元)'
+            name: '价格 (元)',
+            splitLine: {
+                show: true,
+                lineStyle: {
+                    color: '#3a4055',
+                    width: 1,
+                    type: 'dashed'
+                }
+            }
         },
         series: series,
-        legend: {
-            data: legendData,
-            textStyle: { color: '#ffffff' },
-            type: 'scroll',
-            orient: 'horizontal',
-            left: 'left',
-            top: 0,
-            itemWidth: 100,
-            itemHeight: 20,
-            pageIconColor: '#4f7eff',
-            pageTextStyle: { color: '#ffffff' }
-        },
+        legend: { show: false }, // 隐藏默认图例
         grid: {
             containLabel: true,
             backgroundColor: '#0e1220',
@@ -302,29 +395,24 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     chart.setOption(option);
     console.log("图表设置完成");
 
-    // 通知副图管理器（SubChartManager）
-    console.log('[chartRenderer] renderKlineWithSignals -> onMainChartReady', {
-        containerId: 'klineMainChart',
-        datesLen: dates ? dates.length : 0,
-        valuesLen: values ? values.length : 0,
-        valuesSample: values ? values.slice(0, 2) : null
-    });
+    // 创建控制面板（买卖点成交图页）
+    createControlPanel(chart, allSeries, { top: '10px', left: '8px' });
+
+    // 通知副图管理器
     setTimeout(function() {
         if (window.subChartManager) {
             window.subChartManager.onMainChartReady('klineMainChart', chart, dates, values);
-        } else {
-            console.warn('[chartRenderer] window.subChartManager not available');
         }
     }, 50);
 
-    // 信号信息卡片（固定左下角）
+    // 信号信息卡片
     var signalCard = document.getElementById('signalInfoCard');
     if (!signalCard) {
         signalCard = document.createElement('div');
         signalCard.id = 'signalInfoCard';
         dom.style.position = 'relative';
         signalCard.style.cssText = 'display:none; position:absolute; top:10px; right:10px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; pointer-events:none; line-height:1.6;';
-        dom.parentElement.style.position = 'relative';  // 已有
+        dom.parentElement.style.position = 'relative';
         dom.appendChild(signalCard);
     }
 
@@ -334,41 +422,28 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             return;
         }
         var date = dates[params.dataIndex];
-        if (!date) {
-            signalCard.style.display = 'none';
-            return;
-        }
-
-        var buyHere = buyPts ? buyPts.filter(function(b) { return b.date === date; }) : [];
-        var sellHere = sellPts ? sellPts.filter(function(s) { return s.date === date; }) : [];
-
+        if (!date) return;
+        var buyHere = buyPts ? buyPts.filter(b => b.date === date) : [];
+        var sellHere = sellPts ? sellPts.filter(s => s.date === date) : [];
         if (buyHere.length === 0 && sellHere.length === 0) {
             signalCard.style.display = 'none';
             return;
         }
-
         var lines = [];
-        buyHere.forEach(function(b) {
+        buyHere.forEach(b => {
             var lot = Math.floor((b.shares || 0) / 100) || '零股';
-            lines.push('<span style="color:#ff4d4f;">B ' + (b.price != null ? b.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
-            if (b.reason) {
-                lines.push('<span style="font-size:10px;color:#ccc;">' + b.reason + '</span>');
-            }
+            lines.push(`<span style="color:#ff4d4f;">B ${b.price != null ? b.price.toFixed(2) : '--'} ${lot}手</span>`);
+            if (b.reason) lines.push(`<span style="font-size:10px;color:#ccc;">${b.reason}</span>`);
         });
-        sellHere.forEach(function(s) {
+        sellHere.forEach(s => {
             var lot = Math.floor((s.shares || 0) / 100) || '零股';
-            lines.push('<span style="color:#52c41a;">S ' + (s.price != null ? s.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
-            if (s.reason) {
-                lines.push('<span style="font-size:10px;color:#ccc;">' + s.reason + '</span>');
-            }
+            lines.push(`<span style="color:#52c41a;">S ${s.price != null ? s.price.toFixed(2) : '--'} ${lot}手</span>`);
+            if (s.reason) lines.push(`<span style="font-size:10px;color:#ccc;">${s.reason}</span>`);
         });
         signalCard.innerHTML = lines.join('<br>');
         signalCard.style.display = '';
     });
-
-    chart.on('mouseout', function() {
-        signalCard.style.display = 'none';
-    });
+    chart.on('mouseout', function() { signalCard.style.display = 'none'; });
 
     if (!window._klineResizeBound) {
         window._klineResizeBound = true;
@@ -387,10 +462,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         return;
     }
     if (container.clientHeight === 0 && retryCount < 5) {
-        console.warn("个股K线容器高度为0，延迟重试 retryCount=" + retryCount);
-        setTimeout(function() {
-            renderStockKline(containerId, dates, values, retryCount + 1);
-        }, 100);
+        setTimeout(() => renderStockKline(containerId, dates, values, retryCount + 1), 100);
         return;
     }
     if (container.clientHeight === 0) {
@@ -398,13 +470,9 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         container.style.minHeight = "460px";
     }
 
-    // 延迟10ms执行，使UI保持响应
-    setTimeout(function() {
-        var fixedValues = values.map(function(v) {
-            var open = parseFloat(v[0]),
-                close = parseFloat(v[1]);
-            var low = parseFloat(v[2]),
-                high = parseFloat(v[3]);
+    setTimeout(() => {
+        var fixedValues = values.map(v => {
+            var open = parseFloat(v[0]), close = parseFloat(v[1]), low = parseFloat(v[2]), high = parseFloat(v[3]);
             low = Math.min(low, open, close);
             high = Math.max(high, open, close);
             return [open, close, low, high];
@@ -413,14 +481,9 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         function calcMA(vals, period) {
             var ma = [];
             for (var i = 0; i < vals.length; i++) {
-                if (i < period - 1) {
-                    ma.push(null);
-                    continue;
-                }
+                if (i < period - 1) { ma.push(null); continue; }
                 var sum = 0;
-                for (var j = 0; j < period; j++) {
-                    sum += vals[i - j][1];
-                }
+                for (var j = 0; j < period; j++) sum += vals[i - j][1];
                 ma.push(parseFloat((sum / period).toFixed(2)));
             }
             return ma;
@@ -437,13 +500,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             ma10Data = calcMA(values, 10);
             ma20Data = calcMA(values, 20);
             ma30Data = calcMA(values, 30);
-            _stockMACache = {
-                datesRef: dates,
-                ma5: ma5Data,
-                ma10: ma10Data,
-                ma20: ma20Data,
-                ma30: ma30Data
-            };
+            _stockMACache = { datesRef: dates, ma5: ma5Data, ma10: ma10Data, ma20: ma20Data, ma30: ma30Data };
         }
 
         var candleSeries = {
@@ -464,48 +521,20 @@ export function renderStockKline(containerId, dates, values, retryCount) {
 
         var series = [
             candleSeries,
-            {
-                name: 'MA5',
-                type: 'line',
-                data: ma5Data,
-                lineStyle: { width: 1, color: '#f2c94c' },
-                smooth: false,
-                showSymbol: false
-            },
-            {
-                name: 'MA10',
-                type: 'line',
-                data: ma10Data,
-                lineStyle: { width: 1, color: '#f2994a' },
-                showSymbol: false
-            },
-            {
-                name: 'MA20',
-                type: 'line',
-                data: ma20Data,
-                lineStyle: { width: 1, color: '#eb5757' },
-                showSymbol: false
-            },
-            {
-                name: 'MA30',
-                type: 'line',
-                data: ma30Data,
-                lineStyle: { width: 1, color: '#6fcf97' },
-                showSymbol: false
-            }
+            { name: 'MA5', type: 'line', data: ma5Data, lineStyle: { width: 1, color: '#f2c94c' }, showSymbol: false },
+            { name: 'MA10', type: 'line', data: ma10Data, lineStyle: { width: 1, color: '#f2994a' }, showSymbol: false },
+            { name: 'MA20', type: 'line', data: ma20Data, lineStyle: { width: 1, color: '#eb5757' }, showSymbol: false },
+            { name: 'MA30', type: 'line', data: ma30Data, lineStyle: { width: 1, color: '#6fcf97' }, showSymbol: false }
         ];
 
-        // SAR 抛物线转向散点
-        var highsSAR = values.map(function(v) { return parseFloat(v[3]) || 0; });
-        var lowsSAR = values.map(function(v) { return parseFloat(v[2]) || 0; });
+        // SAR
+        var highsSAR = values.map(v => parseFloat(v[3]) || 0);
+        var lowsSAR = values.map(v => parseFloat(v[2]) || 0);
         var sarPoints = indicators.calculateSAR(highsSAR, lowsSAR);
         var sarScatter = [];
         for (var si = 0; si < sarPoints.length; si++) {
-            if (sarPoints[si] !== null) {
-                sarScatter.push([si, sarPoints[si]]);
-            }
+            if (sarPoints[si] !== null) sarScatter.push([si, sarPoints[si]]);
         }
-        var legendData = ['K线', 'MA5', 'MA10', 'MA20', 'MA30'];
         if (sarScatter.length > 0) {
             series.push({
                 name: 'SAR',
@@ -517,13 +546,13 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                 label: { show: false },
                 tooltip: { show: false }
             });
-            legendData.push('SAR');
         }
 
+        var allSeries = series.slice();
+
         var chart = echarts.getInstanceByDom(container);
-        if (!chart) {
-            chart = echarts.init(container);
-        }
+        if (!chart) chart = echarts.init(container);
+
         var option = {
             backgroundColor: 'transparent',
             animation: false,
@@ -536,47 +565,33 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                     label: {
                         backgroundColor: '#4f7eff',
                         color: '#ffffff',
-                        formatter: function(params) {
-                            if (params && params.value) {
-                                return params.value;
-                            }
-                            return '';
-                        }
+                        formatter: (params) => params && params.value ? params.value : ''
                     }
                 }
             },
             xAxis: {
                 type: 'category',
                 data: dates,
-                axisLabel: {
-                    rotate: 0,
-                    color: '#ffffff',
-                    interval: 'auto',
-                    formatter: function(v) { return v.slice(0, 7); }
+                axisLabel: { rotate: 0, color: '#ffffff', interval: 'auto', formatter: v => v.slice(0, 7) }
+            },
+            yAxis: {
+                scale: true,
+                axisLabel: { color: '#ffffff' },
+                name: '价格 (元)',
+                splitLine: {
+                    show: true,
+                    lineStyle: { color: '#3a4055', width: 1, type: 'dashed' }
                 }
             },
-            yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
             series: series,
-            legend: {
-                data: legendData,
-                textStyle: { color: '#ffffff' },
-                type: 'scroll',
-                orient: 'horizontal',
-                left: 'left',
-                top: 0,
-                itemWidth: 100,
-                itemHeight: 20,
-                pageIconColor: '#4f7eff',
-                pageTextStyle: { color: '#ffffff' }
-            },
+            legend: { show: false },
             grid: { containLabel: true, backgroundColor: '#0e1220', left: '8%', right: '8%', top: 15, bottom: 8 },
             dataZoom: [{
                 type: 'inside',
                 start: (function() {
                     var total = dates.length;
                     var defaultCount = 220;
-                    if (total > defaultCount) return (total - defaultCount) / total * 100;
-                    return 0;
+                    return total > defaultCount ? (total - defaultCount) / total * 100 : 0;
                 })(),
                 end: 100,
                 zoomOnMouseWheel: true,
@@ -586,28 +601,20 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         };
         chart.setOption(option, true);
 
-        // 通知副图管理器（SubChartManager）
-        console.log('[chartRenderer] renderStockKline -> onMainChartReady', {
-            containerId: containerId,
-            datesLen: dates ? dates.length : 0,
-            valuesLen: values ? values.length : 0,
-            valuesSample: values ? values.slice(0, 2) : null
-        });
+        // 创建控制面板（个股详情页）
+        createControlPanel(chart, allSeries, { top: '10px', left: '8px' });
+
         setTimeout(function() {
             if (window.subChartManager) {
                 window.subChartManager.onMainChartReady(containerId, chart, dates, values);
-            } else {
-                console.warn('[chartRenderer] window.subChartManager not available');
             }
         }, 50);
 
-        setTimeout(function() { chart.resize(); }, 100);
+        setTimeout(() => chart.resize(), 100);
 
         if (!window._stockKlineResizeBound) {
             window._stockKlineResizeBound = true;
-            window.addEventListener('resize', function() {
-                if (chart && !chart.isDisposed()) chart.resize();
-            });
+            window.addEventListener('resize', () => { if (chart && !chart.isDisposed()) chart.resize(); });
         }
     }, 10);
 }
@@ -641,8 +648,7 @@ export function drawEquityCurve(containerId, equityCurve, retry) {
     }
     if (dom.clientHeight === 0) {
         if (retry < 5) {
-            console.warn("drawEquityCurve: 容器高度为0，延迟重试 " + (retry + 1) + "/5");
-            setTimeout(function() { drawEquityCurve(containerId, equityCurve, retry + 1); }, 200);
+            setTimeout(() => drawEquityCurve(containerId, equityCurve, retry + 1), 200);
         } else {
             dom.innerHTML = '<div style="color:#9aa9cc; padding:40px; text-align:center;">图表加载失败</div>';
         }
@@ -652,29 +658,17 @@ export function drawEquityCurve(containerId, equityCurve, retry) {
         console.error("ECharts 未加载");
         return;
     }
-
-    // 如果数据为空，显示提示
     if (!equityCurve || equityCurve.length === 0) {
         dom.innerHTML = '<div style="color:#9aa9cc; padding:40px; text-align:center;">暂无收益数据</div>';
         return;
     }
-
     var chart = echarts.init(dom);
-    var dates = equityCurve.map(function(item) { return item.date; });
-    var values = equityCurve.map(function(item) { return item.value; });
-
+    var dates = equityCurve.map(item => item.date);
+    var values = equityCurve.map(item => item.value);
     var option = {
         tooltip: { trigger: 'axis' },
-        xAxis: {
-            type: 'category',
-            data: dates,
-            axisLabel: { color: '#9aa9cc' }
-        },
-        yAxis: {
-            type: 'value',
-            name: '账户价值 (元)',
-            axisLabel: { color: '#9aa9cc' }
-        },
+        xAxis: { type: 'category', data: dates, axisLabel: { color: '#9aa9cc' } },
+        yAxis: { type: 'value', name: '账户价值 (元)', axisLabel: { color: '#9aa9cc' } },
         series: [{
             type: 'line',
             data: values,
@@ -691,7 +685,7 @@ export function drawEquityCurve(containerId, equityCurve, retry) {
                 }
             }
         }],
-        grid: { containLabel: true, backgroundColor: '#0e1220'}
+        grid: { containLabel: true, backgroundColor: '#0e1220' }
     };
     chart.setOption(option);
 }
