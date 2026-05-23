@@ -28,9 +28,10 @@
         }
 
         .app-window {
-            width: 1480px;
-            max-width: 96vw;
-            height: 92vh;
+            width: 100%;
+            max-width: 1480px;
+            margin: 0 auto;
+            height: 100vh;
             background: #11141f;
             border-radius: 20px;
             box-shadow: 0 20px 35px -8px rgba(0,0,0,0.6);
@@ -38,6 +39,36 @@
             flex-direction: column;
             overflow: hidden;
             border: 1px solid #2a2f42;
+        }
+
+        /* 全屏时去除圆角、宽度限制和居中边距，完全填满屏幕 */
+        .app-window.fullscreen-mode {
+            border-radius: 0;
+            max-width: none;
+            margin: 0;
+            width: 100%;
+            border: none;
+        }
+
+        /* 全屏时压缩内容区内边距，消除左右留白 */
+        .app-window.fullscreen-mode .content-panel {
+            padding: 8px 10px !important;
+        }
+
+        /* 全屏时压缩卡片内边距和圆角 */
+        .app-window.fullscreen-mode .card {
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        /* 全屏时压缩卡片标题下边距 */
+        .app-window.fullscreen-mode .card-title {
+            margin-bottom: 8px;
+        }
+
+        /* 全屏时压缩 kline 容器边距 */
+        .app-window.fullscreen-mode .kline-container {
+            margin: 2px 0;
         }
 
         .title-bar {
@@ -65,6 +96,7 @@
 
         .nav-sidebar {
             width: 210px;
+            flex-shrink: 0;
             background: #0a0d16;
             border-right: 1px solid #202436;
             display: flex;
@@ -879,7 +911,10 @@
 <div class="app-window">
     <div class="title-bar">
         <div class="logo-text">Tquant <span>量化工作站</span> | 策略回测·K线买卖点</div>
-        <div style="font-size:12px; color:#ffffff;">专业回测引擎</div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span style="font-size:12px; color:#9aa9cc;">专业回测引擎</span>
+            <button id="fullscreenBtn" title="全屏切换" style="background:transparent; border:1px solid #323d5a; color:#9aa9cc; font-size:16px; cursor:pointer; border-radius:6px; padding:2px 8px; transition:color 0.2s;">⛶</button>
+        </div>
     </div>
     <div class="main-layout">
         <div class="nav-sidebar">

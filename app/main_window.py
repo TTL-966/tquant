@@ -8,7 +8,7 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, Qt, QTimer
 from app.web_bridge import WebBridge
 from backend.data_updater import DataUpdateScheduler
 
@@ -49,6 +49,24 @@ class MainWindow(QMainWindow):
         # F12 快捷键
         shortcut = QShortcut(QKeySequence("F12"), self)
         shortcut.activated.connect(lambda: self.web_view.page().triggerAction(QWebEnginePage.InspectElement))
+
+        # 全屏请求处理
+        self.web_view.page().fullScreenRequested.connect(self.on_fullscreen_requested)
+        self.is_fullscreen = False
+
+    def on_fullscreen_requested(self, request):
+        request.accept()
+        if not self.is_fullscreen:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+        self.is_fullscreen = not self.is_fullscreen
+        QTimer.singleShot(150, self._resize_webview)
+
+    def _resize_webview(self):
+        self.web_view.resize(self.size())
+        self.web_view.page().runJavaScript("window.dispatchEvent(new Event('resize'));")
+        print(f"[Fullscreen] 窗口尺寸: {self.width()}x{self.height()}")
 
     def on_update_started(self, name):
         print(f"[DataUpdate] {name} 开始更新")

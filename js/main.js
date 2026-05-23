@@ -318,4 +318,46 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     loadPage('history');
+
+    // ---- 全屏切换 ----
+    var fullscreenBtn = document.getElementById('fullscreenBtn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', function() {
+            var elem = document.querySelector('.app-window');
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen().catch(function(err) {
+                        console.error('全屏请求失败:', err.message);
+                    });
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+            }
+        });
+    }
+
+    // 监听全屏变化，调整样式并触发图表 resize
+    function onFullscreenChange() {
+        var appWindow = document.querySelector('.app-window');
+        var isFull = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (appWindow) {
+            if (isFull) {
+                appWindow.classList.add('fullscreen-mode');
+            } else {
+                appWindow.classList.remove('fullscreen-mode');
+            }
+        }
+        // 延迟触发 resize，等待布局更新
+        setTimeout(function() {
+            window.dispatchEvent(new Event('resize'));
+        }, 100);
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 });
