@@ -988,7 +988,13 @@ function renderStockPage(container) {
         var stockPeriodArrow = document.getElementById('stockPeriodArrow');
         function applyStockPeriod(period) {
             setPeriod(period);
-            loadStock(currentStockCode);
+            var initialCode = window.currentStockCode || '000001';
+// 确保后续不覆盖
+			if (window.currentStockCode) {
+			    // 使用后清除，避免下次进入仍使用旧的
+			    delete window.currentStockCode;
+			}
+			listoadStock(initialCode);
         }
         if (stockPeriodInput) {
             var stockCurOpt = periodOptions.find(function(o) { return o.value === currentPeriod; });
@@ -1009,7 +1015,13 @@ function renderStockPage(container) {
         }
 
         // 初始加载
-        loadStock(currentStockCode);
+        // 初始加载：优先使用全局临时变量（从条件选股传递过来）
+        var initialCode = currentStockCode;  // 模块默认值
+        if (window.currentStockCode) {
+            initialCode = window.currentStockCode;
+            delete window.currentStockCode;  // 使用后清除，避免下次误用
+        }
+        loadStock(initialCode);
     }, 50);
 }
 

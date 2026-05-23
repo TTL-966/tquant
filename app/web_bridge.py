@@ -724,12 +724,15 @@ class WebBridge(QObject):
             from PySide6.QtWidgets import QFileDialog
 
             dest_path, _ = QFileDialog.getSaveFileName(
-                None, "保存文件", suggested_name, "文本文件 (*.txt);;Python 文件 (*.py);;所有文件 (*)"
+                None, "保存文件", suggested_name,
+                "CSV 文件 (*.csv);;文本文件 (*.txt);;Python 文件 (*.py);;所有文件 (*)"
             )
             if not dest_path:
                 return json.dumps({"success": False, "cancelled": True})
 
-            with open(dest_path, 'w', encoding='utf-8') as f:
+            # CSV 文件使用 utf-8-sig (含 BOM)，确保 Excel 正确打开中文
+            encoding = 'utf-8-sig' if dest_path.lower().endswith('.csv') else 'utf-8'
+            with open(dest_path, 'w', encoding=encoding) as f:
                 f.write(content)
 
             return json.dumps({"success": True, "path": dest_path})
