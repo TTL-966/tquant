@@ -1,5 +1,6 @@
 // js/chartRenderer.js
 import { stockNameMap } from './stockData.js';
+import * as indicators from './indicators.js';
 
 // ---- 模块级均线缓存 ----
 var _stockMACache = null;
@@ -137,6 +138,29 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
             tooltip: { show: false }
         }
     ];
+
+    // SAR 抛物线转向散点
+    var highsSAR = values.map(function(v) { return parseFloat(v[3]) || 0; });
+    var lowsSAR = values.map(function(v) { return parseFloat(v[2]) || 0; });
+    var sarPoints = indicators.calculateSAR(highsSAR, lowsSAR);
+    var sarScatter = [];
+    for (var si = 0; si < sarPoints.length; si++) {
+        if (sarPoints[si] !== null) {
+            sarScatter.push([si, sarPoints[si]]);
+        }
+    }
+    if (sarScatter.length > 0) {
+        series.push({
+            name: 'SAR',
+            type: 'scatter',
+            data: sarScatter,
+            symbol: 'circle',
+            symbolSize: 6,
+            itemStyle: { color: '#f2c94c', borderColor: '#f2c94c', borderWidth: 1 },
+            label: { show: false },
+            tooltip: { show: false }
+        });
+    }
 
     var legendData = ['K线'];
 
@@ -471,6 +495,31 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             }
         ];
 
+        // SAR 抛物线转向散点
+        var highsSAR = values.map(function(v) { return parseFloat(v[3]) || 0; });
+        var lowsSAR = values.map(function(v) { return parseFloat(v[2]) || 0; });
+        var sarPoints = indicators.calculateSAR(highsSAR, lowsSAR);
+        var sarScatter = [];
+        for (var si = 0; si < sarPoints.length; si++) {
+            if (sarPoints[si] !== null) {
+                sarScatter.push([si, sarPoints[si]]);
+            }
+        }
+        var legendData = ['K线', 'MA5', 'MA10', 'MA20', 'MA30'];
+        if (sarScatter.length > 0) {
+            series.push({
+                name: 'SAR',
+                type: 'scatter',
+                data: sarScatter,
+                symbol: 'circle',
+                symbolSize: 6,
+                itemStyle: { color: '#f2c94c', borderColor: '#f2c94c', borderWidth: 1 },
+                label: { show: false },
+                tooltip: { show: false }
+            });
+            legendData.push('SAR');
+        }
+
         var chart = echarts.getInstanceByDom(container);
         if (!chart) {
             chart = echarts.init(container);
@@ -509,7 +558,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             yAxis: { scale: true, axisLabel: { color: '#ffffff' }, name: '价格 (元)' },
             series: series,
             legend: {
-                data: ['K线', 'MA5', 'MA10', 'MA20', 'MA30'],
+                data: legendData,
                 textStyle: { color: '#ffffff' },
                 type: 'scroll',
                 orient: 'horizontal',

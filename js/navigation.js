@@ -404,6 +404,8 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
                     <button class="subchart-type-btn" data-type="cci">CCI</button>
                     <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
+                    <button class="subchart-type-btn" data-type="obv">OBV</button>
+                    <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart1Values"></div>
@@ -420,6 +422,8 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
                     <button class="subchart-type-btn" data-type="cci">CCI</button>
                     <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
+                    <button class="subchart-type-btn" data-type="obv">OBV</button>
+                    <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart2Values"></div>
@@ -753,6 +757,8 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
                     <button class="subchart-type-btn" data-type="cci">CCI</button>
                     <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
+                    <button class="subchart-type-btn" data-type="obv">OBV</button>
+                    <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart1Values"></div>
@@ -769,6 +775,8 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="atr_channel">ATR通道</button>
                     <button class="subchart-type-btn" data-type="cci">CCI</button>
                     <button class="subchart-type-btn" data-type="williams_r">威廉指标</button>
+                    <button class="subchart-type-btn" data-type="obv">OBV</button>
+                    <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart2Values"></div>
@@ -1142,6 +1150,26 @@ function renderApiPage(container) {
                 '<li>策略异常被后端捕获记录到日志，不会中断整个回测。</li>' +
                 '<li>成交量数据已接入真实数据库，<code style="color:#4f7eff;">history_bars(..., \'volume\')</code> 返回整数（股）。</li>' +
                 '</ul>'
+        },
+        {
+            id: 'subchart_indicators',
+            icon: '📈',
+            title: '副图技术指标参考',
+            body: '<p style="color:#9aa9cc;margin-bottom:8px;">个股详情页和买卖点成交图页均支持以下副图指标，通过工具栏按钮切换。</p>' +
+                '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">' +
+                '<tr style="color:#4f7eff;"><th style="text-align:left;padding:4px 8px;">指标</th><th style="text-align:left;padding:4px 8px;">说明</th><th style="text-align:left;padding:4px 8px;">关键阈值</th></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#fff;">成交量 VOL</td><td style="padding:4px 8px;">红涨绿跌柱状图 + MA5/MA10 均量线。放量日（>MA20×1.5）金色柱，缩量日（<MA20×0.6）灰色柱。</td><td style="padding:4px 8px;">--</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#f2c94c;">MACD</td><td style="padding:4px 8px;">DIF（快线，黄）+ DEA（慢线，紫）+ 柱状图（红涨绿跌）。金叉买入，死叉卖出。</td><td style="padding:4px 8px;">零轴</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">RSI</td><td style="padding:4px 8px;">相对强弱指数(14)，Wilder平滑。数值行显示超买(>70)/超卖(<30)状态。</td><td style="padding:4px 8px;">70 / 30</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#f2c94c;">KDJ</td><td style="padding:4px 8px;">随机指标(9,3,3)。K（黄）、D（紫）、J（红）三线，基于RSV计算。</td><td style="padding:4px 8px;">80 / 20</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">布林带 BOLL</td><td style="padding:4px 8px;">中轨 MID=SMA(20)，上轨/下轨 = MID ± 2×标准差。带宽 = (上-下)/中×100% 反映波动率。</td><td style="padding:4px 8px;">带宽变化</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#ef5350;">ATR通道</td><td style="padding:4px 8px;">中轨=SMA(14)，上下轨 = 中轨 ± 2×ATR(14)（Wilder平滑）。用于判断通道突破。</td><td style="padding:4px 8px;">通道宽度</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">CCI</td><td style="padding:4px 8px;">商品通道指数(20)。CCI = (TP-SMA)/(0.015×MD)，数值行标记超买(>+100)/超卖(<-100)。</td><td style="padding:4px 8px;">+100 / -100</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">威廉 %R</td><td style="padding:4px 8px;">威廉指标(14)，范围 -100~0。%R > -20 超买，%R < -80 超卖。与KDJ的RSV互逆。</td><td style="padding:4px 8px;">-20 / -80</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">OBV</td><td style="padding:4px 8px;">能量潮指标。OBV 线（累积能量，蓝）+ MA20 均线（黄虚）。OBV 上穿均线→金叉买入。数值行显示最新 OBV 值及 MA20。</td><td style="padding:4px 8px;">MA20 交叉</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">ROC</td><td style="padding:4px 8px;">变动率(12)。ROC = (当日收盘-N日前收盘)/N日前收盘×100%。零轴穿越为买卖信号，数值行正数红色、负数绿色，带%符号。</td><td style="padding:4px 8px;">零轴</td></tr>' +
+                '</table>' +
+                '<p style="color:#9aa9cc;font-size:12px;">📌 所有指标基于连续日历日序列计算（消除周末缺口），图表仅显示交易日。数据不足时显示"需≥30根K线"提示。副图支持折叠/展开，dataZoom与主图联动，十字光标同步。SAR 抛物线转向以金色散点叠加在主 K 线图上。</p>'
         }
     ];
 
