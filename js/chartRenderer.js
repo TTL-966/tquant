@@ -405,13 +405,13 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         }
     }, 50);
 
-    // 信号信息卡片
+    // 浮动信号卡片
     var signalCard = document.getElementById('signalInfoCard');
     if (!signalCard) {
         signalCard = document.createElement('div');
         signalCard.id = 'signalInfoCard';
         dom.style.position = 'relative';
-        signalCard.style.cssText = 'display:none; position:absolute; top:10px; right:10px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; pointer-events:none; line-height:1.6;';
+        signalCard.style.cssText = 'display:none; position:absolute; bottom:220px; right:10px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; pointer-events:none; line-height:1.6; max-width:260px;';
         dom.parentElement.style.position = 'relative';
         dom.appendChild(signalCard);
     }
@@ -423,22 +423,22 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         }
         var date = dates[params.dataIndex];
         if (!date) return;
-        var buyHere = buyPts ? buyPts.filter(b => b.date === date) : [];
-        var sellHere = sellPts ? sellPts.filter(s => s.date === date) : [];
+        var buyHere = buyPts ? buyPts.filter(function(b) { return b.date === date; }) : [];
+        var sellHere = sellPts ? sellPts.filter(function(s) { return s.date === date; }) : [];
         if (buyHere.length === 0 && sellHere.length === 0) {
             signalCard.style.display = 'none';
             return;
         }
         var lines = [];
-        buyHere.forEach(b => {
+        buyHere.forEach(function(b) {
             var lot = Math.floor((b.shares || 0) / 100) || '零股';
-            lines.push(`<span style="color:#ff4d4f;">B ${b.price != null ? b.price.toFixed(2) : '--'} ${lot}手</span>`);
-            if (b.reason) lines.push(`<span style="font-size:10px;color:#ccc;">${b.reason}</span>`);
+            lines.push('<span style="color:#ff4d4f;">B ' + (b.price != null ? b.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
+            if (b.reason) lines.push('<span style="font-size:10px;color:#ccc;">' + b.reason + '</span>');
         });
-        sellHere.forEach(s => {
+        sellHere.forEach(function(s) {
             var lot = Math.floor((s.shares || 0) / 100) || '零股';
-            lines.push(`<span style="color:#52c41a;">S ${s.price != null ? s.price.toFixed(2) : '--'} ${lot}手</span>`);
-            if (s.reason) lines.push(`<span style="font-size:10px;color:#ccc;">${s.reason}</span>`);
+            lines.push('<span style="color:#52c41a;">S ' + (s.price != null ? s.price.toFixed(2) : '--') + ' ' + lot + '手</span>');
+            if (s.reason) lines.push('<span style="font-size:10px;color:#ccc;">' + s.reason + '</span>');
         });
         signalCard.innerHTML = lines.join('<br>');
         signalCard.style.display = '';
