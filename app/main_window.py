@@ -12,8 +12,11 @@ from PySide6.QtCore import QUrl, Qt, QTimer
 from app.web_bridge import WebBridge
 from backend.data_updater import DataUpdateScheduler
 
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
+
         super().__init__()
         self.setWindowTitle("Tquant 量化工作站")
         self.resize(1400, 900)
@@ -37,6 +40,8 @@ class MainWindow(QMainWindow):
         self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
+        print("数据库连接：", self.bridge.db.engine.url)
+
         base_dir = os.path.dirname(os.path.abspath(__file__))
         html_path = os.path.join(base_dir, "..", "Tquant.html")  # 注意路径
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
@@ -53,6 +58,9 @@ class MainWindow(QMainWindow):
         # 全屏请求处理
         self.web_view.page().fullScreenRequested.connect(self.on_fullscreen_requested)
         self.is_fullscreen = False
+
+        from backend.data_updater.daily_kline_updater import DailyKlineUpdater
+        QTimer.singleShot(2000, lambda: DailyKlineUpdater(self.bridge.db.engine).run())
 
     def on_fullscreen_requested(self, request):
         request.accept()

@@ -11,6 +11,7 @@ import { renderCodeEditorPage } from './codeEditor.js';
 import { renderTroubleshootPage } from './troubleshoot.js';
 import { CARD_TYPE_META } from './strategyTemplates.js';
 import { renderCompareView } from './compareView.js';
+import { renderScreenerPage } from './stockScreener.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
@@ -307,6 +308,9 @@ export function loadPage(pageId) {
         renderApiPage(container);
     } else if (pageId === 'troubleshoot') {
         renderTroubleshootPage(container);
+    } else if (pageId === 'screener') {
+        container.innerHTML = '';
+        renderScreenerPage(container);
     } else if (pageId === 'settings') {
         renderSettingsPage(container);
     }
@@ -324,6 +328,8 @@ export function navigateToKline(code) {
     if (target) target.classList.add('active');
     loadPage('kchart');
 }
+
+window.navigateToKline = navigateToKline;
 
 // ---- 副图工具栏事件绑定（公共）----
 function _bindSubchartToolbar(mgr, containerId, stockCode) {

@@ -18,8 +18,8 @@ from backend.db import Database
 from backend.strategy_storage import StrategyStorage
 from backend.backtest_executor import BacktestExecutor   # 新增导入
 from backend.multi_backtest_executor import MultiBacktestExecutor # 多股回测
-
-from backend.data_feed import DataFeed#测试
+from backend.stock_screener import StockScreener
+from sqlalchemy import text
 
 class WebBridge(QObject):
     def __init__(self, parent=None):
@@ -31,14 +31,68 @@ class WebBridge(QObject):
         self.strategy_storage = StrategyStorage()
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
+        self.stock_screener = StockScreener(self.data_feed)
         self._update_process = None   # 数据更新子进程句柄
 
         df = DataFeed()
-        print(df.get_realtime_price('000001'))
+
 
     @Slot(result=str)
     def ping(self):
         return "pong"
+
+    @Slot(str, str, result=str)
+    def test_evaluate_stock(self, code_json, card_json):
+        """测试选股条件接口：接收股票代码JSON和卡片JSON，返回选股结果"""
+        try:
+            code = json.loads(code_json)
+            card = json.loads(card_json)
+            if isinstance(code, list):
+                code = code[0] if len(code) > 0 else ""
+            ok, reason = self.stock_screener.evaluate_stock_with_reason(code, card)
+            return json.dumps({"code": code, "result": ok, "reason": reason})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"code": "", "result": False, "reason": str(e)})
+
+    @Slot(str, str, str, result=str)
+    def screen_stocks(self, cards_json, stock_pool_json, date):
+        """批量选股接口：接收卡片列表JSON、股票池JSON、基准日期，返回筛选结果"""
+        try:
+            cards = json.loads(cards_json) if isinstance(cards_json, str) else cards_json
+            stock_pool = json.loads(stock_pool_json) if isinstance(stock_pool_json, str) and stock_pool_json else None
+            if not date or date.strip() == '':
+                date = None
+
+            stocks = self.stock_screener.screen_stocks_batch(
+                cards=cards,
+                stock_pool=stock_pool if stock_pool else None,
+                date=date,
+                logic="AND"
+            )
+
+            return json.dumps({
+                "success": True,
+                "total": len(stocks),
+                "stocks": stocks
+            }, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "total": 0, "stocks": [], "error": str(e)},
+                              ensure_ascii=False)
+
+    @Slot(result=str)
+    def get_latest_trading_date(self):
+        """返回数据库中全局最新交易日期。"""
+        try:
+            with self.db.engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT MAX(trade_date) FROM stock_daily_qfq_with_name")
+                ).scalar()
+            return json.dumps({"success": True, "date": str(row) if row else None})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
 
     @Slot(str, str, str, int, str, result=str)
     def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0, period="daily"):
