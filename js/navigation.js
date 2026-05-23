@@ -195,6 +195,13 @@ function updatePriceBar(data) {
     var changePct = data.change_pct || 0;
     var cls = (data.change || 0) > 0 ? 'price-up' : ((data.change || 0) < 0 ? 'price-down' : 'price-flat');
 
+    var latestPriceSpan = document.getElementById('stockLatestPrice');
+    if (latestPriceSpan) {
+        var priceText = data.price != null ? data.price.toFixed(2) : '--';
+        latestPriceSpan.textContent = priceText;
+        latestPriceSpan.className = 'stock-latest-price ' + cls;
+    }
+
     if (co) { co.textContent = data.open != null ? data.open.toFixed(2) : '--'; co.className = ''; }
     if (ch) { ch.textContent = data.high != null ? data.high.toFixed(2) : '--'; ch.className = 'price-up'; }
     if (cl) { cl.textContent = data.low != null ? data.low.toFixed(2) : '--'; cl.className = 'price-down'; }
@@ -707,6 +714,7 @@ function renderStockPage(container) {
             </div>
             <div class="stock-info-row">
                 <div class="stock-name-large" id="stockNameDisplay">--</div>
+                <div class="stock-latest-price" id="stockLatestPrice">--</div>
                 <div class="stock-controls">
                     <div class="period-wrapper">
                         <span style="color:#9aa9cc;font-size:13px;">K线周期：</span>

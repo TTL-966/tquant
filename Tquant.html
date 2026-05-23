@@ -722,6 +722,17 @@
             flex-shrink: 0;
         }
 
+        .stock-latest-price {
+            font-size: 20px;
+            font-weight: 700;
+            margin-left: 12px;
+            font-family: 'Consolas', monospace;
+            flex-shrink: 0;
+        }
+        .stock-latest-price.price-up { color: #ef5350; }
+        .stock-latest-price.price-down { color: #26a69a; }
+        .stock-latest-price.price-flat { color: #ffffff; }
+
         /* 右侧控制区（周期 + 行情卡片） */
         .stock-controls {
             display: flex;
