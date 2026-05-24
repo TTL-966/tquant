@@ -62,7 +62,10 @@ function createControlPanel(chart, fullSeries, position) {
         { name: 'MA10', key: 'ma10', seriesName: 'MA10', default: true },
         { name: 'MA20', key: 'ma20', seriesName: 'MA20', default: true },
         { name: 'MA30', key: 'ma30', seriesName: 'MA30', default: true },
-        { name: 'SAR', key: 'sar', seriesName: 'SAR', default: false }
+        { name: 'SAR', key: 'sar', seriesName: 'SAR', default: false },
+        { name: 'VWAP60', key: 'vwap', seriesName: 'VWAP60', default: false },
+        { name: '中位数60', key: 'median', seriesName: 'Median60', default: false },
+        { name: '算术平均60', key: 'mean', seriesName: 'Mean60', default: false }
     ];
 
     // 始终保留的系列名称
@@ -303,6 +306,38 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         });
     }
 
+    // VWAP60 / 中位数60 / 算术平均60
+    var closes60 = values.map(function(v) { return parseFloat(v[1]) || 0; });
+    var highs60 = values.map(function(v) { return parseFloat(v[3]) || 0; });
+    var lows60 = values.map(function(v) { return parseFloat(v[2]) || 0; });
+    var volumes60 = values.map(function(v) { return parseFloat(v[4]) || 0; });
+
+    var mean60Data = indicators.calculateMean(closes60, 60);
+    var median60Data = indicators.calculateMedian(closes60, 60);
+    var vwap60Data = indicators.calculateVWAP(highs60, lows60, closes60, volumes60, 60);
+
+    series.push({
+        name: 'VWAP60',
+        type: 'line',
+        data: vwap60Data,
+        lineStyle: { width: 1.5, color: '#ffa500' },
+        showSymbol: false
+    });
+    series.push({
+        name: 'Median60',
+        type: 'line',
+        data: median60Data,
+        lineStyle: { width: 1.5, color: '#9b59b6' },
+        showSymbol: false
+    });
+    series.push({
+        name: 'Mean60',
+        type: 'line',
+        data: mean60Data,
+        lineStyle: { width: 1.5, color: '#1abc9c' },
+        showSymbol: false
+    });
+
     // 保存全系列供控制面板使用（所有系列初始均包含，控制面板负责切换）
     var allSeries = series.slice();
 
@@ -396,7 +431,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     console.log("图表设置完成");
 
     // 创建控制面板（买卖点成交图页）
-    createControlPanel(chart, allSeries, { top: '10px', left: '8px' });
+    createControlPanel(chart, allSeries, { top: '10px', left: '-20px' });
 
     // 通知副图管理器
     setTimeout(function() {
@@ -548,6 +583,38 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             });
         }
 
+        // VWAP60 / 中位数60 / 算术平均60
+        var closes60 = values.map(function(v) { return parseFloat(v[1]) || 0; });
+        var highs60 = values.map(function(v) { return parseFloat(v[3]) || 0; });
+        var lows60 = values.map(function(v) { return parseFloat(v[2]) || 0; });
+        var volumes60 = values.map(function(v) { return parseFloat(v[4]) || 0; });
+
+        var mean60Data = indicators.calculateMean(closes60, 60);
+        var median60Data = indicators.calculateMedian(closes60, 60);
+        var vwap60Data = indicators.calculateVWAP(highs60, lows60, closes60, volumes60, 60);
+
+        series.push({
+            name: 'VWAP60',
+            type: 'line',
+            data: vwap60Data,
+            lineStyle: { width: 1.5, color: '#ffa500' },
+            showSymbol: false
+        });
+        series.push({
+            name: 'Median60',
+            type: 'line',
+            data: median60Data,
+            lineStyle: { width: 1.5, color: '#9b59b6' },
+            showSymbol: false
+        });
+        series.push({
+            name: 'Mean60',
+            type: 'line',
+            data: mean60Data,
+            lineStyle: { width: 1.5, color: '#1abc9c' },
+            showSymbol: false
+        });
+
         var allSeries = series.slice();
 
         var chart = echarts.getInstanceByDom(container);
@@ -602,7 +669,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         chart.setOption(option, true);
 
         // 创建控制面板（个股详情页）
-        createControlPanel(chart, allSeries, { top: '10px', left: '8px' });
+        createControlPanel(chart, allSeries, { top: '10px', left: '-20px' });
 
         setTimeout(function() {
             if (window.subChartManager) {
