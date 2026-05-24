@@ -310,6 +310,39 @@ export var CARD_TYPE_META = {
             { key: 'oversold', label: '超卖阈值', type: 'number', min: 10, max: 40, default: 25 },
             { key: 'overbought', label: '超买阈值', type: 'number', min: 60, max: 90, default: 75 }
         ]
+    },
+    pe_below: {
+        type: 'pe_below',
+        label: '市盈率低于',
+        icon: '💹',
+        description: '市盈率(TTM)低于指定阈值，适用于价值选股',
+        defaultAction: 'buy',
+        defaultParams: { maxPE: 20 },
+        paramFields: [
+            { key: 'maxPE', label: 'PE上限', type: 'number', min: 1, max: 300, default: 20 }
+        ]
+    },
+    pb_below: {
+        type: 'pb_below',
+        label: '市净率低于',
+        icon: '📋',
+        description: '市净率低于指定阈值，适用于低估值筛选',
+        defaultAction: 'buy',
+        defaultParams: { maxPB: 2 },
+        paramFields: [
+            { key: 'maxPB', label: 'PB上限', type: 'number', min: 0.1, max: 20, step: 0.1, default: 2 }
+        ]
+    },
+    roe_above: {
+        type: 'roe_above',
+        label: 'ROE高于',
+        icon: '🏆',
+        description: '净资产收益率高于指定阈值，筛选高盈利能力股票',
+        defaultAction: 'buy',
+        defaultParams: { minROE: 15 },
+        paramFields: [
+            { key: 'minROE', label: 'ROE下限(%)', type: 'number', min: 1, max: 100, default: 15 }
+        ]
     }
 };
 

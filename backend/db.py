@@ -63,6 +63,46 @@ class Database:
                 )
             """))
 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_financial (
+                    ts_code TEXT PRIMARY KEY,
+                    pe_ttm REAL,
+                    pb REAL,
+                    roe REAL,
+                    total_mv REAL,
+                    revenue REAL,
+                    net_profit REAL,
+                    update_date TEXT
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_financial_pe ON stock_financial(pe_ttm)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_financial_pb ON stock_financial(pb)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_financial_roe ON stock_financial(roe)
+            """))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_industry_detail (
+                    ts_code TEXT PRIMARY KEY,
+                    stock_name TEXT,
+                    industry_level1 TEXT,
+                    industry_level2 TEXT,
+                    industry_level3 TEXT,
+                    concept_sectors TEXT,
+                    update_date TEXT
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_industry_l1 ON stock_industry_detail(industry_level1)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_industry_l2 ON stock_industry_detail(industry_level2)
+            """))
+
             conn.commit()
 
     def _get_stock_suffix(self, code):
