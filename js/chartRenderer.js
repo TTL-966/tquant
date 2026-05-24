@@ -26,36 +26,17 @@ export function formatStockDisplayHtml(code) {
     return '<div class="stock-display"><span class="stock-name">' + name + '</span><span class="stock-code">' + codeStr + '</span></div>';
 }
 
-// ---- 创建控制面板（左侧按钮）----
-// fullSeries: 所有可能的系列列表（完整、未过滤），用作切换时的数据源
-// position: { top, left } 自定义面板位置
-function createControlPanel(chart, fullSeries, position) {
-    position = position || { top: '10px', left: '8px' };
+// ---- 创建下拉指标选择器（按钮 + 浮层面板）----
+function createDropdownControl(chart, fullSeries) {
+    var container = chart.getDom();
+    var containerId = container.id || 'chart';
 
-    // 如果已经存在，则先移除
-    var existing = document.getElementById('klineControlPanel');
-    if (existing) existing.remove();
+    // 移除旧按钮和面板
+    var oldBtn = document.getElementById('indicatorBtn_' + containerId);
+    if (oldBtn) oldBtn.remove();
+    var oldPanel = document.getElementById('indicatorPanel_' + containerId);
+    if (oldPanel) oldPanel.remove();
 
-    var panel = document.createElement('div');
-    panel.id = 'klineControlPanel';
-    panel.style.cssText =
-        'position: absolute;' +
-        'top: ' + position.top + ';' +
-        'left: ' + position.left + ';' +
-        'background: rgba(15, 20, 35, 0.85);' +
-        'backdrop-filter: blur(4px);' +
-        'border-radius: 8px;' +
-        'padding: 6px 12px;' +
-        'border: 1px solid #4f7eff;' +
-        'z-index: 20;' +
-        'font-size: 12px;' +
-        'font-family: monospace;' +
-        'display: flex;' +
-        'flex-direction: column;' +
-        'gap: 4px;' +
-        'pointer-events: auto;';
-
-    // 定义所有可选项及对应的 series name
     var items = [
         { name: 'K线', key: 'candle', seriesName: 'K线', default: true },
         { name: 'MA5', key: 'ma5', seriesName: 'MA5', default: true },
@@ -68,10 +49,8 @@ function createControlPanel(chart, fullSeries, position) {
         { name: '算术平均60', key: 'mean', seriesName: 'Mean60', default: false }
     ];
 
-    // 始终保留的系列名称
     var alwaysKeep = ['买入点', '卖出点'];
 
-    // 可控系列名称集合（用于判断哪些系列受复选框控制）
     var controllableNames = [];
     for (var it = 0; it < items.length; it++) {
         controllableNames.push(items[it].seriesName);
@@ -80,13 +59,14 @@ function createControlPanel(chart, fullSeries, position) {
     function _applyFilter() {
         if (!chart || chart.isDisposed()) return;
 
-        // 读取所有复选框状态
         var visibleNames = [];
         var keyToName = {};
         for (var ki = 0; ki < items.length; ki++) {
             keyToName[items[ki].key] = items[ki].seriesName;
         }
-        var checkboxes = document.querySelectorAll('#klineControlPanel input[type="checkbox"]');
+        var panel = document.getElementById('indicatorPanel_' + containerId);
+        if (!panel) return;
+        var checkboxes = panel.querySelectorAll('input[type="checkbox"]');
         for (var ci = 0; ci < checkboxes.length; ci++) {
             if (checkboxes[ci].checked) {
                 var k = checkboxes[ci].getAttribute('data-key');
@@ -94,59 +74,91 @@ function createControlPanel(chart, fullSeries, position) {
             }
         }
 
-        // 从 fullSeries 过滤（非 chart.getOption()）
         var newSeriesList = fullSeries.filter(function(s) {
             var name = s.name;
-            // 始终保留的系列（买卖点等）
             if (alwaysKeep.indexOf(name) !== -1) return true;
-            // 非可控系列（如额外策略线条）始终保留
             if (controllableNames.indexOf(name) === -1) return true;
-            // 按复选框状态过滤
             return visibleNames.indexOf(name) !== -1;
         });
 
-        // replaceMerge 强制替换 series 数组，解决 merge 模式不删除系列的问题
         chart.setOption({ series: newSeriesList }, { replaceMerge: ['series'] });
     }
 
+    // 创建按钮
+    var btn = document.createElement('button');
+    btn.id = 'indicatorBtn_' + containerId;
+    btn.textContent = '\u{1F4CA} 指标';
+    btn.style.cssText =
+        'position:absolute;top:10px;right:10px;z-index:20;' +
+        'background:rgba(15,20,35,0.85);backdrop-filter:blur(4px);' +
+        'border:1px solid #4f7eff;border-radius:6px;padding:4px 10px;' +
+        'color:#fff;cursor:pointer;font-size:12px;font-family:monospace;';
+    container.style.position = 'relative';
+    container.appendChild(btn);
+
+    // 创建浮层面板（初始隐藏）
+    var panelDiv = document.createElement('div');
+    panelDiv.id = 'indicatorPanel_' + containerId;
+    panelDiv.style.cssText =
+        'display:none;position:absolute;top:34px;right:0;' +
+        'background:rgba(15,20,35,0.95);backdrop-filter:blur(4px);' +
+        'border:1px solid #4f7eff;border-radius:8px;padding:8px 12px;' +
+        'z-index:21;grid-template-columns:repeat(2,1fr);gap:4px 14px;' +
+        'min-width:210px;box-shadow:0 4px 12px rgba(0,0,0,0.3);' +
+        'font-size:12px;font-family:monospace;';
+
     for (var i = 0; i < items.length; i++) {
         (function(item) {
-            // 将 input 包裹在 label 内，原生点击即可切换，无重复事件问题
             var label = document.createElement('label');
-            label.style.cssText = 'display: flex; align-items: center; gap: 6px; white-space: nowrap; color: #ffffff; cursor: pointer; font-size: 12px;';
+            label.style.cssText =
+                'display:flex;align-items:center;gap:4px;' +
+                'white-space:nowrap;color:#fff;cursor:pointer;font-size:12px;';
 
             var cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = item.default;
-            cb.style.cssText = 'margin: 0; cursor: pointer;';
+            cb.style.cssText = 'margin:0;cursor:pointer;';
             cb.setAttribute('data-key', item.key);
 
             label.appendChild(cb);
-            label.appendChild(document.createTextNode(' ' + item.name));
+            label.appendChild(document.createTextNode(item.name));
 
             cb.addEventListener('change', function() {
                 _applyFilter();
-                // 简短 toast 反馈
                 var tip = document.createElement('div');
                 tip.textContent = item.name + (cb.checked ? ' 显示' : ' 隐藏');
-                tip.style.cssText = 'position:fixed;bottom:20px;left:20px;background:rgba(0,0,0,0.75);color:#fff;padding:4px 12px;border-radius:6px;z-index:99999;font-size:12px;';
+                tip.style.cssText =
+                    'position:fixed;bottom:20px;left:20px;' +
+                    'background:rgba(0,0,0,0.75);color:#fff;' +
+                    'padding:4px 12px;border-radius:6px;z-index:99999;font-size:12px;';
                 document.body.appendChild(tip);
                 setTimeout(function() { tip.remove(); }, 800);
             });
 
-            panel.appendChild(label);
+            panelDiv.appendChild(label);
         })(items[i]);
     }
 
-    // 挂载到图表容器自身（确保相对定位）
-    var container = chart.getDom();
-    container.style.position = 'relative';
-    container.appendChild(panel);
+    container.appendChild(panelDiv);
 
-    // 初始应用一次过滤（隐藏默认关闭的 SAR）
+    // 初始过滤（隐藏默认关闭的系列）
     _applyFilter();
 
-    return panel;
+    var panelVisible = false;
+
+    btn.onclick = function(e) {
+        e.stopPropagation();
+        panelVisible = !panelVisible;
+        panelDiv.style.display = panelVisible ? 'grid' : 'none';
+    };
+
+    // 点击外部关闭浮层
+    document.addEventListener('click', function(e) {
+        if (panelVisible && !panelDiv.contains(e.target) && e.target !== btn) {
+            panelDiv.style.display = 'none';
+            panelVisible = false;
+        }
+    });
 }
 
 // ---- 渲染K线及买卖点（含均线）----
@@ -430,8 +442,8 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     chart.setOption(option);
     console.log("图表设置完成");
 
-    // 创建控制面板（买卖点成交图页）
-    createControlPanel(chart, allSeries, { top: '10px', left: '-20px' });
+    // 创建下拉指标选择器（买卖点成交图页）
+    createDropdownControl(chart, allSeries);
 
     // 通知副图管理器
     setTimeout(function() {
@@ -668,8 +680,8 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         };
         chart.setOption(option, true);
 
-        // 创建控制面板（个股详情页）
-        createControlPanel(chart, allSeries, { top: '10px', left: '-20px' });
+        // 创建下拉指标选择器（个股详情页）
+        createDropdownControl(chart, allSeries);
 
         setTimeout(function() {
             if (window.subChartManager) {
