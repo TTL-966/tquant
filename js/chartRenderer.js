@@ -27,9 +27,10 @@ export function formatStockDisplayHtml(code) {
 }
 
 // ---- 创建下拉指标选择器（按钮 + 浮层面板）----
-function createDropdownControl(chart, fullSeries) {
+function createDropdownControl(chart, fullSeries, rawValues) {
     var container = chart.getDom();
     var containerId = container.id || 'chart';
+    var currentPeriod = 60;
 
     // 移除旧按钮和面板
     var oldBtn = document.getElementById('indicatorBtn_' + containerId);
@@ -137,6 +138,92 @@ function createDropdownControl(chart, fullSeries) {
 
             panelDiv.appendChild(label);
         })(items[i]);
+    }
+
+    // ---- 周期选择器 ----
+    var periodRow = document.createElement('div');
+    periodRow.style.cssText =
+        'margin-top:6px;padding-top:6px;border-top:1px solid #323d5a;' +
+        'grid-column:1/-1;display:flex;align-items:center;gap:4px;flex-wrap:wrap;';
+
+    var periodLabel = document.createElement('span');
+    periodLabel.textContent = '周期：';
+    periodLabel.style.cssText = 'color:#9aa9cc;font-size:11px;';
+    periodRow.appendChild(periodLabel);
+
+    var periodBtns = [];
+    var presetPeriods = [20, 60, 120];
+    var activeBtnStyle = 'background:#4f7eff;border-color:#4f7eff;color:#fff;';
+    var inactiveBtnStyle = 'background:#1e253b;border:1px solid #323d5a;color:#9aa9cc;';
+
+    for (var pi = 0; pi < presetPeriods.length; pi++) {
+        (function(period) {
+            var pb = document.createElement('button');
+            pb.textContent = period;
+            pb.setAttribute('data-period', period);
+            pb.style.cssText =
+                'border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;' +
+                (period === currentPeriod ? activeBtnStyle : inactiveBtnStyle);
+            pb.onclick = function() {
+                if (currentPeriod === period) return;
+                currentPeriod = period;
+                customInput.value = '';
+                updatePeriod(period);
+                updatePeriodBtnStyles();
+            };
+            periodRow.appendChild(pb);
+            periodBtns.push(pb);
+        })(presetPeriods[pi]);
+    }
+
+    var customInput = document.createElement('input');
+    customInput.type = 'number';
+    customInput.placeholder = '自定义';
+    customInput.min = '5';
+    customInput.max = '500';
+    customInput.step = '5';
+    customInput.style.cssText =
+        'width:56px;background:#1e253b;border:1px solid #323d5a;' +
+        'border-radius:4px;color:#fff;padding:2px 4px;font-size:11px;';
+    customInput.onchange = function() {
+        var val = parseInt(customInput.value);
+        if (isNaN(val) || val < 5 || val > 500) return;
+        if (val === currentPeriod) return;
+        currentPeriod = val;
+        updatePeriod(val);
+        updatePeriodBtnStyles();
+    };
+    periodRow.appendChild(customInput);
+
+    panelDiv.appendChild(periodRow);
+
+    function updatePeriodBtnStyles() {
+        for (var bi = 0; bi < periodBtns.length; bi++) {
+            var bp = parseInt(periodBtns[bi].getAttribute('data-period'));
+            periodBtns[bi].style.cssText =
+                'border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;' +
+                (bp === currentPeriod ? activeBtnStyle : inactiveBtnStyle);
+        }
+    }
+
+    function updatePeriod(period) {
+        var closes = rawValues.map(function(v) { return parseFloat(v[1]) || 0; });
+        var highs = rawValues.map(function(v) { return parseFloat(v[3]) || 0; });
+        var lows = rawValues.map(function(v) { return parseFloat(v[2]) || 0; });
+        var volumes = rawValues.map(function(v) { return parseFloat(v[4]) || 0; });
+
+        var meanData = indicators.calculateMean(closes, period);
+        var medianData = indicators.calculateMedian(closes, period);
+        var vwapData = indicators.calculateVWAP(highs, lows, closes, volumes, period);
+
+        for (var si = 0; si < fullSeries.length; si++) {
+            var s = fullSeries[si];
+            if (s.name === 'VWAP60') s.data = vwapData;
+            else if (s.name === 'Median60') s.data = medianData;
+            else if (s.name === 'Mean60') s.data = meanData;
+        }
+
+        _applyFilter();
     }
 
     container.appendChild(panelDiv);
@@ -443,7 +530,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     console.log("图表设置完成");
 
     // 创建下拉指标选择器（买卖点成交图页）
-    createDropdownControl(chart, allSeries);
+    createDropdownControl(chart, allSeries, values);
 
     // 通知副图管理器
     setTimeout(function() {
@@ -681,7 +768,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         chart.setOption(option, true);
 
         // 创建下拉指标选择器（个股详情页）
-        createDropdownControl(chart, allSeries);
+        createDropdownControl(chart, allSeries, values);
 
         setTimeout(function() {
             if (window.subChartManager) {
