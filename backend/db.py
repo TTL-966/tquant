@@ -103,6 +103,26 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_industry_l2 ON stock_industry_detail(industry_level2)
             """))
 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_financial_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts_code TEXT NOT NULL,
+                    report_date TEXT NOT NULL,
+                    pe_ttm REAL,
+                    pb REAL,
+                    roe REAL,
+                    total_mv REAL,
+                    revenue REAL,
+                    net_profit REAL,
+                    update_date TEXT,
+                    UNIQUE(ts_code, report_date)
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_history_ts_date
+                ON stock_financial_history(ts_code, report_date)
+            """))
+
             conn.commit()
 
     def _get_stock_suffix(self, code):

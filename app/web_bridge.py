@@ -213,6 +213,44 @@ class WebBridge(QObject):
             return json.dumps([])
 
     @Slot(str, result=str)
+    def get_stock_financial(self, code):
+        """获取个股财务数据（最新）"""
+        try:
+            code_pure = code.split('.')[0]
+            # 生成 ts_code
+            if code_pure.startswith(('6', '9')):
+                ts_code = f"{code_pure}.SH"
+            elif code_pure.startswith('8'):
+                ts_code = f"{code_pure}.BJ"
+            else:
+                ts_code = f"{code_pure}.SZ"
+
+            sql = text("""
+                SELECT pe_ttm, pb, roe, total_mv, net_profit, float_shares, update_date
+                FROM stock_financial
+                WHERE ts_code = :ts_code
+            """)
+            with self.db.engine.connect() as conn:
+                row = conn.execute(sql, {"ts_code": ts_code}).fetchone()
+            if row:
+                result = {
+                    "success": True,
+                    "pe_ttm": row[0],
+                    "pb": row[1],
+                    "roe": row[2],
+                    "total_mv": row[3],
+                    "net_profit": row[4],
+                    "float_shares": row[5],
+                    "update_date": row[6],
+                }
+            else:
+                result = {"success": False, "error": "无财务数据"}
+            return json.dumps(result, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, result=str)
     def get_index_stocks(self, index_code):
         """返回指数成分股代码列表。数据库不可用时返回 mock 数据。"""
         mock_indices = {

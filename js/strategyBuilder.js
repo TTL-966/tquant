@@ -267,7 +267,7 @@ function showAddCardModal() {
     overlay.onclick = function() { overlay.remove(); modal.remove(); };
 
     var modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:24px;min-width:480px;z-index:10000;color:#fff;';
+    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:24px;min-width:680px;z-index:10000;color:#fff;';
 
     var title = document.createElement('div');
     title.style.cssText = 'font-weight:600;font-size:16px;margin-bottom:16px;';
@@ -279,13 +279,13 @@ function showAddCardModal() {
     closeBtn.onclick = function() { overlay.remove(); modal.remove(); };
 
     var grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5, 1fr);gap:6px;';
 
     var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'bollinger_width', 'kdj', 'volume', 'volume_contraction', 'day_of_week', 'sar', 'obv', 'hammer_hanging', 'williams_r', 'roc', 'psy', 'atr_breakout', 'cci', 'ma_alignment', 'stop_loss_profit', 'position', 'price_limit', 'pe_below', 'pb_below', 'roe_above'];
     typeKeys.forEach(function(key) {
         var meta = CARD_TYPE_META[key];
         var item = document.createElement('div');
-        item.style.cssText = 'background:#0e1220;border:1px solid #323d5a;border-radius:10px;padding:10px 8px;cursor:pointer;text-align:center;transition:background 0.2s;';
+        item.style.cssText = 'background:#0e1220;border:1px solid #323d5a;border-radius:10px;padding:8px 6px;cursor:pointer;text-align:center;transition:background 0.2s;';
         item.title = meta.description;
         item.innerHTML = '<div style="font-size:24px;">' + meta.icon + '</div>' +
             '<div style="color:#fff;font-weight:600;font-size:13px;margin-top:3px;">' + meta.label + '</div>';

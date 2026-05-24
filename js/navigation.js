@@ -397,6 +397,7 @@ function renderKchartPage(container) {
                 <button id="loadStrategySignalsBtn" style="padding:4px 12px;font-size:12px;">📊 加载策略信号</button>
                 <button id="gotoStrategyBtn" style="padding:4px 12px;font-size:12px;">📝 跳转到策略页</button>
                 <button id="refreshKlineBtn" style="padding:4px 12px;font-size:12px;">刷新K线</button>
+                <button id="kchartFundamentalBtn" style="margin-left:4px;background:#2a3a5a;color:#fff;border:none;border-radius:30px;padding:4px 10px;cursor:pointer;font-size:12px;">📊 个股资料</button>
                 <div style="position:relative;display:inline-block;">
                     <input type="text" id="periodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
                     <span id="periodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
@@ -710,6 +711,14 @@ function renderKchartPage(container) {
             };
         }
 
+        // 个股资料按钮
+        var fundBtn = document.getElementById('kchartFundamentalBtn');
+        if (fundBtn) {
+            fundBtn.addEventListener('click', function() {
+                showFundamentalModal(currentStockCode);
+            });
+        }
+
         // 初始加载K线
         buyPoints.length = 0;
         sellPoints.length = 0;
@@ -728,6 +737,7 @@ function renderStockPage(container) {
                     <input type="text" id="stockCodeInput" placeholder="输入股票代码或名称搜索" style="flex:1; background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; font-size:13px;">
                     <div id="stockSuggestionsContainer" style="position: absolute; top:40px; left:0; right:0; z-index: 1000; max-height: 200px; overflow-y: auto; background: #1a2135; border:1px solid #2a314a; border-radius: 8px; display: none;"></div>
                     <button id="stockSearchBtn">🔍 查询</button>
+                    <button id="stockFundamentalBtn" style="background:#2a3a5a;">📊 个股资料</button>
                 </div>
                 <div id="stockIndustryInfo" style="display:flex; align-items:center; gap:8px; margin-left:16px; white-space:nowrap;">
                     <span id="stockIndustryLabel" style="color:#9aa9cc; font-size:13px;">行业：--</span>
@@ -964,6 +974,13 @@ function renderStockPage(container) {
             });
             codeInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') searchBtn.click();
+            });
+        }
+
+        var fundamentalBtn = document.getElementById('stockFundamentalBtn');
+        if (fundamentalBtn) {
+            fundamentalBtn.addEventListener('click', function() {
+                showFundamentalModal(currentStockCode);
             });
         }
 
@@ -1863,6 +1880,81 @@ function renderStaticDetail(container) {
             };
         }
     }, 50);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  个股资料弹窗
+// ═══════════════════════════════════════════════════════════════
+async function showFundamentalModal(code) {
+    if (!bridge) {
+        showToast('Bridge 未连接', true);
+        return;
+    }
+
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#1a2135;border:1px solid #4f7eff;border-radius:20px;width:520px;max-width:90vw;padding:24px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.5);';
+
+    // Loading state
+    modal.innerHTML = '<div style="text-align:center;color:#9aa9cc;padding:32px 0;">加载中...</div>';
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    var close = function() { overlay.remove(); };
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+
+    try {
+        var jsonStr = await bridge.get_stock_financial(code);
+        var data = JSON.parse(jsonStr);
+
+        if (!data.success) {
+            modal.innerHTML = '<div style="text-align:center;color:#ff6b6b;padding:32px 0;">获取财务数据失败: ' +
+                escapeHtml(data.error || '') + '</div>';
+            return;
+        }
+
+        var fmtNum = function(val) {
+            return (val !== undefined && val !== null && !isNaN(val)) ? val.toFixed(2) : '--';
+        };
+        var fmtPct = function(val) {
+            return (val !== undefined && val !== null && !isNaN(val)) ? (val * 100).toFixed(2) + '%' : '--';
+        };
+
+        var pe       = fmtNum(data.pe_ttm);
+        var pb       = fmtNum(data.pb);
+        var roe      = fmtPct(data.roe);
+        var totalMv  = fmtNum(data.total_mv);
+        var netProfit = fmtNum(data.net_profit);
+        var floatSh  = fmtNum(data.float_shares);
+        var updDate  = data.update_date || '--';
+
+        modal.innerHTML =
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">' +
+            '<h3 style="margin:0;">📊 个股资料 · ' + escapeHtml(code) + '</h3>' +
+            '<button id="closeFundTop" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✖</button>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;">' +
+            '<div><span style="color:#9aa9cc;">市盈率 PE (TTM)</span><br><span style="font-size:18px;font-weight:600;">' + pe + '</span></div>' +
+            '<div><span style="color:#9aa9cc;">市净率 PB</span><br><span style="font-size:18px;font-weight:600;">' + pb + '</span></div>' +
+            '<div><span style="color:#9aa9cc;">净资产收益率 ROE</span><br><span style="font-size:18px;font-weight:600;">' + roe + '</span></div>' +
+            '<div><span style="color:#9aa9cc;">总市值 (亿元)</span><br><span style="font-size:18px;font-weight:600;">' + totalMv + '</span></div>' +
+            '<div><span style="color:#9aa9cc;">净利润 (亿元)</span><br><span style="font-size:18px;font-weight:600;">' + netProfit + '</span></div>' +
+            '<div><span style="color:#9aa9cc;">流通股本 (亿股)</span><br><span style="font-size:18px;font-weight:600;">' + floatSh + '</span></div>' +
+            '</div>' +
+            '<div style="margin-top:20px;text-align:center;color:#9aa9cc;font-size:12px;">数据更新: ' + escapeHtml(updDate) + '</div>' +
+            '<div style="margin-top:20px;text-align:right;">' +
+            '<button id="closeModalBtn" style="background:#4f7eff;border:none;padding:6px 20px;border-radius:30px;color:#fff;cursor:pointer;">关闭</button>' +
+            '</div>';
+
+        modal.querySelector('#closeFundTop').addEventListener('click', close);
+        modal.querySelector('#closeModalBtn').addEventListener('click', close);
+
+    } catch (err) {
+        modal.innerHTML = '<div style="text-align:center;color:#ff6b6b;padding:32px 0;">请求失败: ' +
+            escapeHtml(err.message || '') + '</div>';
+    }
 }
 
 function renderDetailPage(container) {
