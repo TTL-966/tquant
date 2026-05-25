@@ -229,6 +229,90 @@ class DataFeed:
         except Exception:
             return None
 
+    def get_realtime_quotes_batch(self, codes, fields=None):
+        """批量获取实时行情（腾讯批量接口，最多 50 只/次）。
+
+        :param codes: 纯数字代码列表，如 ['000001', '600519']
+        :param fields: 需要的字段名列表，默认 ['change_pct']
+            可选: price, prev_close, open, change_pct, high, low, volume, amount
+        :return: dict {code: {field: value, ...}}，获取失败的代码不在结果中
+        """
+        from urllib import request
+        import re
+
+        if not codes:
+            return {}
+
+        if fields is None:
+            fields = ['change_pct']
+
+        FIELD_MAP = {
+            'price': 3, 'prev_close': 4, 'open': 5,
+            'change_pct': 32, 'high': 33, 'low': 34,
+            'volume': 36, 'amount': 37,
+        }
+
+        wanted_indices = [(f, FIELD_MAP[f]) for f in fields if f in FIELD_MAP]
+        if not wanted_indices:
+            return {}
+
+        result = {}
+
+        def _q_code(c):
+            c = c.split('.')[0]
+            if c.startswith(('60', '68')):
+                return f'sh{c}'
+            return f'sz{c}'
+
+        # 腾讯接口单次最多 ~50 只
+        batch_size = 50
+        for i in range(0, len(codes), batch_size):
+            batch = codes[i:i + batch_size]
+            q_codes = [f'{_q_code(c)}' for c in batch]
+            url = f'https://web.sqt.gtimg.cn/q={",".join(q_codes)}'
+
+            try:
+                req = request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with request.urlopen(req, timeout=5) as resp:
+                    raw = resp.read()
+                text = raw.decode('gbk', errors='replace')
+
+                # 按行匹配: v_sz000001="1~平安银行~000001~...~0.50~...";
+                for line in text.split('\n'):
+                    m = re.search(r'v_s([hz])', line)
+                    if not m:
+                        continue
+                    exchange = m.group(1)
+                    content_m = re.search(r'="(.+)"', line)
+                    if not content_m:
+                        continue
+                    parts = content_m.group(1).split('~')
+                    if len(parts) < 38:
+                        continue
+
+                    # parts[2] 是纯数字代码
+                    pure_code = parts[2] if len(parts) > 2 else None
+                    if not pure_code or not pure_code.isdigit():
+                        continue
+
+                    entry = {}
+                    valid = True
+                    for fname, idx in wanted_indices:
+                        try:
+                            entry[fname] = float(parts[idx]) if parts[idx] else 0.0
+                        except ValueError:
+                            entry[fname] = 0.0
+                            valid = False
+
+                    if valid:
+                        result[pure_code] = entry
+
+            except Exception as e:
+                # 单批失败不中断整体，继续下一批
+                continue
+
+        return result
+
     def _mock_kline_json(self, code):
         """生成覆盖 2010-01-01 至 2026-12-31 的模拟K线JSON（周线，数据量可控）"""
         import numpy as np

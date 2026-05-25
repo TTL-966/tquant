@@ -435,6 +435,54 @@ export var CARD_TYPE_META = {
             { key: 'minRatio', label: '最小量比', type: 'number', min: 0.1, max: 20, step: 0.1, default: 1.5 },
             { key: 'maxRatio', label: '最大量比', type: 'number', min: 0.1, max: 50, step: 0.1, default: 5 }
         ]
+    },
+    realtime_change: {
+        type: 'realtime_change',
+        label: '实时涨跌幅',
+        icon: '⚡',
+        description: '当前实时涨跌幅在指定范围内（仅限条件选股，不用于回测）',
+        defaultAction: 'buy',
+        defaultParams: { minChange: 3, maxChange: 10 },
+        paramFields: [
+            { key: 'minChange', label: '最小涨幅(%)', type: 'number', min: -20, max: 20, step: 0.1, default: 3 },
+            { key: 'maxChange', label: '最大涨幅(%)', type: 'number', min: -20, max: 20, step: 0.1, default: 10 }
+        ]
+    },
+    total_mv_between: {
+        type: 'total_mv_between',
+        label: '总市值区间',
+        icon: '💰',
+        description: '总市值在指定范围内（单位：亿元，空值表示无界限）',
+        defaultAction: 'buy',
+        defaultParams: { min: 0, max: 1000 },
+        paramFields: [
+            { key: 'min', label: '最小值(亿)', type: 'number', min: 0, max: 100000, step: 10, default: 0 },
+            { key: 'max', label: '最大值(亿)', type: 'number', min: 0, max: 100000, step: 10, default: 1000 }
+        ]
+    },
+    float_mv_between: {
+        type: 'float_mv_between',
+        label: '流通市值区间',
+        icon: '💵',
+        description: '流通市值在指定范围内（单位：亿元，当前使用总市值近似）',
+        defaultAction: 'buy',
+        defaultParams: { min: 0, max: 500 },
+        paramFields: [
+            { key: 'min', label: '最小值(亿)', type: 'number', min: 0, max: 100000, step: 10, default: 0 },
+            { key: 'max', label: '最大值(亿)', type: 'number', min: 0, max: 100000, step: 10, default: 500 }
+        ]
+    },
+    float_shares_between: {
+        type: 'float_shares_between',
+        label: '流通股本区间',
+        icon: '📊',
+        description: '流通股本在指定范围内（单位：亿股，空值表示无界限）',
+        defaultAction: 'buy',
+        defaultParams: { min: 0, max: 100 },
+        paramFields: [
+            { key: 'min', label: '最小值(亿股)', type: 'number', min: 0, max: 10000, step: 1, default: 0 },
+            { key: 'max', label: '最大值(亿股)', type: 'number', min: 0, max: 10000, step: 1, default: 100 }
+        ]
     }
 };
 

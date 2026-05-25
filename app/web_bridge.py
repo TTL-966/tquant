@@ -266,39 +266,21 @@ class WebBridge(QObject):
 
     @Slot(str, result=str)
     def get_index_stocks(self, index_code):
-        """返回指数成分股代码列表。数据库不可用时返回 mock 数据。"""
-        mock_indices = {
-            '000300.XSHG': ['000001','000002','000063','000333','000651','000725','000858','002142',
-                '002415','002594','300750','600000','600009','600016','600028','600030','600031',
-                '600036','600048','600050','600104','600276','600309','600519','600585','600809',
-                '600887','601012','601088','601166','601288','601318','601328','601398','601668',
-                '601857','601888','601939','603259','603288'],
-            '000905.XSHG': ['000012','000021','000039','000050','000060','000066','000100','000155',
-                '002013','002028','002049','002074','002091','002110','002129','002138','002155',
-                '300001','300003','300014','300024','300033','300037','300058','300070','300088',
-                '600004','600008','600012','600017','600018','600019','600020','600021','600022',
-                '601000','601001','601003','601005','601006','601008','601018','601019','601020'],
-            '000852.XSHG': ['000158','000301','000401','000420','000426','000501','000510','000519',
-                '002001','002003','002007','002008','002010','002011','002017','002019','002020',
-                '300002','300004','300005','300006','300007','300008','300009','300010','300011',
-                '600001','600002','600003','600005','600006','600007','600010','600011','600012'],
-            '399006.XSHE': ['300001','300003','300014','300015','300024','300033','300037','300058',
-                '300059','300070','300088','300122','300124','300142','300146','300207','300251',
-                '300274','300316','300347','300408','300413','300433','300450','300498','300502',
-                '300529','300558','300595','300601','300628','300661','300750','300759','300760'],
-            '000688.XSHG': ['688001','688005','688008','688009','688012','688036','688065','688111',
-                '688126','688187','688223','688256','688303','688396','688516','688536','688561',
-                '688599','688728','688777','688981']
-        }
+        """返回指数成分股代码列表（从数据库读取）"""
         try:
-            result = self.db.get_index_stocks(index_code)
-            if result and len(result) > 0:
-                return json.dumps(result)
-            # fallback to mock
-            return json.dumps(mock_indices.get(index_code, []))
+            sql = text("SELECT stock_code FROM index_components WHERE index_code = :index_code ORDER BY stock_code")
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, {"index_code": index_code}).fetchall()
+            if rows:
+                codes = [row[0] for row in rows]
+                return json.dumps(codes)
+            else:
+                # 如果没有数据，尝试触发一次更新（异步或直接调用，但注意性能）
+                # 简单起见，返回空数组并提示用户手动更新
+                return json.dumps([])
         except Exception as e:
-            traceback.print_exc(file=sys.stderr)
-            return json.dumps(mock_indices.get(index_code, []))
+            traceback.print_exc()
+            return json.dumps([])
 
     @Slot(str, str, str, result=str)
     def run_backtest(self, code, start_date="2010-01-01", end_date="2026-12-31"):
@@ -678,6 +660,114 @@ class WebBridge(QObject):
 
             with self.db.engine.connect() as conn:
                 rows = conn.execute(sql, {"industry": industry}).fetchall()
+
+            result = [row[0].replace('.SZ', '').replace('.SH', '').replace('.BJ', '') for row in rows]
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
+
+    @Slot(str, str, str, result=str)
+    def filter_stocks_by_market_cap(self, codes_json, min_cap="", max_cap=""):
+        """按总市值区间过滤股票列表（单位：亿元），空值表示不限制"""
+        try:
+            codes = json.loads(codes_json) if isinstance(codes_json, str) else codes_json
+            if not codes:
+                return json.dumps([])
+
+            min_val = float(min_cap) if min_cap and str(min_cap).strip() else None
+            max_val = float(max_cap) if max_cap and str(max_cap).strip() else None
+
+            if min_val is None and max_val is None:
+                return json.dumps(codes)
+
+            ts_codes = []
+            for c in codes:
+                c = str(c).split('.')[0].zfill(6)
+                if c.startswith(('000', '001', '002', '003', '300', '301')):
+                    ts_codes.append(f"{c}.SZ")
+                elif c.startswith(('600', '601', '603', '605', '688', '689')):
+                    ts_codes.append(f"{c}.SH")
+                elif c.startswith('8'):
+                    ts_codes.append(f"{c}.BJ")
+                else:
+                    ts_codes.append(f"{c}.SZ")
+
+            if not ts_codes:
+                return json.dumps([])
+
+            placeholders = ','.join([f"'{t}'" for t in ts_codes])
+            conditions = ["total_mv IS NOT NULL"]
+            params = {}
+            if min_val is not None:
+                conditions.append("total_mv >= :min_val")
+                params['min_val'] = min_val
+            if max_val is not None:
+                conditions.append("total_mv <= :max_val")
+                params['max_val'] = max_val
+
+            sql = text(f"""
+                SELECT ts_code FROM stock_financial
+                WHERE ts_code IN ({placeholders})
+                  AND {' AND '.join(conditions)}
+            """)
+
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+
+            result = [row[0].replace('.SZ', '').replace('.SH', '').replace('.BJ', '') for row in rows]
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
+
+    @Slot(str, str, str, result=str)
+    def filter_stocks_by_float_shares(self, codes_json, min_shares="", max_shares=""):
+        """按流通股本区间过滤股票列表（单位：亿股），空值表示不限制"""
+        try:
+            codes = json.loads(codes_json) if isinstance(codes_json, str) else codes_json
+            if not codes:
+                return json.dumps([])
+
+            min_val = float(min_shares) if min_shares and str(min_shares).strip() else None
+            max_val = float(max_shares) if max_shares and str(max_shares).strip() else None
+
+            if min_val is None and max_val is None:
+                return json.dumps(codes)
+
+            ts_codes = []
+            for c in codes:
+                c = str(c).split('.')[0].zfill(6)
+                if c.startswith(('000', '001', '002', '003', '300', '301')):
+                    ts_codes.append(f"{c}.SZ")
+                elif c.startswith(('600', '601', '603', '605', '688', '689')):
+                    ts_codes.append(f"{c}.SH")
+                elif c.startswith('8'):
+                    ts_codes.append(f"{c}.BJ")
+                else:
+                    ts_codes.append(f"{c}.SZ")
+
+            if not ts_codes:
+                return json.dumps([])
+
+            placeholders = ','.join([f"'{t}'" for t in ts_codes])
+            conditions = ["float_shares IS NOT NULL"]
+            params = {}
+            if min_val is not None:
+                conditions.append("float_shares >= :min_val")
+                params['min_val'] = min_val
+            if max_val is not None:
+                conditions.append("float_shares <= :max_val")
+                params['max_val'] = max_val
+
+            sql = text(f"""
+                SELECT ts_code FROM stock_financial
+                WHERE ts_code IN ({placeholders})
+                  AND {' AND '.join(conditions)}
+            """)
+
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
 
             result = [row[0].replace('.SZ', '').replace('.SH', '').replace('.BJ', '') for row in rows]
             return json.dumps(result)

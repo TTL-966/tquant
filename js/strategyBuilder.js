@@ -30,9 +30,14 @@ var customStockCodes = '';
 var poolIndustryFilter = '';
 var poolConceptFilter = [];
 var poolConceptMatchMode = 'any';
+var poolMarketCapMin = '';
+var poolMarketCapMax = '';
+var poolFloatSharesMin = '';
+var poolFloatSharesMax = '';
 var currentStockPool = [];  // computed final pool
 var allStocksCache = [];
 var poolInitialized = false;
+var poolDebounceTimer = null;  // debounce timer for filter inputs
 
 // Dynamic options cache (for concept/industry selects)
 var conceptListCache = [];
@@ -1169,7 +1174,11 @@ function saveCurrentStrategy() {
         customStockCodes: customStockCodes,
         poolIndustryFilter: poolIndustryFilter,
         poolConceptFilter: poolConceptFilter,
-        poolConceptMatchMode: poolConceptMatchMode
+        poolConceptMatchMode: poolConceptMatchMode,
+        poolMarketCapMin: poolMarketCapMin,
+        poolMarketCapMax: poolMarketCapMax,
+        poolFloatSharesMin: poolFloatSharesMin,
+        poolFloatSharesMax: poolFloatSharesMax
     };
     var configObj = JSON.parse(jsonConfig);
     configObj.poolConfig = poolConfig;
@@ -1221,6 +1230,10 @@ function loadStrategyById(id) {
         poolIndustryFilter = pc.poolIndustryFilter || '';
         poolConceptFilter = pc.poolConceptFilter || [];
         poolConceptMatchMode = pc.poolConceptMatchMode || 'any';
+        poolMarketCapMin = pc.poolMarketCapMin || '';
+        poolMarketCapMax = pc.poolMarketCapMax || '';
+        poolFloatSharesMin = pc.poolFloatSharesMin || '';
+        poolFloatSharesMax = pc.poolFloatSharesMax || '';
 
         var nameInput = document.getElementById('strategyNameInput');
         if (nameInput) nameInput.value = obj.name;
@@ -1242,6 +1255,14 @@ function loadStrategyById(id) {
         if (indSel) indSel.value = poolIndustryFilter;
         var mmSel = document.getElementById('poolConceptMatchMode');
         if (mmSel) mmSel.value = poolConceptMatchMode;
+        var mcMinEl = document.getElementById('poolMarketCapMin');
+        if (mcMinEl) mcMinEl.value = poolMarketCapMin;
+        var mcMaxEl = document.getElementById('poolMarketCapMax');
+        if (mcMaxEl) mcMaxEl.value = poolMarketCapMax;
+        var fsMinEl = document.getElementById('poolFloatSharesMin');
+        if (fsMinEl) fsMinEl.value = poolFloatSharesMin;
+        var fsMaxEl = document.getElementById('poolFloatSharesMax');
+        if (fsMaxEl) fsMaxEl.value = poolFloatSharesMax;
         // Re-render concept select with selections restored
         populatePoolConceptSelect('');
         // Trigger pool update
@@ -1285,6 +1306,10 @@ function newStrategy() {
     poolIndustryFilter = '';
     poolConceptFilter = [];
     poolConceptMatchMode = 'any';
+    poolMarketCapMin = '';
+    poolMarketCapMax = '';
+    poolFloatSharesMin = '';
+    poolFloatSharesMax = '';
     currentStockPool = [];
     slippage = 'close';
     window.currentStrategyName = undefined;
@@ -1303,6 +1328,14 @@ function newStrategy() {
     if (mmSel) mmSel.value = 'any';
     var conSel = document.getElementById('poolConceptFilter');
     if (conSel) { conSel.querySelectorAll('option').forEach(function(o) { o.selected = false; }); }
+    var mcMinEl = document.getElementById('poolMarketCapMin');
+    if (mcMinEl) mcMinEl.value = '';
+    var mcMaxEl = document.getElementById('poolMarketCapMax');
+    if (mcMaxEl) mcMaxEl.value = '';
+    var fsMinEl = document.getElementById('poolFloatSharesMin');
+    if (fsMinEl) fsMinEl.value = '';
+    var fsMaxEl = document.getElementById('poolFloatSharesMax');
+    if (fsMaxEl) fsMaxEl.value = '';
     updatePoolConceptCount();
     updateStockPool();
     var slInput = document.getElementById('slippageInput');
@@ -1364,6 +1397,10 @@ export function renderStrategyPage(container) {
                 poolIndustryFilter = pc.poolIndustryFilter || '';
                 poolConceptFilter = pc.poolConceptFilter || [];
                 poolConceptMatchMode = pc.poolConceptMatchMode || 'any';
+                poolMarketCapMin = pc.poolMarketCapMin || '';
+                poolMarketCapMax = pc.poolMarketCapMax || '';
+                poolFloatSharesMin = pc.poolFloatSharesMin || '';
+                poolFloatSharesMax = pc.poolFloatSharesMax || '';
             }
         }
     }
@@ -1403,6 +1440,21 @@ export function renderStrategyPage(container) {
         // Optional filters
         '<div id="poolOptionalFilters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">' +
         '<span style="color:#9aa9cc;font-size:11px;">筛选:</span>' +
+        // Market cap range
+        '<span style="color:#7a8ba8;font-size:10px;">总市值(亿)</span>' +
+        '<input id="poolMarketCapMin" type="number" min="0" step="1" placeholder="最小" value="' + escapeHtml(poolMarketCapMin) + '" ' +
+        'style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
+        '<span style="color:#7a8ba8;font-size:10px;">-</span>' +
+        '<input id="poolMarketCapMax" type="number" min="0" step="1" placeholder="最大" value="' + escapeHtml(poolMarketCapMax) + '" ' +
+        'style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
+        // Float shares range
+        '<span style="color:#7a8ba8;font-size:10px;">股本(亿股)</span>' +
+        '<input id="poolFloatSharesMin" type="number" min="0" step="0.1" placeholder="最小" value="' + escapeHtml(poolFloatSharesMin) + '" ' +
+        'style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
+        '<span style="color:#7a8ba8;font-size:10px;">-</span>' +
+        '<input id="poolFloatSharesMax" type="number" min="0" step="0.1" placeholder="最大" value="' + escapeHtml(poolFloatSharesMax) + '" ' +
+        'style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
+        // Industry filter
         '<select id="poolIndustryFilter" style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;max-width:160px;">' +
         '<option value="">-- 行业(可选) --</option>' +
         '</select>' +
@@ -1669,6 +1721,38 @@ export function renderStrategyPage(container) {
         });
     }
 
+    // Market cap inputs — debounced
+    var mcMinEl = document.getElementById('poolMarketCapMin');
+    if (mcMinEl) {
+        mcMinEl.addEventListener('input', function() {
+            poolMarketCapMin = this.value;
+            debounceUpdatePool();
+        });
+    }
+    var mcMaxEl = document.getElementById('poolMarketCapMax');
+    if (mcMaxEl) {
+        mcMaxEl.addEventListener('input', function() {
+            poolMarketCapMax = this.value;
+            debounceUpdatePool();
+        });
+    }
+
+    // Float shares inputs — debounced
+    var fsMinEl = document.getElementById('poolFloatSharesMin');
+    if (fsMinEl) {
+        fsMinEl.addEventListener('input', function() {
+            poolFloatSharesMin = this.value;
+            debounceUpdatePool();
+        });
+    }
+    var fsMaxEl = document.getElementById('poolFloatSharesMax');
+    if (fsMaxEl) {
+        fsMaxEl.addEventListener('input', function() {
+            poolFloatSharesMax = this.value;
+            debounceUpdatePool();
+        });
+    }
+
     var conceptSearchEl = document.getElementById('poolConceptSearch');
     if (conceptSearchEl) {
         conceptSearchEl.addEventListener('input', function() {
@@ -1696,9 +1780,17 @@ export function renderStrategyPage(container) {
     var resetFiltersBtn = document.getElementById('poolResetFiltersBtn');
     if (resetFiltersBtn) {
         resetFiltersBtn.addEventListener('click', function() {
+            poolMarketCapMin = '';
+            poolMarketCapMax = '';
+            poolFloatSharesMin = '';
+            poolFloatSharesMax = '';
             poolIndustryFilter = '';
             poolConceptFilter = [];
             poolConceptMatchMode = 'any';
+            document.getElementById('poolMarketCapMin').value = '';
+            document.getElementById('poolMarketCapMax').value = '';
+            document.getElementById('poolFloatSharesMin').value = '';
+            document.getElementById('poolFloatSharesMax').value = '';
             var indSel = document.getElementById('poolIndustryFilter');
             if (indSel) indSel.value = '';
             var conSel = document.getElementById('poolConceptFilter');
@@ -1716,6 +1808,14 @@ export function renderStrategyPage(container) {
 
     // Initialize pool
     initPoolSelector();
+
+    // Debounce helper — delays updateStockPool by 400ms to avoid rapid backend calls
+    function debounceUpdatePool() {
+        if (poolDebounceTimer) clearTimeout(poolDebounceTimer);
+        poolDebounceTimer = setTimeout(function() {
+            updateStockPool();
+        }, 400);
+    }
 
     // Render cards
     loadDynamicOptions();
@@ -1810,13 +1910,13 @@ function updateStockPool() {
         }
 
         nextPromise.then(function(codesAfterIndustry) {
-            // Apply optional concept filter
-            var finalPromise;
-            if (poolConceptFilter.length > 0 && bridge && typeof bridge.filter_stocks_by_concepts === 'function') {
-                finalPromise = bridge.filter_stocks_by_concepts(
-                    JSON.stringify(codesAfterIndustry),
-                    JSON.stringify(poolConceptFilter),
-                    poolConceptMatchMode
+            // Apply optional market cap filter
+            var mcPromise;
+            var mcMin = (poolMarketCapMin || '').toString().trim();
+            var mcMax = (poolMarketCapMax || '').toString().trim();
+            if ((mcMin || mcMax) && bridge && typeof bridge.filter_stocks_by_market_cap === 'function') {
+                mcPromise = bridge.filter_stocks_by_market_cap(
+                    JSON.stringify(codesAfterIndustry), mcMin, mcMax
                 ).then(function(jsonStr) {
                     try {
                         var filtered = JSON.parse(jsonStr);
@@ -1824,16 +1924,54 @@ function updateStockPool() {
                     } catch(e) { return codesAfterIndustry; }
                 });
             } else {
-                finalPromise = Promise.resolve(codesAfterIndustry);
+                mcPromise = Promise.resolve(codesAfterIndustry);
             }
 
-            finalPromise.then(function(finalCodes) {
+            mcPromise.then(function(codesAfterMC) {
+                // Apply optional float shares filter
+                var fsPromise;
+                var fsMin = (poolFloatSharesMin || '').toString().trim();
+                var fsMax = (poolFloatSharesMax || '').toString().trim();
+                if ((fsMin || fsMax) && bridge && typeof bridge.filter_stocks_by_float_shares === 'function') {
+                    fsPromise = bridge.filter_stocks_by_float_shares(
+                        JSON.stringify(codesAfterMC), fsMin, fsMax
+                    ).then(function(jsonStr) {
+                        try {
+                            var filtered = JSON.parse(jsonStr);
+                            return Array.isArray(filtered) ? filtered : codesAfterMC;
+                        } catch(e) { return codesAfterMC; }
+                    });
+                } else {
+                    fsPromise = Promise.resolve(codesAfterMC);
+                }
+
+                fsPromise.then(function(codesAfterFS) {
+                    // Apply optional concept filter
+                    var finalPromise;
+                    if (poolConceptFilter.length > 0 && bridge && typeof bridge.filter_stocks_by_concepts === 'function') {
+                        finalPromise = bridge.filter_stocks_by_concepts(
+                            JSON.stringify(codesAfterFS),
+                            JSON.stringify(poolConceptFilter),
+                            poolConceptMatchMode
+                        ).then(function(jsonStr) {
+                            try {
+                                var filtered = JSON.parse(jsonStr);
+                                return Array.isArray(filtered) ? filtered : codesAfterFS;
+                            } catch(e) { return codesAfterFS; }
+                        });
+                    } else {
+                        finalPromise = Promise.resolve(codesAfterFS);
+                    }
+
+                    finalPromise.then(function(finalCodes) {
                 currentStockPool = finalCodes;
                 var count = finalCodes.length;
                 var preview10 = finalCodes.slice(0, 10).join(', ');
                 var suffix = count > 10 ? ' ...' : '';
                 previewEl.textContent = '股票池: ' + count + ' 只 | 前10: ' + preview10 + suffix;
                 previewEl.style.color = count > 0 ? '#4f7eff' : '#ff4c4c';
+                    });
+                });
             });
         });
     }).catch(function(err) {

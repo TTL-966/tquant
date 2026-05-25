@@ -47,8 +47,8 @@ class IndexComponentUpdater(BaseUpdater):
             elif index_name == 'zz1000':
                 df = ak.index_stock_cons_csindex("000852")
             elif index_name == 'cyb':
-                # 创业板指 399006，成分股列表使用 ak.index_stock_cons_szse("399006")
-                df = ak.index_stock_cons_szse("399006")
+                # 创业板指 399006，使用中证指数接口
+                df = ak.index_stock_cons_csindex("399006")
             elif index_name == 'kc50':
                 # 科创50 指数 000688，成分股列表
                 df = ak.index_stock_cons_csindex("000688")
