@@ -1882,6 +1882,17 @@ function updateStockPool() {
                     var list = JSON.parse(jsonStr);
                     return Array.isArray(list) ? list : [];
                 } catch(e) { return []; }
+            }).then(function(codes) {
+                // Fallback: if index components are empty, use prefix-based lookup
+                if (codes.length === 0 && poolSource === 'cyb' && bridge && typeof bridge.get_stocks_by_prefix === 'function') {
+                    return bridge.get_stocks_by_prefix('30').then(function(jsonStr) {
+                        try {
+                            var list = JSON.parse(jsonStr);
+                            return Array.isArray(list) ? list : [];
+                        } catch(e) { return []; }
+                    });
+                }
+                return codes;
             });
         } else {
             promise = Promise.resolve([]);

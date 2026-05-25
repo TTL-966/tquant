@@ -13,6 +13,9 @@ from sqlalchemy import text
 from backend.db import Database
 from backend.data_updater.base_updater import BaseUpdater
 
+import socket
+socket.setdefaulttimeout(30)
+
 try:
     import akshare as ak
 except ImportError:

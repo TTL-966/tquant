@@ -32,7 +32,8 @@ class WebBridge(QObject):
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
         self.stock_screener = StockScreener(self.data_feed)
-        self._update_process = None   # 数据更新子进程句柄
+        self._update_process = None   # 日线数据更新子进程句柄
+        self._financial_update_process = None  # 财务数据更新子进程句柄
 
         df = DataFeed()
 
@@ -291,6 +292,19 @@ class WebBridge(QObject):
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def get_stocks_by_prefix(self, prefix):
+        """获取股票代码以指定前缀开头的股票列表（纯数字代码）"""
+        try:
+            sql = text("SELECT code FROM stock_basic WHERE code LIKE :prefix")
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, {"prefix": f"{prefix}%"}).fetchall()
+            codes = [row[0] for row in rows]
+            return json.dumps(codes)
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps([])
 
     # ---- 新增自定义策略回测槽 ----
     @Slot(str, result=str)
@@ -949,6 +963,51 @@ class WebBridge(QObject):
             return json.dumps({"success": True, "message": "数据更新已在后台启动，请稍后查看后端日志"})
         except Exception as e:
             return json.dumps({"success": False, "message": f"启动更新失败: {str(e)}"})
+
+    @Slot(result=str)
+    def trigger_financial_update(self):
+        """手动触发财务数据更新（独立子进程，更新 PE/PB/ROE/总市值/流通股本等）。"""
+        if self._financial_update_process is not None and self._financial_update_process.poll() is None:
+            return json.dumps({"success": False, "message": "财务数据更新已在运行中，请稍后再试"})
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script_path = os.path.join(base_dir, 'backend', 'standalone_updater.py')
+        if not os.path.exists(script_path):
+            return json.dumps({"success": False, "message": f"更新脚本不存在: {script_path}"})
+
+        try:
+            startupinfo = None
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+            self._financial_update_process = subprocess.Popen(
+                [sys.executable, script_path, '--type', 'financial', '--quiet'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                startupinfo=startupinfo
+            )
+            # 异步读取输出，完成后自动清空进程句柄
+            threading.Thread(target=self._read_financial_update_output, daemon=True).start()
+            return json.dumps({"success": True, "message": "财务数据更新已在后台启动（预计 3-10 分钟），请稍后查看后端日志"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": f"启动财务更新失败: {str(e)}"})
+
+    def _read_financial_update_output(self):
+        """后台线程读取财务更新子进程输出"""
+        proc = self._financial_update_process
+        if proc is None:
+            return
+        for line in proc.stdout:
+            print(f"[FinancialUpdater] {line.decode('utf-8', errors='replace').strip()}")
+        for line in proc.stderr:
+            print(f"[FinancialUpdater Error] {line.decode('utf-8', errors='replace').strip()}")
+        proc.wait()
+        success = (proc.returncode == 0)
+        msg = "财务数据更新成功" if success else f"财务数据更新失败 (返回码: {proc.returncode})"
+        print(f"[WebBridge] 财务更新子进程退出，{msg}")
+        self._financial_update_process = None
 
     # ---------- 报告导出 ----------
     @Slot(str, result=str)

@@ -1346,9 +1346,12 @@ Ctrl+Shift+D     → 切换调试面板（右下角浮窗）</div>
             <!-- 数据管理区域 -->
             <div style="margin-top: 20px; border-top: 1px solid #323d5a; padding-top: 16px;">
                 <h4 style="color:#4f7eff;">${'📊'} 数据管理</h4>
-                <button id="manualUpdateDataBtn" style="background:#4f7eff; border:none; padding:6px 18px; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">${'🔄'} 立即更新数据</button>
+                <button id="manualUpdateDataBtn" style="background:#4f7eff; border:none; padding:6px 18px; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">${'🔄'} 立即更新日线数据</button>
                 <span id="updateStatusMsg" style="margin-left: 12px; color:#9aa9cc; font-size:12px;"></span>
                 <p style="color:#9aa9cc; font-size:12px; margin-top:8px;">每天 18:00 自动增量更新日线数据，也可手动点击按钮立即更新。</p>
+                <button id="manualFinUpdateBtn" style="background:#4f7eff; border:none; padding:6px 18px; border-radius:30px; color:#fff; font-weight:600; cursor:pointer; margin-top:8px;">${'📊'} 手动更新财务数据</button>
+                <span id="finUpdateStatusMsg" style="margin-left: 12px; color:#9aa9cc; font-size:12px;"></span>
+                <p style="color:#9aa9cc; font-size:12px; margin-top:4px;">财务数据（PE/PB/ROE/市值/股本）需手动触发更新，建议每 3 个月更新一次，耗时约 3-10 分钟。</p>
             </div>
         </div>`;
 
@@ -1371,6 +1374,38 @@ Ctrl+Shift+D     → 切换调试面板（右下角浮窗）</div>
             }).catch(function(err) {
                 showToast('触发更新失败: ' + err.message, true);
                 statusSpan.textContent = '';
+            });
+        });
+    }
+
+    // 绑定手动更新财务数据按钮
+    var finBtn = document.getElementById('manualFinUpdateBtn');
+    if (finBtn && bridge && typeof bridge.trigger_financial_update === 'function') {
+        finBtn.addEventListener('click', function() {
+            var statusSpan = document.getElementById('finUpdateStatusMsg');
+            finBtn.disabled = true;
+            finBtn.textContent = '⏳ 正在更新...';
+            statusSpan.textContent = '财务数据更新中，此过程需要 3-10 分钟...';
+            statusSpan.style.color = '#f2c94c';
+            bridge.trigger_financial_update().then(function(jsonStr) {
+                var res = JSON.parse(jsonStr);
+                if (res.success) {
+                    showToast(res.message, false);
+                    statusSpan.textContent = '已触发更新，请查看后端日志';
+                    statusSpan.style.color = '#4f7eff';
+                } else {
+                    showToast(res.message, true);
+                    statusSpan.textContent = '启动失败';
+                    statusSpan.style.color = '#ff4c4c';
+                }
+                finBtn.disabled = false;
+                finBtn.textContent = '📊 手动更新财务数据';
+                setTimeout(function() { statusSpan.textContent = ''; }, 8000);
+            }).catch(function(err) {
+                showToast('触发财务更新失败: ' + err.message, true);
+                statusSpan.textContent = '';
+                finBtn.disabled = false;
+                finBtn.textContent = '📊 手动更新财务数据';
             });
         });
     }
