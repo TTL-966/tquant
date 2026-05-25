@@ -24,6 +24,42 @@ var codeExpanded = false;
 var logExpanded = true;
 var strategyLogger = null;
 
+// Dynamic options cache (for concept/industry selects)
+var conceptListCache = [];
+var industryListCache = [];
+var dynOptionsLoaded = false;
+
+function loadDynamicOptions() {
+    if (dynOptionsLoaded) return;
+    dynOptionsLoaded = true;
+    if (bridge && typeof bridge.get_concept_list === 'function') {
+        bridge.get_concept_list().then(function (jsonStr) {
+            try {
+                var list = JSON.parse(jsonStr);
+                if (Array.isArray(list)) {
+                    conceptListCache = list.map(function (c) { return { value: c, label: c }; });
+                    if (CARD_TYPE_META.concept_contains) {
+                        CARD_TYPE_META.concept_contains.paramFields[0].options = conceptListCache;
+                    }
+                }
+            } catch (e) {}
+        }).catch(function (e) {});
+    }
+    if (bridge && typeof bridge.get_industry_list === 'function') {
+        bridge.get_industry_list().then(function (jsonStr) {
+            try {
+                var list = JSON.parse(jsonStr);
+                if (Array.isArray(list)) {
+                    industryListCache = list.map(function (i) { return { value: i, label: i }; });
+                    if (CARD_TYPE_META.industry_contains) {
+                        CARD_TYPE_META.industry_contains.paramFields[0].options = industryListCache;
+                    }
+                }
+            } catch (e) {}
+        }).catch(function (e) {});
+    }
+}
+
 // ---- Custom Select Panel ----
 
 function showCustomSelect(input, options, callback) {
@@ -104,7 +140,9 @@ function buildParamSummary(card) {
         var val = card.params[f.key];
         if (val === undefined || val === null) return;
         var display = val;
-        if (f.type === 'select' && f.options) {
+        if (f.multiple && Array.isArray(val)) {
+            display = val.join(', ') || '(无)';
+        } else if (f.type === 'select' && f.options) {
             var opt = f.options.find(function(o) { return o.value === val; });
             display = opt ? opt.label : val;
         }
@@ -377,10 +415,64 @@ function showEditCardModal(card, index) {
         label.textContent = f.label;
         row.appendChild(label);
 
-        if (f.type === 'select' && f.options) {
+        var opts = f.options;
+        if ((!opts || opts.length === 0) && f.key === 'concepts') opts = conceptListCache;
+        if ((!opts || opts.length === 0) && f.key === 'industry') opts = industryListCache;
+
+        if (f.key === 'concepts' && opts) {
+            // 概念多选：搜索框 + 原生 select[multiple]
+            var container = document.createElement('div');
+
+            var searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.placeholder = '输入关键字筛选概念';
+            searchInput.style.cssText = 'width:100%; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 10px; font-size:12px; margin-bottom:8px; box-sizing:border-box;';
+            container.appendChild(searchInput);
+
+            var selectEl = document.createElement('select');
+            selectEl.multiple = true;
+            selectEl.size = 8;
+            selectEl.setAttribute('data-field', f.key);
+            selectEl.style.cssText = 'width:100%; background:#1e253b; border:1px solid #323d5a; border-radius:8px; color:#fff; font-size:12px; padding:4px;';
+
+            var selectedArr = Array.isArray(formData[f.key]) ? formData[f.key] : (formData[f.key] ? [formData[f.key]] : []);
+
+            function populateSelect(filterText) {
+                selectEl.innerHTML = '';
+                var lowerFilter = (filterText || '').toLowerCase();
+                (opts || []).forEach(function(opt) {
+                    if (!filterText || opt.label.toLowerCase().indexOf(lowerFilter) !== -1) {
+                        var option = document.createElement('option');
+                        option.value = opt.value;
+                        option.textContent = opt.label;
+                        if (selectedArr.indexOf(opt.value) !== -1) {
+                            option.selected = true;
+                        }
+                        selectEl.appendChild(option);
+                    }
+                });
+            }
+            populateSelect('');
+
+            searchInput.addEventListener('input', function(e) {
+                // Preserve already-selected values before repopulating
+                var sel = Array.from(selectEl.selectedOptions).map(function(o) { return o.value; });
+                selectedArr = sel;
+                populateSelect(e.target.value);
+            });
+
+            // Sync selections back on change
+            selectEl.addEventListener('change', function() {
+                selectedArr = Array.from(selectEl.selectedOptions).map(function(o) { return o.value; });
+            });
+
+            container.appendChild(selectEl);
+            row.appendChild(container);
+
+        } else if (f.type === 'select' && opts) {
             var currentValue = formData[f.key];
             var currentLabel = currentValue;
-            var foundOpt = f.options.find(function(opt) { return opt.value === currentValue; });
+            var foundOpt = opts.find(function(opt) { return opt.value === currentValue; });
             if (foundOpt) currentLabel = foundOpt.label;
 
             var input = document.createElement('input');
@@ -393,7 +485,7 @@ function showEditCardModal(card, index) {
 
             input.addEventListener('click', function(e) {
                 e.stopPropagation();
-                showCustomSelect(input, f.options, function(selectedValue) {});
+                showCustomSelect(input, opts, function(selectedValue) {});
             });
 
             row.appendChild(input);
@@ -467,7 +559,9 @@ function showEditCardModal(card, index) {
             var el = modal.querySelector('[data-field="' + f.key + '"]');
             if (el) {
                 var val;
-                if (f.type === 'select') {
+                if (f.key === 'concepts' && el.multiple) {
+                    val = Array.from(el.selectedOptions).map(function(opt) { return opt.value; });
+                } else if (f.type === 'select') {
                     val = el.getAttribute('data-value') || el.value;
                 } else if (f.type === 'number') {
                     val = parseFloat(el.value);
@@ -1434,6 +1528,7 @@ export function renderStrategyPage(container) {
     }
 
     // Render cards
+    loadDynamicOptions();
     renderCards();
     updateCodePreview();
 }

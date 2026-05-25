@@ -528,6 +528,53 @@ class WebBridge(QObject):
             return json.dumps({"success": False, "error": str(e)})
 
     @Slot(str, result=str)
+    def get_stock_concepts(self, code):
+        """获取股票的概念题材列表"""
+        try:
+            pure_code = code.split('.')[0]
+            if pure_code.startswith(('6', '9')):
+                ts_code = f"{pure_code}.SH"
+            elif pure_code.startswith('8'):
+                ts_code = f"{pure_code}.BJ"
+            else:
+                ts_code = f"{pure_code}.SZ"
+            sql = text("""
+                SELECT c.concept_name
+                FROM stock_concept sc
+                JOIN concept c ON sc.concept_id = c.concept_id
+                WHERE sc.ts_code = :ts_code
+            """)
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, {"ts_code": ts_code}).fetchall()
+            concepts = [row[0] for row in rows]
+            return json.dumps({"success": True, "concepts": concepts})
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_concept_list(self):
+        """返回所有概念名称列表，用于前端下拉框"""
+        try:
+            df = pd.read_sql("SELECT concept_name FROM concept ORDER BY concept_name", self.db.engine)
+            return json.dumps(df['concept_name'].tolist(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps([])
+
+    @Slot(result=str)
+    def get_industry_list(self):
+        """返回所有一级行业列表"""
+        try:
+            df = pd.read_sql(
+                "SELECT DISTINCT industry_level1 FROM stock_industry_detail "
+                "WHERE industry_level1 IS NOT NULL AND industry_level1 != '' "
+                "ORDER BY industry_level1",
+                self.db.engine
+            )
+            return json.dumps(df['industry_level1'].tolist(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps([])
+
+    @Slot(str, result=str)
     def get_signals(self, code):
         try:
             return json.dumps({"signals": self.strategy_engine.get_signals(code)})

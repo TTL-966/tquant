@@ -1895,9 +1895,8 @@ async function showFundamentalModal(code) {
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;';
 
     var modal = document.createElement('div');
-    modal.style.cssText = 'background:#1a2135;border:1px solid #4f7eff;border-radius:20px;width:520px;max-width:90vw;padding:24px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.5);';
+    modal.style.cssText = 'background:#1a2135;border:1px solid #4f7eff;border-radius:20px;width:560px;max-width:90vw;padding:24px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.5);';
 
-    // Loading state
     modal.innerHTML = '<div style="text-align:center;color:#9aa9cc;padding:32px 0;">加载中...</div>';
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1906,14 +1905,20 @@ async function showFundamentalModal(code) {
     overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
 
     try {
-        var jsonStr = await bridge.get_stock_financial(code);
-        var data = JSON.parse(jsonStr);
+        // 并行获取财务和概念数据
+        var [financeRes, conceptRes] = await Promise.all([
+            bridge.get_stock_financial(code),
+            bridge.get_stock_concepts(code)
+        ]);
 
+        var data = JSON.parse(financeRes);
         if (!data.success) {
-            modal.innerHTML = '<div style="text-align:center;color:#ff6b6b;padding:32px 0;">获取财务数据失败: ' +
-                escapeHtml(data.error || '') + '</div>';
+            modal.innerHTML = '<div style="text-align:center;color:#ff6b6b;padding:32px 0;">获取财务数据失败: ' + escapeHtml(data.error || '') + '</div>';
             return;
         }
+
+        var conceptData = JSON.parse(conceptRes);
+        var concepts = (conceptData.success && conceptData.concepts) ? conceptData.concepts : [];
 
         var fmtNum = function(val) {
             return (val !== undefined && val !== null && !isNaN(val)) ? val.toFixed(2) : '--';
@@ -1930,30 +1935,40 @@ async function showFundamentalModal(code) {
         var floatSh  = fmtNum(data.float_shares);
         var updDate  = data.update_date || '--';
 
-        modal.innerHTML =
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">' +
-            '<h3 style="margin:0;">📊 个股资料 · ' + escapeHtml(code) + '</h3>' +
-            '<button id="closeFundTop" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✖</button>' +
-            '</div>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;">' +
-            '<div><span style="color:#9aa9cc;">市盈率 PE (TTM)</span><br><span style="font-size:18px;font-weight:600;">' + pe + '</span></div>' +
-            '<div><span style="color:#9aa9cc;">市净率 PB</span><br><span style="font-size:18px;font-weight:600;">' + pb + '</span></div>' +
-            '<div><span style="color:#9aa9cc;">净资产收益率 ROE</span><br><span style="font-size:18px;font-weight:600;">' + roe + '</span></div>' +
-            '<div><span style="color:#9aa9cc;">总市值 (亿元)</span><br><span style="font-size:18px;font-weight:600;">' + totalMv + '</span></div>' +
-            '<div><span style="color:#9aa9cc;">净利润 (亿元)</span><br><span style="font-size:18px;font-weight:600;">' + netProfit + '</span></div>' +
-            '<div><span style="color:#9aa9cc;">流通股本 (亿股)</span><br><span style="font-size:18px;font-weight:600;">' + floatSh + '</span></div>' +
-            '</div>' +
-            '<div style="margin-top:20px;text-align:center;color:#9aa9cc;font-size:12px;">数据更新: ' + escapeHtml(updDate) + '</div>' +
-            '<div style="margin-top:20px;text-align:right;">' +
-            '<button id="closeModalBtn" style="background:#4f7eff;border:none;padding:6px 20px;border-radius:30px;color:#fff;cursor:pointer;">关闭</button>' +
-            '</div>';
+        // 构建概念标签
+        var conceptsHtml = '';
+        if (concepts.length > 0) {
+            var tags = concepts.map(c => `<span style="background:#2a3a5e;padding:2px 8px;border-radius:12px;font-size:12px;">${escapeHtml(c)}</span>`).join('');
+            conceptsHtml = `<div style="margin-top:16px;"><span style="color:#9aa9cc;">概念题材：</span><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${tags}</div></div>`;
+        } else {
+            conceptsHtml = `<div style="margin-top:16px;"><span style="color:#9aa9cc;">概念题材：</span><span style="color:#9aa9cc; margin-left:8px;">--</span></div>`;
+        }
+
+        modal.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 style="margin:0;">📊 个股资料 · ${escapeHtml(code)}</h3>
+                <button id="closeFundTop" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✖</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;">
+                <div><span style="color:#9aa9cc;">市盈率 PE (TTM)</span><br><span style="font-size:18px;font-weight:600;">${pe}</span></div>
+                <div><span style="color:#9aa9cc;">市净率 PB</span><br><span style="font-size:18px;font-weight:600;">${pb}</span></div>
+                <div><span style="color:#9aa9cc;">净资产收益率 ROE</span><br><span style="font-size:18px;font-weight:600;">${roe}</span></div>
+                <div><span style="color:#9aa9cc;">总市值 (亿元)</span><br><span style="font-size:18px;font-weight:600;">${totalMv}</span></div>
+                <div><span style="color:#9aa9cc;">净利润 (亿元)</span><br><span style="font-size:18px;font-weight:600;">${netProfit}</span></div>
+                <div><span style="color:#9aa9cc;">流通股本 (亿股)</span><br><span style="font-size:18px;font-weight:600;">${floatSh}</span></div>
+            </div>
+            ${conceptsHtml}
+            <div style="margin-top:20px;text-align:center;color:#9aa9cc;font-size:12px;">数据更新: ${escapeHtml(updDate)}</div>
+            <div style="margin-top:20px;text-align:right;">
+                <button id="closeModalBtn" style="background:#4f7eff;border:none;padding:6px 20px;border-radius:30px;color:#fff;cursor:pointer;">关闭</button>
+            </div>
+        `;
 
         modal.querySelector('#closeFundTop').addEventListener('click', close);
         modal.querySelector('#closeModalBtn').addEventListener('click', close);
 
     } catch (err) {
-        modal.innerHTML = '<div style="text-align:center;color:#ff6b6b;padding:32px 0;">请求失败: ' +
-            escapeHtml(err.message || '') + '</div>';
+        modal.innerHTML = '<div style="text-align:center;color:#ff6b6b;padding:32px 0;">请求失败: ' + escapeHtml(err.message || '') + '</div>';
     }
 }
 

@@ -343,6 +343,32 @@ export var CARD_TYPE_META = {
         paramFields: [
             { key: 'minROE', label: 'ROE下限(%)', type: 'number', min: 1, max: 100, default: 15 }
         ]
+    },
+    concept_contains: {
+        type: 'concept_contains',
+        label: '概念包含',
+        icon: '🏷️',
+        description: '股票所属概念板块包含指定概念',
+        defaultAction: 'buy',
+        defaultParams: { concepts: [], match_mode: 'any' },
+        paramFields: [
+            { key: 'concepts', label: '概念名称', type: 'select', multiple: true, options: [] },
+            { key: 'match_mode', label: '匹配模式', type: 'select', options: [
+                { value: 'any', label: '包含任意一个' },
+                { value: 'all', label: '包含全部' }
+            ], default: 'any' }
+        ]
+    },
+    industry_contains: {
+        type: 'industry_contains',
+        label: '行业包含',
+        icon: '🏭',
+        description: '股票所属行业为指定行业',
+        defaultAction: 'buy',
+        defaultParams: { industry: '' },
+        paramFields: [
+            { key: 'industry', label: '行业名称', type: 'select', options: [] }
+        ]
     }
 };
 

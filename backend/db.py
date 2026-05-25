@@ -123,6 +123,23 @@ class Database:
                 ON stock_financial_history(ts_code, report_date)
             """))
 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS concept (
+                    concept_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    concept_name TEXT UNIQUE NOT NULL
+                )
+            """))
+            # 股票概念关联表
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS stock_concept (
+                    ts_code TEXT NOT NULL,
+                    concept_id INTEGER NOT NULL,
+                    PRIMARY KEY (ts_code, concept_id),
+                    FOREIGN KEY (concept_id) REFERENCES concept(concept_id)
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stock_concept_code ON stock_concept(ts_code)"))
+
             conn.commit()
 
     def _get_stock_suffix(self, code):
