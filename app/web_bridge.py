@@ -288,7 +288,7 @@ class WebBridge(QObject):
         try:
             signals, ma_data = self.strategy_engine.run_backtest(code, start_date, end_date)
             equity_curve = self._get_equity_curve(code)
-            return json.dumps({"success": True, "signals": signals, "ma_data": ma_data, "equity_curve": equity_curve})
+            return json.dumps({"success": True, "signa ls": signals, "ma_data": ma_data, "equity_curve": equity_curve})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
@@ -438,7 +438,8 @@ class WebBridge(QObject):
         """
         接收 JSON 字符串，格式:
         {
-            "stock_code": "000001",
+            "stock_pool": ["000001","000858"],   # 多股模式（优先）
+            "stock_code": "000001",              # 单股模式（兼容旧版）
             "start": "2020-01-01",
             "end": "2025-12-31",
             "cash": 1000000,
@@ -455,12 +456,13 @@ class WebBridge(QObject):
         返回 JSON:
         {
             "success": true,
-            "results": [{ name, equity_curve, metrics, signals }],
+            "results": [{ name, equity_curve, metrics, signals, stock_performance }],
             "errors": []
         }
         """
         try:
             params = json.loads(params_json)
+            stock_pool = params.get("stock_pool", None)
             stock_code = params.get("stock_code", "000001")
             start = params.get("start", "2010-01-01")
             end = params.get("end", "2026-12-31")
@@ -475,6 +477,14 @@ class WebBridge(QObject):
             if not variations or len(variations) == 0:
                 return json.dumps({"success": False, "error": "变体列表为空"})
 
+            # 判断回测模式：stock_pool 存在且长度 > 1 使用多股组合回测
+            if stock_pool and isinstance(stock_pool, list) and len(stock_pool) > 0:
+                stock_pool = list(dict.fromkeys([s.split('.')[0] for s in stock_pool]))
+                use_multi = len(stock_pool) > 1
+            else:
+                stock_pool = [stock_code.split('.')[0]]
+                use_multi = False
+
             results = []
             errors = []
 
@@ -487,18 +497,30 @@ class WebBridge(QObject):
                         return (name, None, "变体代码为空")
 
                     from backend.data_feed import DataFeed
-                    from backend.backtest_executor import BacktestExecutor
                     data_feed = DataFeed()
-                    executor = BacktestExecutor(data_feed)
-                    result = executor.run(
-                        code, stock_code, start, end,
-                        initial_cash=cash, slippage=slippage,
-                        commission_rate=commission, stamp_tax_rate=stamp_tax,
-                        slippage_cost_type=slippage_cost_type,
-                        slippage_cost_value=slippage_cost_value
-                    )
 
-                    if "error" in result:
+                    if use_multi:
+                        from backend.multi_backtest_executor import MultiBacktestExecutor
+                        executor = MultiBacktestExecutor(data_feed)
+                        result = executor.run(
+                            code, stock_pool, start, end,
+                            initial_cash=cash, slippage=slippage,
+                            commission_rate=commission, stamp_tax_rate=stamp_tax,
+                            slippage_cost_type=slippage_cost_type,
+                            slippage_cost_value=slippage_cost_value
+                        )
+                    else:
+                        from backend.backtest_executor import BacktestExecutor
+                        executor = BacktestExecutor(data_feed)
+                        result = executor.run(
+                            code, stock_pool[0], start, end,
+                            initial_cash=cash, slippage=slippage,
+                            commission_rate=commission, stamp_tax_rate=stamp_tax,
+                            slippage_cost_type=slippage_cost_type,
+                            slippage_cost_value=slippage_cost_value
+                        )
+
+                    if not result.get("success") and "error" in result:
                         return (name, None, result["error"])
 
                     return (name, {
@@ -506,7 +528,8 @@ class WebBridge(QObject):
                         "equity_curve": result.get("equity_curve", []),
                         "metrics": result.get("metrics", {}),
                         "signals": result.get("signals", []),
-                        "logs": result.get("logs", [])
+                        "logs": result.get("logs", []),
+                        "stock_performance": result.get("stock_performance", [])
                     }, None)
                 except Exception as e:
                     traceback.print_exc(file=sys.stderr)
@@ -525,8 +548,6 @@ class WebBridge(QObject):
             # 保持变体原始顺序
             results.sort(key=lambda r: [v.get("name", "") for v in variations].index(r["name"])
                          if r["name"] in [v.get("name", "") for v in variations] else 999)
-
-
 
             return json.dumps({
                 "success": True,

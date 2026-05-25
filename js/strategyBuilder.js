@@ -1640,8 +1640,14 @@ export function renderStrategyPage(container) {
                 return;
             }
 
-            // Read page params
-            var defaultStock = (currentStockPool && currentStockPool.length > 0) ? currentStockPool.join(',') : ((window._defaultStockFromTemplate) || '000001');
+            // Read page params — 对比回测自动截断过大的股票池
+            var MAX_STOCKS_FOR_COMPARE = 268;
+            var finalStockPool = currentStockPool;
+            if (finalStockPool && finalStockPool.length > MAX_STOCKS_FOR_COMPARE) {
+                finalStockPool = finalStockPool.slice(0, MAX_STOCKS_FOR_COMPARE);
+                showToast('当前股票池数量较多（' + currentStockPool.length + ' 只），对比回测将自动截断至前 ' + MAX_STOCKS_FOR_COMPARE + ' 只。', false, 4000);
+            }
+            var defaultStock = (finalStockPool && finalStockPool.length > 0) ? finalStockPool.join(',') : ((window._defaultStockFromTemplate) || '000001');
 
             var pageStartInput = document.getElementById('strategyStartDate');
             var pageEndInput = document.getElementById('strategyEndDate');
@@ -1973,15 +1979,15 @@ function updateStockPool() {
                     } else {
                         finalPromise = Promise.resolve(codesAfterFS);
                     }
-
                     finalPromise.then(function(finalCodes) {
                 currentStockPool = finalCodes;
                 var count = finalCodes.length;
-                var preview10 = finalCodes.slice(0, 10).join(', ');
-                var suffix = count > 10 ? ' ...' : '';
-                previewEl.textContent = '股票池: ' + count + ' 只 | 前10: ' + preview10 + suffix;
-                previewEl.style.color = count > 0 ? '#4f7eff' : '#ff4c4c';
+                var preview10 = finalCodes.slice(0, 10).join(", ");
+                var suffix = count > 10 ? " ..." : "";
+                previewEl.textContent = "股票池: " + count + " 只 | 前10: " + preview10 + suffix;
+                previewEl.style.color = count > 0 ? "#4f7eff" : "#ff4c4c";
                     });
+
                 });
             });
         });
@@ -1991,7 +1997,6 @@ function updateStockPool() {
         previewEl.style.color = '#ff4c4c';
     });
 }
-
 function populatePoolConceptSelect(filterText) {
     var select = document.getElementById('poolConceptFilter');
     if (!select) return;
