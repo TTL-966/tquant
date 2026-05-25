@@ -873,7 +873,8 @@ export function deserializeConfig(jsonStr) {
             commission_rate: config.commission_rate !== undefined ? config.commission_rate : 0.0003,
             stamp_tax_rate: config.stamp_tax_rate !== undefined ? config.stamp_tax_rate : 0.001,
             slippage_cost_type: config.slippage_cost_type || 'percent',
-            slippage_cost_value: config.slippage_cost_value !== undefined ? config.slippage_cost_value : 0.1
+            slippage_cost_value: config.slippage_cost_value !== undefined ? config.slippage_cost_value : 0.1,
+            poolConfig: config.poolConfig || null
         };
     } catch (e) {
         return null;

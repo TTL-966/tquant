@@ -250,6 +250,20 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
+    @Slot(result=str)
+    def get_all_stocks(self):
+        """返回所有股票代码列表（从 stock_basic 读取）"""
+        try:
+            from sqlalchemy import text
+            sql = text("SELECT DISTINCT code FROM stock_basic ORDER BY code")
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql).fetchall()
+            result = [str(row[0]) for row in rows]
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps([])
+
     @Slot(str, result=str)
     def get_index_stocks(self, index_code):
         """返回指数成分股代码列表。数据库不可用时返回 mock 数据。"""
@@ -573,6 +587,103 @@ class WebBridge(QObject):
             return json.dumps(df['industry_level1'].tolist(), ensure_ascii=False)
         except Exception as e:
             return json.dumps([])
+
+    @Slot(str, str, str, result=str)
+    def filter_stocks_by_concepts(self, codes_json, concepts_json, match_mode="any"):
+        """根据概念过滤股票列表，返回匹配的纯数字代码列表"""
+        try:
+            codes = json.loads(codes_json) if isinstance(codes_json, str) else codes_json
+            concepts = json.loads(concepts_json) if isinstance(concepts_json, str) else concepts_json
+            if not codes or not concepts:
+                return json.dumps(codes if codes else [])
+
+            ts_codes = []
+            for c in codes:
+                c = str(c).split('.')[0].zfill(6)
+                if c.startswith(('000', '001', '002', '003', '300', '301')):
+                    ts_codes.append(f"{c}.SZ")
+                elif c.startswith(('600', '601', '603', '605', '688', '689')):
+                    ts_codes.append(f"{c}.SH")
+                elif c.startswith('8'):
+                    ts_codes.append(f"{c}.BJ")
+                else:
+                    ts_codes.append(f"{c}.SZ")
+
+            if not ts_codes:
+                return json.dumps([])
+
+            placeholders = ','.join([f"'{t}'" for t in ts_codes])
+            concept_placeholders = ','.join([f"'{c}'" for c in concepts])
+
+            if match_mode == 'all':
+                sql = text(f"""
+                    SELECT sc.ts_code
+                    FROM stock_concept sc
+                    JOIN concept c ON sc.concept_id = c.concept_id
+                    WHERE sc.ts_code IN ({placeholders})
+                      AND c.concept_name IN ({concept_placeholders})
+                    GROUP BY sc.ts_code
+                    HAVING COUNT(DISTINCT c.concept_name) = :cnt
+                """)
+                params = {"cnt": len(concepts)}
+            else:
+                sql = text(f"""
+                    SELECT DISTINCT sc.ts_code
+                    FROM stock_concept sc
+                    JOIN concept c ON sc.concept_id = c.concept_id
+                    WHERE sc.ts_code IN ({placeholders})
+                      AND c.concept_name IN ({concept_placeholders})
+                """)
+                params = {}
+
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+
+            result = [row[0].replace('.SZ', '').replace('.SH', '').replace('.BJ', '') for row in rows]
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
+
+    @Slot(str, str, result=str)
+    def filter_stocks_by_industry(self, codes_json, industry):
+        """根据一级行业过滤股票列表，返回匹配的纯数字代码列表"""
+        try:
+            codes = json.loads(codes_json) if isinstance(codes_json, str) else codes_json
+            if not codes or not industry:
+                return json.dumps(codes if codes else [])
+
+            ts_codes = []
+            for c in codes:
+                c = str(c).split('.')[0].zfill(6)
+                if c.startswith(('000', '001', '002', '003', '300', '301')):
+                    ts_codes.append(f"{c}.SZ")
+                elif c.startswith(('600', '601', '603', '605', '688', '689')):
+                    ts_codes.append(f"{c}.SH")
+                elif c.startswith('8'):
+                    ts_codes.append(f"{c}.BJ")
+                else:
+                    ts_codes.append(f"{c}.SZ")
+
+            if not ts_codes:
+                return json.dumps([])
+
+            placeholders = ','.join([f"'{t}'" for t in ts_codes])
+            sql = text(f"""
+                SELECT DISTINCT ts_code
+                FROM stock_industry_detail
+                WHERE ts_code IN ({placeholders})
+                  AND industry_level1 = :industry
+            """)
+
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(sql, {"industry": industry}).fetchall()
+
+            result = [row[0].replace('.SZ', '').replace('.SH', '').replace('.BJ', '') for row in rows]
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
 
     @Slot(str, result=str)
     def get_signals(self, code):

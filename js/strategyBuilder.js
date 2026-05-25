@@ -24,6 +24,16 @@ var codeExpanded = false;
 var logExpanded = true;
 var strategyLogger = null;
 
+// Stock pool state - layered selector
+var poolSource = 'all';  // 'all', 'hs300', 'zz500', 'zz1000', 'cyb', 'kc50', 'custom'
+var customStockCodes = '';
+var poolIndustryFilter = '';
+var poolConceptFilter = [];
+var poolConceptMatchMode = 'any';
+var currentStockPool = [];  // computed final pool
+var allStocksCache = [];
+var poolInitialized = false;
+
 // Dynamic options cache (for concept/industry selects)
 var conceptListCache = [];
 var industryListCache = [];
@@ -305,7 +315,7 @@ function showAddCardModal() {
     overlay.onclick = function() { overlay.remove(); modal.remove(); };
 
     var modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:24px;min-width:680px;z-index:10000;color:#fff;';
+    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a2135;border:1px solid #4f7eff;border-radius:12px;padding:24px;min-width:720px;z-index:10000;color:#fff;';
 
     var title = document.createElement('div');
     title.style.cssText = 'font-weight:600;font-size:16px;margin-bottom:16px;';
@@ -317,7 +327,7 @@ function showAddCardModal() {
     closeBtn.onclick = function() { overlay.remove(); modal.remove(); };
 
     var grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5, 1fr);gap:6px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(6, 1fr);gap:6px;';
 
     var typeKeys = ['ma_cross', 'rsi', 'macd', 'bollinger', 'bollinger_width', 'kdj',
         'volume', 'volume_contraction', 'volume_ratio', 'day_of_week', 'sar', 'obv',
@@ -330,8 +340,8 @@ function showAddCardModal() {
         var item = document.createElement('div');
         item.style.cssText = 'background:#0e1220;border:1px solid #323d5a;border-radius:10px;padding:8px 6px;cursor:pointer;text-align:center;transition:background 0.2s;';
         item.title = meta.description;
-        item.innerHTML = '<div style="font-size:24px;">' + meta.icon + '</div>' +
-            '<div style="color:#fff;font-weight:600;font-size:13px;margin-top:3px;">' + meta.label + '</div>';
+        item.innerHTML = '<div style="font-size:22px;">' + meta.icon + '</div>' +
+            '<div style="color:#fff;font-weight:600;font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + meta.label + '</div>';
         item.onmouseenter = function() { item.style.background = '#1a2540'; };
         item.onmouseleave = function() { item.style.background = '#0e1220'; };
         item.onclick = function() {
@@ -744,10 +754,7 @@ function showBacktestModal() {
     var code = generateCode(cards);
     window.currentStrategyCode = code;
 
-    var stockInput = document.getElementById('stockPoolInput');
-    var pageStockPoolInput = document.getElementById('strategyStockPool');
-    var savedStockPool = pageStockPoolInput ? pageStockPoolInput.value.trim() : '';
-    var defaultStock = savedStockPool || (window._defaultStockFromTemplate) || '000001';
+    var defaultStock = (currentStockPool && currentStockPool.length > 0) ? currentStockPool.join(',') : ((window._defaultStockFromTemplate) || '000001');
 
     var pageStartInput = document.getElementById('strategyStartDate');
     var pageEndInput = document.getElementById('strategyEndDate');
@@ -862,245 +869,255 @@ function showBacktestModal() {
             return;
         }
 
-        var start = startDt;
-        var end = endDt;
-        var cashVal = cash;
-        var sName = strategyName || '未命名策略';
-        var userCode = generateCode(cards);
-
-        window.currentStrategyCode = userCode;
-        window.currentStrategyName = sName;
-
-        clearLog();
-        addLog('info', '开始回测 ' + codes.length + ' 只股票：' + codes.map(function(c) { return c.split('.')[0]; }).join(', '));
-        addLog('info', '回测参数 | 初始资金: ¥' + cashVal.toLocaleString() + ' | 区间: ' + start + ' ~ ' + end);
-
-        var slippageInput = document.getElementById('slippageInput');
-        var slippageType = slippageInput ? (slippageInput.getAttribute('data-value') || 'close') : 'close';
-        window._slippageMode = slippageType;
-
-        var startTime = Date.now();
-
-        function processSingleStockResults(results, elapsed) {
-            var mergedSignals = [];
-            var equityMap = {};
-            var positionMap = {};
-
-            results.forEach(function(r) {
-                if (!r) return;
-                if (r.signals) {
-                    r.signals.forEach(function(s) {
-                        var code = s.code || '';
-                        mergedSignals.push({ date: s.date, code: code, type: s.type, price: s.price, shares: s.shares, reason: s.reason });
-                        if (!positionMap[code]) positionMap[code] = 0;
-                        if (s.type === 'buy') {
-                            positionMap[code] += (s.price || 0) * (s.shares || 0);
-                        } else {
-                            positionMap[code] -= (s.price || 0) * (s.shares || 0);
-                        }
-                    });
-                }
-                if (r.equity_curve) {
-                    r.equity_curve.forEach(function(ec) {
-                        if (equityMap[ec.date] === undefined) equityMap[ec.date] = 0;
-                        equityMap[ec.date] += ec.value;
-                    });
-                }
-            });
-
-            var unknownCodes = [];
-            var seenCodes = {};
-            mergedSignals.forEach(function(s) {
-                var c = s.code || '';
-                if (c && !stockNameMap[c] && !seenCodes[c]) {
-                    seenCodes[c] = true;
-                    unknownCodes.push(c);
-                }
-            });
-
-            function buildFinalResult() {
-                var mergedEquityCurve = Object.keys(equityMap).sort().map(function(date) {
-                    return { date: date, value: equityMap[date] };
-                });
-
-                var firstMetrics = (results.length > 0 && results[0] && results[0].metrics) ? results[0].metrics : {};
-                var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: firstMetrics, stock_performance: null};
-                for (var i = 0; i < results.length; i++) {
-                    if (results[i] && results[i].stock_performance) { mergedResult.stock_performance = results[i].stock_performance; break; }
-                }
-
-                window._lastBacktestResult = mergedResult;
-                window.strategySignals = mergedSignals;
-                window._lastBacktestError = null;
-                window.strategyStartDate = start;
-                window.strategyEndDate = end;
-
-                var posEntries = Object.keys(positionMap).map(function(k) { return { code: k, value: positionMap[k] }; });
-                posEntries.sort(function(a, b) { return b.value - a.value; });
-                window.topPositionCodes = posEntries.slice(0, 6).map(function(e) { return e.code; });
-
-                addLog('success', '✅ 回测完成，总信号 ' + mergedSignals.length + ' 个，耗时 ' + elapsed + ' 秒');
-                if (mergedSignals.length === 0) {
-                    addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
-                }
-                addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
-
-                overlay.remove();
-                modal.remove();
-                showToast('✅ 回测完成 | ' + codes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + mergedSignals.length + '个', false);
+        function executeBacktest(stockCodes) {
+            if (stockCodes.length === 0) {
+                addLog('warn', '筛选后股票池为空，无法执行回测');
+                statusDiv.textContent = '筛选后股票池为空，请调整筛选条件';
+                statusDiv.style.color = '#ff4c4c';
+                runBtn.disabled = false;
+                runBtn.textContent = '开始回测';
+                return;
             }
 
-            if (unknownCodes.length > 0) {
-                addLog('info', '正在加载 ' + unknownCodes.length + ' 只股票的名称...');
-                var namePromises = unknownCodes.map(function(c) { return fetchStockName(c, bridge); });
-                Promise.all(namePromises).then(function() {
-                    buildFinalResult();
+            addLog('info', '开始回测 ' + stockCodes.length + ' 只股票：' + stockCodes.map(function(c) { return c.split('.')[0]; }).join(', '));
+
+            var start = startDt;
+            var end = endDt;
+            var cashVal = cash;
+            var sName = strategyName || '未命名策略';
+            var userCode = generateCode(cards);
+
+            window.currentStrategyCode = userCode;
+            window.currentStrategyName = sName;
+
+            var slippageInput2 = document.getElementById('slippageInput');
+            var slippageType = slippageInput2 ? (slippageInput2.getAttribute('data-value') || 'close') : 'close';
+            window._slippageMode = slippageType;
+
+            var startTime = Date.now();
+
+            function processSingleStockResults(results, elapsed) {
+                var mergedSignals = [];
+                var equityMap = {};
+                var positionMap = {};
+
+                results.forEach(function(r) {
+                    if (!r) return;
+                    if (r.signals) {
+                        r.signals.forEach(function(s) {
+                            var code = s.code || '';
+                            mergedSignals.push({ date: s.date, code: code, type: s.type, price: s.price, shares: s.shares, reason: s.reason });
+                            if (!positionMap[code]) positionMap[code] = 0;
+                            if (s.type === 'buy') {
+                                positionMap[code] += (s.price || 0) * (s.shares || 0);
+                            } else {
+                                positionMap[code] -= (s.price || 0) * (s.shares || 0);
+                            }
+                        });
+                    }
+                    if (r.equity_curve) {
+                        r.equity_curve.forEach(function(ec) {
+                            if (equityMap[ec.date] === undefined) equityMap[ec.date] = 0;
+                            equityMap[ec.date] += ec.value;
+                        });
+                    }
                 });
-            } else {
-                buildFinalResult();
-            }
-        }
 
-        function finalizeError(err) {
-            addLog('error', '回测整体失败: ' + err.message);
-            window._lastBacktestError = err.message;
-            statusDiv.textContent = '回测整体失败: ' + err.message;
-            statusDiv.style.color = '#ff4c4c';
-            runBtn.disabled = false;
-            runBtn.textContent = '开始回测';
-        }
-
-        if (codes.length > 1) {
-            // ---- 多股组合回测：共享资金池 ----
-            addLog('info', '🚀 启动多股组合回测（共享资金池），共 ' + codes.length + ' 只股票');
-            // 发送原始代码（含 STOCK_CODE_PLACEHOLDER），后端逐个替换
-            var commission = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
-            var stampTax = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
-            var slippageCostTypeVal = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
-            var slippageCostValueVal = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
-            var multiParams = { code: userCode, stocks: codes, start: start, end: end, cash: cashVal, slippage: slippageType,
-                commission_rate: commission, stamp_tax_rate: stampTax,
-                slippage_cost_type: slippageCostTypeVal, slippage_cost_value: slippageCostValueVal };
-            bridge.run_multi_backtest(JSON.stringify(multiParams)).then(function(jsonStr) {
-                var res = JSON.parse(jsonStr);
-                var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                if (!res.success) {
-                    addLog('error', '多股回测失败: ' + (res.error || '未知错误'));
-                    finalizeError(new Error(res.error || '未知错误'));
-                    return;
-                }
-                if (res.logs && res.logs.length > 0) {
-                    res.logs.slice(-30).forEach(function(l) {
-                        if (l.indexOf('[WARN]') !== -1) {
-                            addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
-                        } else if (l.indexOf('[ERROR]') !== -1) {
-                            addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
-                        } else {
-                            addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
-                        }
-                    });
-                }
-
-                var signals = res.signals || [];
-                var equityCurve = res.equity_curve || [];
-                var metrics = res.metrics || {};
-                var stockPerformance = res.stock_performance || [];
-
-                // 多股回测直接使用后端组合结果，不再经过 processSingleStockResults 合并
-                var finalResult = {
-                    success: true,
-                    signals: signals,
-                    equity_curve: equityCurve,
-                    metrics: metrics,
-                    stock_performance: stockPerformance
-                };
-                window._lastBacktestResult = finalResult;
-                window.strategySignals = signals;
-                window._lastBacktestError = null;
-                window.strategyStartDate = start;
-                window.strategyEndDate = end;
-
-                // 计算 topPositionCodes（用于买卖点成交图下拉框排序）
-                var posMap = {};
-                signals.forEach(function(s) {
-                    var c = s.code || '';
-                    if (!posMap[c]) posMap[c] = 0;
-                    if (s.type === 'buy') posMap[c] += (s.price || 0) * (s.shares || 0);
-                    else posMap[c] -= (s.price || 0) * (s.shares || 0);
-                });
-                var posEntries = Object.keys(posMap).map(function(k) { return { code: k, value: posMap[k] }; });
-                posEntries.sort(function(a, b) { return b.value - a.value; });
-                window.topPositionCodes = posEntries.slice(0, 6).map(function(e) { return e.code; });
-
-                // 加载未知股票名称
                 var unknownCodes = [];
                 var seenCodes = {};
-                signals.forEach(function(s) {
+                mergedSignals.forEach(function(s) {
                     var c = s.code || '';
                     if (c && !stockNameMap[c] && !seenCodes[c]) {
                         seenCodes[c] = true;
                         unknownCodes.push(c);
                     }
                 });
+
+                function buildFinalResult() {
+                    var mergedEquityCurve = Object.keys(equityMap).sort().map(function(date) {
+                        return { date: date, value: equityMap[date] };
+                    });
+
+                    var firstMetrics = (results.length > 0 && results[0] && results[0].metrics) ? results[0].metrics : {};
+                    var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: firstMetrics, stock_performance: null};
+                    for (var i = 0; i < results.length; i++) {
+                        if (results[i] && results[i].stock_performance) { mergedResult.stock_performance = results[i].stock_performance; break; }
+                    }
+
+                    window._lastBacktestResult = mergedResult;
+                    window.strategySignals = mergedSignals;
+                    window._lastBacktestError = null;
+                    window.strategyStartDate = start;
+                    window.strategyEndDate = end;
+
+                    var posEntries = Object.keys(positionMap).map(function(k) { return { code: k, value: positionMap[k] }; });
+                    posEntries.sort(function(a, b) { return b.value - a.value; });
+                    window.topPositionCodes = posEntries.slice(0, 6).map(function(e) { return e.code; });
+
+                    addLog('success', '✅ 回测完成，总信号 ' + mergedSignals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                    if (mergedSignals.length === 0) {
+                        addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
+                    }
+                    addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
+
+                    overlay.remove();
+                    modal.remove();
+                    showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + mergedSignals.length + '个', false);
+                }
+
                 if (unknownCodes.length > 0) {
                     addLog('info', '正在加载 ' + unknownCodes.length + ' 只股票的名称...');
                     var namePromises = unknownCodes.map(function(c) { return fetchStockName(c, bridge); });
                     Promise.all(namePromises).then(function() {
+                        buildFinalResult();
+                    });
+                } else {
+                    buildFinalResult();
+                }
+            }
+
+            function finalizeError(err) {
+                addLog('error', '回测整体失败: ' + err.message);
+                window._lastBacktestError = err.message;
+                statusDiv.textContent = '回测整体失败: ' + err.message;
+                statusDiv.style.color = '#ff4c4c';
+                runBtn.disabled = false;
+                runBtn.textContent = '开始回测';
+            }
+
+            if (stockCodes.length > 1) {
+                // ---- 多股组合回测：共享资金池 ----
+                addLog('info', '🚀 启动多股组合回测（共享资金池），共 ' + stockCodes.length + ' 只股票');
+                var commission = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
+                var stampTax = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
+                var slippageCostTypeVal = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
+                var slippageCostValueVal = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+                var multiParams = { code: userCode, stocks: stockCodes, start: start, end: end, cash: cashVal, slippage: slippageType,
+                    commission_rate: commission, stamp_tax_rate: stampTax,
+                    slippage_cost_type: slippageCostTypeVal, slippage_cost_value: slippageCostValueVal };
+                bridge.run_multi_backtest(JSON.stringify(multiParams)).then(function(jsonStr) {
+                    var res = JSON.parse(jsonStr);
+                    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    if (!res.success) {
+                        addLog('error', '多股回测失败: ' + (res.error || '未知错误'));
+                        finalizeError(new Error(res.error || '未知错误'));
+                        return;
+                    }
+                    if (res.logs && res.logs.length > 0) {
+                        res.logs.slice(-30).forEach(function(l) {
+                            if (l.indexOf('[WARN]') !== -1) {
+                                addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
+                            } else if (l.indexOf('[ERROR]') !== -1) {
+                                addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
+                            } else {
+                                addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+                            }
+                        });
+                    }
+
+                    var signals = res.signals || [];
+                    var equityCurve = res.equity_curve || [];
+                    var metrics = res.metrics || {};
+                    var stockPerformance = res.stock_performance || [];
+
+                    var finalResult = {
+                        success: true,
+                        signals: signals,
+                        equity_curve: equityCurve,
+                        metrics: metrics,
+                        stock_performance: stockPerformance
+                    };
+                    window._lastBacktestResult = finalResult;
+                    window.strategySignals = signals;
+                    window._lastBacktestError = null;
+                    window.strategyStartDate = start;
+                    window.strategyEndDate = end;
+
+                    var posMap = {};
+                    signals.forEach(function(s) {
+                        var c = s.code || '';
+                        if (!posMap[c]) posMap[c] = 0;
+                        if (s.type === 'buy') posMap[c] += (s.price || 0) * (s.shares || 0);
+                        else posMap[c] -= (s.price || 0) * (s.shares || 0);
+                    });
+                    var posEntries2 = Object.keys(posMap).map(function(k) { return { code: k, value: posMap[k] }; });
+                    posEntries2.sort(function(a, b) { return b.value - a.value; });
+                    window.topPositionCodes = posEntries2.slice(0, 6).map(function(e) { return e.code; });
+
+                    var unknownCodes2 = [];
+                    var seenCodes2 = {};
+                    signals.forEach(function(s) {
+                        var c = s.code || '';
+                        if (c && !stockNameMap[c] && !seenCodes2[c]) {
+                            seenCodes2[c] = true;
+                            unknownCodes2.push(c);
+                        }
+                    });
+                    if (unknownCodes2.length > 0) {
+                        addLog('info', '正在加载 ' + unknownCodes2.length + ' 只股票的名称...');
+                        var namePromises2 = unknownCodes2.map(function(c) { return fetchStockName(c, bridge); });
+                        Promise.all(namePromises2).then(function() {
+                            addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                            if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
+                            addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
+                            overlay.remove();
+                            modal.remove();
+                            showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
+                        });
+                    } else {
                         addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
                         if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
                         addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
                         overlay.remove();
                         modal.remove();
-                        showToast('✅ 回测完成 | ' + codes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
-                    });
-                } else {
-                    addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
-                    if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
-                    addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
-                    overlay.remove();
-                    modal.remove();
-                    showToast('✅ 回测完成 | ' + codes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
-                }
-            }).catch(function(err) {
-                finalizeError(err);
-            });
-        } else {
-            // ---- 单股回测：使用原有接口 ----
-            var stock = codes[0];
-            var cleanCode = userCode.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
-            var commission2 = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
-            var stampTax2 = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
-            var slippageCostTypeVal2 = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
-            var slippageCostValueVal2 = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
-            var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType,
-                commission_rate: commission2, stamp_tax_rate: stampTax2,
-                slippage_cost_type: slippageCostTypeVal2, slippage_cost_value: slippageCostValueVal2 };
-            bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
-                var res = JSON.parse(jsonStr);
-                var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                if (!res.success) {
-                    addLog('error', stock + ' 回测失败: ' + (res.error || '未知'));
-                    finalizeError(new Error(res.error || '未知错误'));
-                    return;
-                }
-                var sigCount = (res.signals && res.signals.length) || 0;
-                addLog('success', stock + ' 回测完成，信号 ' + sigCount + ' 个');
-                if (res.logs && res.logs.length > 0) {
-                    res.logs.slice(-10).forEach(function(l) {
-                        if (l.indexOf('[WARN]') !== -1) {
-                            addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
-                        } else if (l.indexOf('[ERROR]') !== -1) {
-                            addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
-                        } else {
-                            addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
-                        }
-                    });
-                }
-                processSingleStockResults([res], elapsed);
-            }).catch(function(err) {
-                finalizeError(err);
-            });
+                        showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
+                    }
+                }).catch(function(err) {
+                    finalizeError(err);
+                });
+            } else {
+                // ---- 单股回测：使用原有接口 ----
+                var stock = stockCodes[0];
+                var cleanCode = userCode.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
+                var commission2 = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
+                var stampTax2 = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
+                var slippageCostTypeVal2 = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
+                var slippageCostValueVal2 = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+                var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType,
+                    commission_rate: commission2, stamp_tax_rate: stampTax2,
+                    slippage_cost_type: slippageCostTypeVal2, slippage_cost_value: slippageCostValueVal2 };
+                bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
+                    var res = JSON.parse(jsonStr);
+                    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    if (!res.success) {
+                        addLog('error', stock + ' 回测失败: ' + (res.error || '未知'));
+                        finalizeError(new Error(res.error || '未知错误'));
+                        return;
+                    }
+                    var sigCount = (res.signals && res.signals.length) || 0;
+                    addLog('success', stock + ' 回测完成，信号 ' + sigCount + ' 个');
+                    if (res.logs && res.logs.length > 0) {
+                        res.logs.slice(-10).forEach(function(l) {
+                            if (l.indexOf('[WARN]') !== -1) {
+                                addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
+                            } else if (l.indexOf('[ERROR]') !== -1) {
+                                addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
+                            } else {
+                                addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+                            }
+                        });
+                    }
+                    processSingleStockResults([res], elapsed);
+                }).catch(function(err) {
+                    finalizeError(err);
+                });
+            }
         }
+
+        clearLog();
+        addLog('info', '回测参数 | 初始资金: ¥' + Number(cash).toLocaleString() + ' | 区间: ' + startDt + ' ~ ' + endDt);
+        addLog('info', '股票池: ' + codes.length + ' 只');
+        executeBacktest(codes);
     };
 
     body.appendChild(dateInfo);
@@ -1137,8 +1154,8 @@ function saveCurrentStrategy() {
     var endInput = document.getElementById('strategyEndDate');
     var sDate = startInput ? startInput.value : startDate;
     var eDate = endInput ? endInput.value : endDate;
-    var stockPoolInput = document.getElementById('strategyStockPool');
-    var sp = stockPoolInput ? stockPoolInput.value.trim() : (stockPool || '');
+    var stockPoolInput = document.getElementById('poolCustomCodes');
+    var sp = stockPoolInput ? stockPoolInput.value.trim() : (customStockCodes || '');
     var spInput = document.getElementById('slippageInput');
     var sl = spInput ? (spInput.getAttribute('data-value') || 'close') : (slippage || 'close');
     var commission = parseFloat(document.getElementById('commissionRate').value) || 0.0003;
@@ -1146,6 +1163,17 @@ function saveCurrentStrategy() {
     var slippageCostType = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
     var slippageCostValue = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
     var jsonConfig = serializeConfig(cards, cap, sDate, eDate, sp, sl, commission, stampTax, slippageCostType, slippageCostValue);
+    // Attach pool config
+    var poolConfig = {
+        poolSource: poolSource,
+        customStockCodes: customStockCodes,
+        poolIndustryFilter: poolIndustryFilter,
+        poolConceptFilter: poolConceptFilter,
+        poolConceptMatchMode: poolConceptMatchMode
+    };
+    var configObj = JSON.parse(jsonConfig);
+    configObj.poolConfig = poolConfig;
+    jsonConfig = JSON.stringify(configObj);
 
     var saveBtn = document.getElementById('saveStrategyBtn');
     var currentId = saveBtn && saveBtn.dataset.currentId ? parseInt(saveBtn.dataset.currentId) : null;
@@ -1186,6 +1214,14 @@ function loadStrategyById(id) {
         slippage = config.slippage || 'close';
         window.currentStrategyName = obj.name;
 
+        // Restore pool config
+        var pc = config.poolConfig || {};
+        poolSource = pc.poolSource || 'all';
+        customStockCodes = pc.customStockCodes || '';
+        poolIndustryFilter = pc.poolIndustryFilter || '';
+        poolConceptFilter = pc.poolConceptFilter || [];
+        poolConceptMatchMode = pc.poolConceptMatchMode || 'any';
+
         var nameInput = document.getElementById('strategyNameInput');
         if (nameInput) nameInput.value = obj.name;
         var capitalInput = document.getElementById('initialCapitalInput');
@@ -1194,8 +1230,22 @@ function loadStrategyById(id) {
         if (startInput) startInput.value = startDate;
         var endInput = document.getElementById('strategyEndDate');
         if (endInput) endInput.value = endDate;
-        var spInput = document.getElementById('strategyStockPool');
-        if (spInput) spInput.value = stockPool;
+        // Update pool UI
+        var poolRadio = document.querySelector('input[name="poolSource"][value="' + poolSource + '"]');
+        if (poolRadio) poolRadio.checked = true;
+        var customArea = document.getElementById('poolCustomCodes');
+        if (customArea) {
+            customArea.value = customStockCodes;
+            customArea.style.display = (poolSource === 'custom') ? 'block' : 'none';
+        }
+        var indSel = document.getElementById('poolIndustryFilter');
+        if (indSel) indSel.value = poolIndustryFilter;
+        var mmSel = document.getElementById('poolConceptMatchMode');
+        if (mmSel) mmSel.value = poolConceptMatchMode;
+        // Re-render concept select with selections restored
+        populatePoolConceptSelect('');
+        // Trigger pool update
+        updateStockPool();
         var slInput = document.getElementById('slippageInput');
         if (slInput) {
             var slOpts = { close: '收盘价成交（回测默认）', next_open: '次日开盘价成交', half_spread: '半价差偏移（仅K线图标记）' };
@@ -1230,15 +1280,31 @@ function newStrategy() {
     cards = [];
     strategyName = '';
     strategyId = null;
-    stockPool = '';
+    poolSource = 'all';
+    customStockCodes = '';
+    poolIndustryFilter = '';
+    poolConceptFilter = [];
+    poolConceptMatchMode = 'any';
+    currentStockPool = [];
     slippage = 'close';
     window.currentStrategyName = undefined;
     window.currentStrategyCode = undefined;
     window._defaultStockFromTemplate = undefined;
     var nameInput = document.getElementById('strategyNameInput');
     if (nameInput) nameInput.value = '';
-    var spInput = document.getElementById('strategyStockPool');
-    if (spInput) spInput.value = '';
+    // Reset pool UI
+    var poolRadio = document.querySelector('input[name="poolSource"][value="all"]');
+    if (poolRadio) poolRadio.checked = true;
+    var customArea = document.getElementById('poolCustomCodes');
+    if (customArea) { customArea.value = ''; customArea.style.display = 'none'; }
+    var indSel = document.getElementById('poolIndustryFilter');
+    if (indSel) indSel.value = '';
+    var mmSel = document.getElementById('poolConceptMatchMode');
+    if (mmSel) mmSel.value = 'any';
+    var conSel = document.getElementById('poolConceptFilter');
+    if (conSel) { conSel.querySelectorAll('option').forEach(function(o) { o.selected = false; }); }
+    updatePoolConceptCount();
+    updateStockPool();
     var slInput = document.getElementById('slippageInput');
     if (slInput) {
         slInput.value = '收盘价成交（回测默认）';
@@ -1290,6 +1356,15 @@ export function renderStrategyPage(container) {
             endDate = config.endDate || new Date().toISOString().slice(0, 10);
             stockPool = config.stockPool || '';
             slippage = config.slippage || 'close';
+            // Restore pool config from saved strategy
+            if (config.poolConfig) {
+                var pc = config.poolConfig;
+                poolSource = pc.poolSource || 'all';
+                customStockCodes = pc.customStockCodes || '';
+                poolIndustryFilter = pc.poolIndustryFilter || '';
+                poolConceptFilter = pc.poolConceptFilter || [];
+                poolConceptMatchMode = pc.poolConceptMatchMode || 'any';
+            }
         }
     }
 
@@ -1308,10 +1383,45 @@ export function renderStrategyPage(container) {
         '<button id="newStrategyBtn">📄 新建</button>' +
         '<button id="deleteStrategyBtn">🗑 删除</button>' +
         '</div>' +
-        '<div class="metric-row" style="margin-top:8px;">' +
-        '<span>默认股票池:</span>' +
-        '<textarea id="strategyStockPool" rows="2" placeholder="输入股票代码，每行一个或用逗号分隔" ' +
-        'style="width:400px;background:#1e253b;border:1px solid #323d5a;border-radius:12px;color:#fff;padding:6px 10px;font-size:12px;font-family:monospace;resize:vertical;">' + escapeHtml(stockPool) + '</textarea>' +
+        // ---- Layered Stock Pool Selector ----
+        '<div class="metric-row" style="margin-top:8px;align-items:flex-start;">' +
+        '<span style="color:#9aa9cc;padding-top:4px;">股票池:</span>' +
+        '<div style="flex:1;min-width:0;">' +
+        // Radio buttons for pool source
+        '<div id="poolSourceRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="all"' + (poolSource === 'all' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 全市场</label>' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="hs300"' + (poolSource === 'hs300' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 沪深300</label>' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="zz500"' + (poolSource === 'zz500' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 中证500</label>' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="zz1000"' + (poolSource === 'zz1000' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 中证1000</label>' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="cyb"' + (poolSource === 'cyb' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 创业板</label>' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="kc50"' + (poolSource === 'kc50' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 科创50</label>' +
+        '<label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="poolSource" value="custom"' + (poolSource === 'custom' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 自定义</label>' +
+        '</div>' +
+        // Custom codes textarea (hidden unless custom source)
+        '<textarea id="poolCustomCodes" rows="2" placeholder="输入股票代码，每行一个或用逗号分隔" ' +
+        'style="display:' + (poolSource === 'custom' ? 'block' : 'none') + ';width:100%;background:#1e253b;border:1px solid #323d5a;border-radius:12px;color:#fff;padding:6px 10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;">' + escapeHtml(customStockCodes) + '</textarea>' +
+        // Optional filters
+        '<div id="poolOptionalFilters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">' +
+        '<span style="color:#9aa9cc;font-size:11px;">筛选:</span>' +
+        '<select id="poolIndustryFilter" style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;max-width:160px;">' +
+        '<option value="">-- 行业(可选) --</option>' +
+        '</select>' +
+        '<input id="poolConceptSearch" type="text" placeholder="搜索概念..." ' +
+        'style="width:110px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;">' +
+        '<select id="poolConceptFilter" multiple size="3" ' +
+        'style="min-width:160px;max-width:240px;background:#1e253b;border:1px solid #323d5a;border-radius:8px;color:#fff;font-size:11px;padding:2px;"></select>' +
+        '<select id="poolConceptMatchMode" style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
+        '<option value="any"' + (poolConceptMatchMode === 'any' ? ' selected' : '') + '>任一</option>' +
+        '<option value="all"' + (poolConceptMatchMode === 'all' ? ' selected' : '') + '>全部</option>' +
+        '</select>' +
+        '<span id="poolConceptCount" style="color:#9aa9cc;font-size:11px;"></span>' +
+        '<button id="poolResetFiltersBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:3px 10px;border-radius:20px;font-size:11px;cursor:pointer;">重置</button>' +
+        '</div>' +
+        // Preview area
+        '<div id="poolPreview" style="margin-top:4px;color:#9aa9cc;font-size:11px;line-height:1.5;">' +
+        '<span id="poolPreviewText" style="color:#7a8ba8;">加载中...</span>' +
+        '</div>' +
+        '</div>' +
         '</div>' +
         '<div class="metric-row" style="margin-top:8px;">' +
         '<span>初始资金:</span>' +
@@ -1479,9 +1589,7 @@ export function renderStrategyPage(container) {
             }
 
             // Read page params
-            var pageStockPoolInput = document.getElementById('strategyStockPool');
-            var savedStockPool = pageStockPoolInput ? pageStockPoolInput.value.trim() : '';
-            var defaultStock = savedStockPool || (window._defaultStockFromTemplate) || '000001';
+            var defaultStock = (currentStockPool && currentStockPool.length > 0) ? currentStockPool.join(',') : ((window._defaultStockFromTemplate) || '000001');
 
             var pageStartInput = document.getElementById('strategyStartDate');
             var pageEndInput = document.getElementById('strategyEndDate');
@@ -1532,8 +1640,251 @@ export function renderStrategyPage(container) {
         });
     }
 
+    // ---- Pool Selector Events ----
+    var poolSourceRadios = document.querySelectorAll('input[name="poolSource"]');
+    poolSourceRadios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            if (this.checked) {
+                poolSource = this.value;
+                var customArea = document.getElementById('poolCustomCodes');
+                if (customArea) customArea.style.display = (poolSource === 'custom') ? 'block' : 'none';
+                updateStockPool();
+            }
+        });
+    });
+
+    var customCodesEl = document.getElementById('poolCustomCodes');
+    if (customCodesEl) {
+        customCodesEl.addEventListener('input', function() {
+            customStockCodes = this.value;
+            updateStockPool();
+        });
+    }
+
+    var industryFilterEl = document.getElementById('poolIndustryFilter');
+    if (industryFilterEl) {
+        industryFilterEl.addEventListener('change', function() {
+            poolIndustryFilter = this.value;
+            updateStockPool();
+        });
+    }
+
+    var conceptSearchEl = document.getElementById('poolConceptSearch');
+    if (conceptSearchEl) {
+        conceptSearchEl.addEventListener('input', function() {
+            populatePoolConceptSelect(this.value);
+        });
+    }
+
+    var conceptFilterEl = document.getElementById('poolConceptFilter');
+    if (conceptFilterEl) {
+        conceptFilterEl.addEventListener('change', function() {
+            poolConceptFilter = Array.from(this.selectedOptions).map(function(o) { return o.value; });
+            updatePoolConceptCount();
+            updateStockPool();
+        });
+    }
+
+    var matchModeEl = document.getElementById('poolConceptMatchMode');
+    if (matchModeEl) {
+        matchModeEl.addEventListener('change', function() {
+            poolConceptMatchMode = this.value;
+            updateStockPool();
+        });
+    }
+
+    var resetFiltersBtn = document.getElementById('poolResetFiltersBtn');
+    if (resetFiltersBtn) {
+        resetFiltersBtn.addEventListener('click', function() {
+            poolIndustryFilter = '';
+            poolConceptFilter = [];
+            poolConceptMatchMode = 'any';
+            var indSel = document.getElementById('poolIndustryFilter');
+            if (indSel) indSel.value = '';
+            var conSel = document.getElementById('poolConceptFilter');
+            if (conSel) { conSel.querySelectorAll('option').forEach(function(o) { o.selected = false; }); }
+            var mmSel = document.getElementById('poolConceptMatchMode');
+            if (mmSel) mmSel.value = 'any';
+            updatePoolConceptCount();
+            updateStockPool();
+        });
+    }
+
+    // Populate concept/industry selects initially
+    populatePoolConceptSelect('');
+    populatePoolIndustrySelect();
+
+    // Initialize pool
+    initPoolSelector();
+
     // Render cards
     loadDynamicOptions();
     renderCards();
     updateCodePreview();
+}
+
+// ---- Pool Selector Functions ----
+
+var INDEX_CODE_MAP = {
+    'hs300': '000300.XSHG',
+    'zz500': '000905.XSHG',
+    'zz1000': '000852.XSHG',
+    'cyb': '399006.XSHE',
+    'kc50': '000688.XSHG'
+};
+
+function initPoolSelector() {
+    if (poolInitialized) return;
+    poolInitialized = true;
+
+    // Load all stocks cache
+    if (bridge && typeof bridge.get_all_stocks === 'function') {
+        bridge.get_all_stocks().then(function(jsonStr) {
+            try {
+                var list = JSON.parse(jsonStr);
+                if (Array.isArray(list)) {
+                    allStocksCache = list;
+                }
+            } catch(e) {}
+            updateStockPool();
+        }).catch(function() {
+            updateStockPool();
+        });
+    } else {
+        updateStockPool();
+    }
+}
+
+function updateStockPool() {
+    var previewEl = document.getElementById('poolPreviewText');
+    if (!previewEl) return;
+
+    previewEl.textContent = '计算中...';
+    previewEl.style.color = '#7a8ba8';
+
+    var promise;
+    if (poolSource === 'custom') {
+        // Parse custom codes
+        var codes = [];
+        (customStockCodes || '').split(/[\n,]+/).forEach(function(part) {
+            var c = part.trim();
+            if (c) codes.push(c);
+        });
+        codes = codes.filter(function(v, i, a) { return a.indexOf(v) === i; });
+        promise = Promise.resolve(codes);
+    } else if (poolSource === 'all') {
+        promise = Promise.resolve(allStocksCache.slice());
+    } else {
+        var indexCode = INDEX_CODE_MAP[poolSource];
+        if (indexCode && bridge && typeof bridge.get_index_stocks === 'function') {
+            promise = bridge.get_index_stocks(indexCode).then(function(jsonStr) {
+                try {
+                    var list = JSON.parse(jsonStr);
+                    return Array.isArray(list) ? list : [];
+                } catch(e) { return []; }
+            });
+        } else {
+            promise = Promise.resolve([]);
+        }
+    }
+
+    promise.then(function(baseCodes) {
+        if (!baseCodes || baseCodes.length === 0) {
+            currentStockPool = [];
+            previewEl.textContent = '股票池: 0 只';
+            previewEl.style.color = '#ff4c4c';
+            return;
+        }
+
+        // Apply optional industry filter
+        var nextPromise;
+        if (poolIndustryFilter && bridge && typeof bridge.filter_stocks_by_industry === 'function') {
+            nextPromise = bridge.filter_stocks_by_industry(JSON.stringify(baseCodes), poolIndustryFilter).then(function(jsonStr) {
+                try {
+                    var filtered = JSON.parse(jsonStr);
+                    return Array.isArray(filtered) ? filtered : baseCodes;
+                } catch(e) { return baseCodes; }
+            });
+        } else {
+            nextPromise = Promise.resolve(baseCodes);
+        }
+
+        nextPromise.then(function(codesAfterIndustry) {
+            // Apply optional concept filter
+            var finalPromise;
+            if (poolConceptFilter.length > 0 && bridge && typeof bridge.filter_stocks_by_concepts === 'function') {
+                finalPromise = bridge.filter_stocks_by_concepts(
+                    JSON.stringify(codesAfterIndustry),
+                    JSON.stringify(poolConceptFilter),
+                    poolConceptMatchMode
+                ).then(function(jsonStr) {
+                    try {
+                        var filtered = JSON.parse(jsonStr);
+                        return Array.isArray(filtered) ? filtered : codesAfterIndustry;
+                    } catch(e) { return codesAfterIndustry; }
+                });
+            } else {
+                finalPromise = Promise.resolve(codesAfterIndustry);
+            }
+
+            finalPromise.then(function(finalCodes) {
+                currentStockPool = finalCodes;
+                var count = finalCodes.length;
+                var preview10 = finalCodes.slice(0, 10).join(', ');
+                var suffix = count > 10 ? ' ...' : '';
+                previewEl.textContent = '股票池: ' + count + ' 只 | 前10: ' + preview10 + suffix;
+                previewEl.style.color = count > 0 ? '#4f7eff' : '#ff4c4c';
+            });
+        });
+    }).catch(function(err) {
+        currentStockPool = [];
+        previewEl.textContent = '加载失败: ' + (err.message || err);
+        previewEl.style.color = '#ff4c4c';
+    });
+}
+
+function populatePoolConceptSelect(filterText) {
+    var select = document.getElementById('poolConceptFilter');
+    if (!select) return;
+    var lowerFilter = (filterText || '').toLowerCase();
+    select.innerHTML = '';
+    (conceptListCache || []).forEach(function(opt) {
+        if (!filterText || opt.label.toLowerCase().indexOf(lowerFilter) !== -1) {
+            var option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (poolConceptFilter.indexOf(opt.value) !== -1) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        }
+    });
+    updatePoolConceptCount();
+}
+
+function populatePoolIndustrySelect() {
+    var select = document.getElementById('poolIndustryFilter');
+    if (!select) return;
+    var currentVal = select.value || poolIndustryFilter;
+    select.innerHTML = '<option value="">-- 行业(可选) --</option>';
+    (industryListCache || []).forEach(function(opt) {
+        var option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if (opt.value === currentVal) option.selected = true;
+        select.appendChild(option);
+    });
+    if (currentVal) select.value = currentVal;
+}
+
+function updatePoolConceptCount() {
+    var countEl = document.getElementById('poolConceptCount');
+    if (!countEl) return;
+    var selected = poolConceptFilter.length;
+    if (selected > 0) {
+        countEl.textContent = '已选 ' + selected + ' 个';
+        countEl.style.color = '#4f7eff';
+    } else {
+        countEl.textContent = '';
+    }
 }
