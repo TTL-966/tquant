@@ -369,6 +369,72 @@ export var CARD_TYPE_META = {
         paramFields: [
             { key: 'industry', label: '行业名称', type: 'select', options: [] }
         ]
+    },
+    yesterday_change: {
+        type: 'yesterday_change',
+        label: '昨日涨幅',
+        icon: '📈',
+        description: '当日涨跌幅满足指定范围',
+        defaultAction: 'buy',
+        defaultParams: { minChange: 3, maxChange: 10, includeLimitUp: 'yes', direction: 'up' },
+        paramFields: [
+            { key: 'minChange', label: '最小涨幅(%)', type: 'number', min: -20, max: 20, step: 0.1, default: 3 },
+            { key: 'maxChange', label: '最大涨幅(%)', type: 'number', min: -20, max: 20, step: 0.1, default: 10 },
+            { key: 'includeLimitUp', label: '包含涨停', type: 'select', options: [
+                { value: 'yes', label: '是' },
+                { value: 'no', label: '否（排除涨停）' }
+            ], default: 'yes' },
+            { key: 'direction', label: '方向', type: 'select', options: [
+                { value: 'up', label: '上涨' },
+                { value: 'down', label: '下跌' },
+                { value: 'both', label: '两者' }
+            ], default: 'up' }
+        ]
+    },
+    n_day_high: {
+        type: 'n_day_high',
+        label: '创N日新高',
+        icon: '🔺',
+        description: '当日最高价创近N个交易日新高',
+        defaultAction: 'buy',
+        defaultParams: { n: 20 },
+        paramFields: [
+            { key: 'n', label: '天数', type: 'number', min: 3, max: 250, default: 20 }
+        ]
+    },
+    n_day_low: {
+        type: 'n_day_low',
+        label: '创N日新低',
+        icon: '🔻',
+        description: '当日最低价创近N个交易日新低',
+        defaultAction: 'buy',
+        defaultParams: { n: 20 },
+        paramFields: [
+            { key: 'n', label: '天数', type: 'number', min: 3, max: 250, default: 20 }
+        ]
+    },
+    consecutive_up: {
+        type: 'consecutive_up',
+        label: '连续上涨',
+        icon: '⬆️',
+        description: '连续N个交易日收阳线上涨',
+        defaultAction: 'buy',
+        defaultParams: { n: 3 },
+        paramFields: [
+            { key: 'n', label: '连续天数', type: 'number', min: 2, max: 20, default: 3 }
+        ]
+    },
+    volume_ratio: {
+        type: 'volume_ratio',
+        label: '量比',
+        icon: '📊',
+        description: '当日成交量与5日均量的比值在指定范围内',
+        defaultAction: 'buy',
+        defaultParams: { minRatio: 1.5, maxRatio: 5 },
+        paramFields: [
+            { key: 'minRatio', label: '最小量比', type: 'number', min: 0.1, max: 20, step: 0.1, default: 1.5 },
+            { key: 'maxRatio', label: '最大量比', type: 'number', min: 0.1, max: 50, step: 0.1, default: 5 }
+        ]
     }
 };
 
