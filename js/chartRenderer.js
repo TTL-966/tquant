@@ -197,6 +197,12 @@ function createDropdownControl(chart, fullSeries, rawValues) {
 
     panelDiv.appendChild(periodRow);
 
+    // ---- 已选指标状态 ----
+    var statusDiv = document.createElement('div');
+    statusDiv.id = 'indicatorStatus_' + containerId;
+    statusDiv.style.cssText = 'font-size:11px;color:#4f7eff;padding:6px 0 0 0;border-top:1px solid #323d5a;margin-top:6px;';
+    panelDiv.appendChild(statusDiv);
+
     function updatePeriodBtnStyles() {
         for (var bi = 0; bi < periodBtns.length; bi++) {
             var bp = parseInt(periodBtns[bi].getAttribute('data-period'));
@@ -461,20 +467,80 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         animation: false,
         tooltip: {
             trigger: 'axis',
-            axisPointer: {
-                type: 'cross',
-                crossStyle: { color: 'rgba(255,255,255,0.2)' },
-                lineStyle: { color: 'rgba(255,255,255,0.3)', width: 1, type: 'dashed' },
-                label: {
-                    backgroundColor: '#4f7eff',
-                    color: '#ffffff',
-                    position: 'bottom',
-                    formatter: function(params) {
-                        if (params && params.value) return params.value;
-                        return '';
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+                if (!params || params.length === 0) return '';
+                var idx = params[0].dataIndex;
+                if (idx === undefined || !values[idx]) return '';
+
+                var data = values[idx];
+                var open = data[0], close = data[1], low = data[2], high = data[3];
+                var rawVolume = data.length > 4 ? data[4] : 0;
+
+                // ---------- 成交量转换（股 → 手/万手/亿手）----------
+                var volumeDisplay = '--';
+                if (rawVolume && !isNaN(rawVolume) && rawVolume > 0) {
+                    var hands = rawVolume / 100;
+                    if (hands >= 100000000) {
+                        volumeDisplay = (hands / 100000000).toFixed(1) + ' 亿手';
+                    } else if (hands >= 10000) {
+                        volumeDisplay = (hands / 10000).toFixed(1) + ' 万手';
+                    } else {
+                        volumeDisplay = Math.round(hands) + ' 手';
+                    }
+                } else if (rawVolume === 0) {
+                    volumeDisplay = '0 手';
+                }
+
+                // ---------- 涨跌幅计算（基于前收盘）----------
+                var changeAbs = '--', changePct = '--', changeSymbol = '', changeColor = '#9aa9cc';
+                if (idx > 0) {
+                    var prevClose = values[idx - 1][1];
+                    var change = close - prevClose;
+                    changeAbs = change.toFixed(2);
+                    changePct = (change / prevClose * 100).toFixed(2);
+                    if (change > 0) {
+                        changeSymbol = ' ▲';
+                        changeColor = '#ef5350';
+                    } else if (change < 0) {
+                        changeSymbol = ' ▼';
+                        changeColor = '#26a69a';
                     }
                 }
-            }
+
+                // ---------- 均线数据 ----------
+                function getMa(maArray) {
+                    if (maArray && maArray[idx] !== undefined && maArray[idx] !== null && maArray[idx] !== 0)
+                        return maArray[idx].toFixed(2);
+                    return '--';
+                }
+                var ma5Val = getMa(maData && maData.ma5);
+                var ma10Val = getMa(maData && maData.ma10);
+                var ma20Val = getMa(maData && maData.ma20);
+                var ma30Val = getMa(maData && maData.ma30);
+
+                var dateStr = dates[idx];
+
+                // ---------- HTML ----------
+                return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:12px 16px;min-width:320px;">' +
+                    '<div style="color:#ffffff;font-weight:600;margin-bottom:10px;font-size:13px;">' + dateStr + '</div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:10px;">' +
+                    '<div><span style="color:#9aa9cc;">开盘</span><br><span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">收盘</span><br><span style="font-family:Consolas,monospace;font-weight:bold;">' + close.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">最高</span><br><span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">涨跌额</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">最低</span><br><span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">涨跌幅</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
+                    '</div>' +
+                    '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
+                    '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
+                    '<div style="margin-top:8px;font-size:12px;color:#9aa9cc;display:flex;gap:12px;flex-wrap:wrap;">' +
+                    '<span>MA5 <span style="color:#fff;">' + ma5Val + '</span></span>' +
+                    '<span>MA10 <span style="color:#fff;">' + ma10Val + '</span></span>' +
+                    '<span>MA20 <span style="color:#fff;">' + ma20Val + '</span></span>' +
+                    '<span>MA30 <span style="color:#fff;">' + ma30Val + '</span></span>' +
+                    '</div></div>';
+            },
         },
         xAxis: {
             data: dates,
@@ -724,16 +790,79 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             animation: false,
             tooltip: {
                 trigger: 'axis',
-                axisPointer: {
-                    type: 'cross',
-                    crossStyle: { color: 'rgba(255,255,255,0.2)' },
-                    lineStyle: { color: 'rgba(255,255,255,0.3)', width: 1, type: 'dashed' },
-                    label: {
-                        backgroundColor: '#4f7eff',
-                        color: '#ffffff',
-                        formatter: (params) => params && params.value ? params.value : ''
+                axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+                    var idx = params[0].dataIndex;
+                    if (idx === undefined || !values[idx]) return '';
+
+                    var data = values[idx];
+                    var open = data[0], close = data[1], low = data[2], high = data[3];
+                    var rawVolume = data.length > 4 ? data[4] : 0;
+
+                    // ---------- 成交量转换（股 → 手/万手/亿手）----------
+                    var volumeDisplay = '--';
+                    if (rawVolume && !isNaN(rawVolume) && rawVolume > 0) {
+                        var hands = rawVolume / 100;
+                        if (hands >= 100000000) {
+                            volumeDisplay = (hands / 100000000).toFixed(1) + ' 亿手';
+                        } else if (hands >= 10000) {
+                            volumeDisplay = (hands / 10000).toFixed(1) + ' 万手';
+                        } else {
+                            volumeDisplay = Math.round(hands) + ' 手';
+                        }
+                    } else if (rawVolume === 0) {
+                        volumeDisplay = '0 手';
                     }
-                }
+
+                    // ---------- 涨跌幅计算（基于前收盘）----------
+                    var changeAbs = '--', changePct = '--', changeSymbol = '', changeColor = '#9aa9cc';
+                    if (idx > 0) {
+                        var prevClose = values[idx - 1][1];
+                        var change = close - prevClose;
+                        changeAbs = change.toFixed(2);
+                        changePct = (change / prevClose * 100).toFixed(2);
+                        if (change > 0) {
+                            changeSymbol = ' ▲';
+                            changeColor = '#ef5350';
+                        } else if (change < 0) {
+                            changeSymbol = ' ▼';
+                            changeColor = '#26a69a';
+                        }
+                    }
+
+                    // ---------- 均线数据 ----------
+                    function getMa(maArray) {
+                        if (maArray && maArray[idx] !== undefined && maArray[idx] !== null && maArray[idx] !== 0)
+                            return maArray[idx].toFixed(2);
+                        return '--';
+                    }
+                    var ma5Val = getMa(ma5Data);
+                    var ma10Val = getMa(ma10Data);
+                    var ma20Val = getMa(ma20Data);
+                    var ma30Val = getMa(ma30Data);
+
+                    var dateStr = dates[idx];
+
+                    return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:12px 16px;min-width:320px;">' +
+                        '<div style="color:#ffffff;font-weight:600;margin-bottom:10px;font-size:13px;">' + dateStr + '</div>' +
+                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:10px;">' +
+                        '<div><span style="color:#9aa9cc;">开盘</span><br><span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">收盘</span><br><span style="font-family:Consolas,monospace;font-weight:bold;">' + close.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">最高</span><br><span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">涨跌额</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">最低</span><br><span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">涨跌幅</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
+                        '</div>' +
+                        '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
+                        '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
+                        '<div style="margin-top:8px;font-size:12px;color:#9aa9cc;display:flex;gap:12px;flex-wrap:wrap;">' +
+                        '<span>MA5 <span style="color:#fff;">' + ma5Val + '</span></span>' +
+                        '<span>MA10 <span style="color:#fff;">' + ma10Val + '</span></span>' +
+                        '<span>MA20 <span style="color:#fff;">' + ma20Val + '</span></span>' +
+                        '<span>MA30 <span style="color:#fff;">' + ma30Val + '</span></span>' +
+                        '</div></div>';
+                },
             },
             xAxis: {
                 type: 'category',
