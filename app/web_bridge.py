@@ -880,6 +880,106 @@ class WebBridge(QObject):
             return json.dumps({"error": str(e)})
 
     @Slot(result=str)
+    def get_portfolio_summary(self):
+        """返回持仓汇总：总市值、总成本、浮动盈亏"""
+        try:
+            raw = self.trade.get_portfolio()
+            holdings = raw.get("holdings", {})
+            total_cost = 0.0
+            total_market_value = 0.0
+            items = []
+            if isinstance(holdings, dict):
+                for code, info in holdings.items():
+                    items.append({"code": code, "shares": info["shares"], "cost": info["cost"]})
+            else:
+                items = holdings
+
+            for h in items:
+                code = h["code"]
+                shares = h["shares"]
+                cost = h["cost"]
+                total_cost += cost * shares
+                price = cost
+                try:
+                    latest = self.data_feed.get_latest_price(code)
+                    if "error" not in latest:
+                        price = latest["price"]
+                except Exception:
+                    pass
+                total_market_value += price * shares
+
+            total_cost = round(total_cost, 2)
+            total_market_value = round(total_market_value, 2)
+            total_profit = round(total_market_value - total_cost, 2)
+            profit_pct = round(total_profit / total_cost * 100, 2) if total_cost > 0 else 0.0
+
+            return json.dumps({
+                "success": True,
+                "total_market_value": total_market_value,
+                "total_cost": total_cost,
+                "total_profit": total_profit,
+                "profit_pct": profit_pct
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def close_all_positions(self):
+        """一键平仓：卖出所有持仓"""
+        try:
+            raw = self.trade.get_portfolio()
+            holdings = raw.get("holdings", {})
+            items = []
+            if isinstance(holdings, dict):
+                for code, info in holdings.items():
+                    items.append({"code": code, "shares": info["shares"], "cost": info["cost"]})
+            else:
+                items = holdings
+
+            if not items:
+                return json.dumps({"success": True, "message": "没有持仓需要平仓", "closed": 0, "failed": 0})
+
+            today = __import__('datetime').datetime.now().strftime("%Y-%m-%d")
+            closed = 0
+            failed = 0
+            for h in items:
+                code = h["code"]
+                shares = h["shares"]
+                price = h["cost"]
+                try:
+                    latest = self.data_feed.get_latest_price(code)
+                    if "error" not in latest:
+                        price = latest["price"]
+                except Exception:
+                    pass
+                result = self.trade.execute_trade(code, "sell", shares, price, today)
+                if result.get("success"):
+                    closed += 1
+                else:
+                    failed += 1
+
+            return json.dumps({
+                "success": True,
+                "message": f"平仓完成：成功 {closed} 只，失败 {failed} 只",
+                "closed": closed,
+                "failed": failed
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def reset_portfolio(self):
+        """重置模拟盘：清空持仓和交易记录，恢复初始资金"""
+        try:
+            self.trade = TradeSimulation()
+            return json.dumps({"success": True, "message": "模拟盘已重置，初始资金 1,000,000 元"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
     def test_db_connection(self):
         try:
             return json.dumps(self.db.connection_status())

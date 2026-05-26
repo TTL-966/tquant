@@ -5,6 +5,15 @@ import { dailyHoldings } from './stockData.js';
 
 var _tradeHistoryExpanded = false;
 
+function showToast(msg, isError, duration) {
+    var tip = document.createElement('div');
+    tip.style.cssText = 'position:fixed;top:20%;left:50%;transform:translateX(-50%);background:' +
+        (isError ? '#ff4c4c' : '#4cff4c') + ';color:#000;padding:10px 20px;border-radius:8px;z-index:99999;font-weight:600;';
+    tip.textContent = msg;
+    document.body.appendChild(tip);
+    setTimeout(function() { tip.remove(); }, duration || 2000);
+}
+
 export function renderProfile() {
     if (bridge) {
         bridge.get_portfolio().then(function(jsonStr) {
@@ -74,24 +83,38 @@ function renderProfileWithData(data) {
     var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
     var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
     var tradeCodes = ['000001', '000858', '300750'];
+
     container.innerHTML = `
             <div class="card">
-                <div class="card-title">📋 当前持仓</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>📋 当前持仓</span>
+                    <span id="portfolioSummaryInline" style="font-size:13px;color:#9aa9cc;">加载盈亏中...</span>
+                </div>
                 <table><thead><tr><th>股票代码</th><th>持股数</th><th>成本价</th><th>现价</th><th>盈亏</th></tr></thead>
                 <tbody>${holdingRows}</tbody></table>
             </div>
             <div class="card">
-                <div class="card-title">📜 交易记录</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>📜 交易记录</span>
+                    <button id="exportTradeCsvBtn" style="background:#2d3a5e;color:#fff;border:none;border-radius:30px;padding:4px 14px;font-size:12px;cursor:pointer;">📥 导出 CSV</button>
+                </div>
                 <table><thead><tr><th>日期</th><th>类型</th><th>代码</th><th>价格</th><th>数量</th></tr></thead>
                 <tbody id="tradeHistoryTbody">${visibleTradeRowsHtml}</tbody></table>
                 ${showTradeToggle ? '<div style="text-align:right;margin-top:8px;"><button id="toggleTradeHistoryBtn" style="background:#2d3a5e;color:#fff;border:none;border-radius:30px;padding:6px 18px;font-size:13px;cursor:pointer;">▼ 查看更多 (共 ' + totalTradeCount + ' 条)</button></div>' : ''}
             </div>
             <div class="card">
                 <div class="card-title">💰 账户概况</div>
-                <div class="account-cards">
+                <div class="account-cards" id="accountCardsContainer">
                     <div class="account-card"><div class="label">总资产</div><div class="value">${data.total_assets.toLocaleString()}</div></div>
                     <div class="account-card"><div class="label">可用资金</div><div class="value">${data.cash.toLocaleString()}</div></div>
                     <div class="account-card"><div class="label">总收益率</div><div class="value ${returnCls}">${returnStr}</div></div>
+                    <div class="account-card" id="summaryMarketValue" style="display:none;"><div class="label">持仓总市值</div><div class="value">--</div></div>
+                    <div class="account-card" id="summaryCost" style="display:none;"><div class="label">持仓总成本</div><div class="value">--</div></div>
+                    <div class="account-card" id="summaryProfit" style="display:none;"><div class="label">浮动盈亏</div><div class="value">--</div></div>
+                </div>
+                <div class="account-cards" style="margin-top:12px;display:flex;gap:8px;">
+                    <button id="closeAllBtn" style="background:#4f7eff;border:none;padding:8px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;">🚀 一键平仓</button>
+                    <button id="resetPortfolioBtn" style="background:#3d3040;border:none;padding:8px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;">🔄 重置模拟盘</button>
                 </div>
             </div>
             <div class="card">
@@ -116,6 +139,39 @@ function renderProfileWithData(data) {
                 <div id="tradeResult" style="margin-top:8px; font-size:13px;"></div>
             </div>
         `;
+
+    // ---- Fetch portfolio summary ----
+    if (bridge && typeof bridge.get_portfolio_summary === 'function') {
+        bridge.get_portfolio_summary().then(function(jsonStr) {
+            var summary = JSON.parse(jsonStr);
+            if (summary.success) {
+                var profitCls = summary.total_profit >= 0 ? 'profit-positive' : 'profit-negative';
+                var sign = summary.total_profit >= 0 ? '+' : '';
+                var mvCard = document.getElementById('summaryMarketValue');
+                var costCard = document.getElementById('summaryCost');
+                var profitCard = document.getElementById('summaryProfit');
+                if (mvCard) { mvCard.style.display = ''; mvCard.querySelector('.value').textContent = summary.total_market_value.toLocaleString(); }
+                if (costCard) { costCard.style.display = ''; costCard.querySelector('.value').textContent = summary.total_cost.toLocaleString(); }
+                if (profitCard) {
+                    profitCard.style.display = '';
+                    profitCard.querySelector('.value').className = 'value ' + profitCls;
+                    profitCard.querySelector('.value').textContent = sign + summary.total_profit.toFixed(2) + ' (' + sign + summary.profit_pct.toFixed(2) + '%)';
+                }
+                var inlineEl = document.getElementById('portfolioSummaryInline');
+                if (inlineEl) {
+                    inlineEl.innerHTML = '浮动盈亏 <span class="' + profitCls + '">' + sign + summary.total_profit.toFixed(2) + ' (' + sign + summary.profit_pct.toFixed(2) + '%)</span>';
+                }
+            } else {
+                var inlineEl = document.getElementById('portfolioSummaryInline');
+                if (inlineEl) inlineEl.textContent = '';
+            }
+        }).catch(function(e) {
+            var inlineEl = document.getElementById('portfolioSummaryInline');
+            if (inlineEl) inlineEl.textContent = '';
+        });
+    }
+
+    // ---- Toggle trade history ----
     var toggleBtn = document.getElementById('toggleTradeHistoryBtn');
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
@@ -130,6 +186,94 @@ function renderProfileWithData(data) {
                 toggleBtn.textContent = '▲ 收起';
                 _tradeHistoryExpanded = true;
             }
+        });
+    }
+
+    // ---- Export CSV ----
+    var exportBtn = document.getElementById('exportTradeCsvBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', function() {
+            if (!historySorted.length) {
+                showToast('无交易记录可导出', true);
+                return;
+            }
+            var csvLines = ['日期,类型,代码,价格,数量（股）'];
+            historySorted.forEach(function(t) {
+                csvLines.push([t.date, t.type, t.code, t.price, t.shares].join(','));
+            });
+            var csvContent = csvLines.join('\n');
+            if (bridge && typeof bridge.save_text_file === 'function') {
+                bridge.save_text_file(csvContent, 'trade_history.csv').then(function(jsonStr) {
+                    var res = JSON.parse(jsonStr);
+                    if (res.success) {
+                        showToast('已导出到: ' + res.path, false);
+                    } else if (!res.cancelled) {
+                        showToast('导出失败', true);
+                    }
+                }).catch(function(err) {
+                    showToast('导出失败: ' + err, true);
+                });
+            } else {
+                showToast('导出功能不可用', true);
+            }
+        });
+    }
+
+    // ---- Close all positions ----
+    var closeAllBtn = document.getElementById('closeAllBtn');
+    if (closeAllBtn) {
+        closeAllBtn.addEventListener('click', function() {
+            if (!confirm('确定以当前市价平掉所有持仓吗？此操作不可撤销。')) return;
+            if (!bridge || typeof bridge.close_all_positions !== 'function') {
+                showToast('Bridge 未连接', true);
+                return;
+            }
+            closeAllBtn.disabled = true;
+            closeAllBtn.textContent = '⏳ 平仓中...';
+            bridge.close_all_positions().then(function(jsonStr) {
+                var res = JSON.parse(jsonStr);
+                if (res.success) {
+                    showToast(res.message, false);
+                    renderProfile();
+                } else {
+                    showToast('平仓失败: ' + (res.error || '未知错误'), true);
+                    closeAllBtn.disabled = false;
+                    closeAllBtn.textContent = '🚀 一键平仓';
+                }
+            }).catch(function(err) {
+                showToast('平仓失败: ' + err, true);
+                closeAllBtn.disabled = false;
+                closeAllBtn.textContent = '🚀 一键平仓';
+            });
+        });
+    }
+
+    // ---- Reset portfolio ----
+    var resetBtn = document.getElementById('resetPortfolioBtn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            if (!confirm('重置模拟盘将清空所有持仓和交易记录，恢复初始资金（默认 100 万）。确定吗？')) return;
+            if (!bridge || typeof bridge.reset_portfolio !== 'function') {
+                showToast('Bridge 未连接', true);
+                return;
+            }
+            resetBtn.disabled = true;
+            resetBtn.textContent = '⏳ 重置中...';
+            bridge.reset_portfolio().then(function(jsonStr) {
+                var res = JSON.parse(jsonStr);
+                if (res.success) {
+                    showToast(res.message, false);
+                    renderProfile();
+                } else {
+                    showToast('重置失败: ' + (res.error || '未知错误'), true);
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = '🔄 重置模拟盘';
+                }
+            }).catch(function(err) {
+                showToast('重置失败: ' + err, true);
+                resetBtn.disabled = false;
+                resetBtn.textContent = '🔄 重置模拟盘';
+            });
         });
     }
 
