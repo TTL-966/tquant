@@ -1143,6 +1143,25 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
                     ]
                 }
             }
+        },
+        {
+            name: '交易信号',
+            type: 'scatter',
+            data: scatterData,
+            symbol: 'circle',
+            symbolSize: 8,
+            itemStyle: {
+                color: '#ef5350',
+                borderColor: '#ffffff',
+                borderWidth: 1.5
+            },
+            label: {
+                show: false
+            },
+            tooltip: {
+                show: false
+            },
+            z: 10
         }],
         grid: { containLabel: true, backgroundColor: '#0e1220' }
     };
