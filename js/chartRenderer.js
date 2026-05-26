@@ -83,6 +83,12 @@ function createDropdownControl(chart, fullSeries, rawValues) {
         });
 
         chart.setOption({ series: newSeriesList }, { replaceMerge: ['series'] });
+
+        var statusDiv = document.getElementById('indicatorStatus_' + containerId);
+        if (statusDiv) {
+            var visibleIndicatorNames = visibleNames.filter(function(n) { return alwaysKeep.indexOf(n) === -1; });
+            statusDiv.textContent = '已显示：' + (visibleIndicatorNames.length ? visibleIndicatorNames.join(', ') : '无');
+        }
     }
 
     // 创建按钮
@@ -521,16 +527,19 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
 
                 var dateStr = dates[idx];
 
+                // ---------- 收盘价颜色 ----------
+                var closeColor = close > open ? '#ef5350' : (close < open ? '#26a69a' : '#ffffff');
+
                 // ---------- HTML ----------
                 return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:12px 16px;min-width:320px;">' +
                     '<div style="color:#ffffff;font-weight:600;margin-bottom:10px;font-size:13px;">' + dateStr + '</div>' +
                     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:10px;">' +
-                    '<div><span style="color:#9aa9cc;">开盘</span><br><span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">收盘</span><br><span style="font-family:Consolas,monospace;font-weight:bold;">' + close.toFixed(2) + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">最高</span><br><span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">涨跌额</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">最低</span><br><span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">涨跌幅</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">开盘</span> <span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">收盘</span> <span style="font-family:Consolas,monospace;font-weight:bold;color:' + closeColor + ';">' + close.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">最高</span> <span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">涨跌额</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">最低</span> <span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">涨跌幅</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
                     '</div>' +
                     '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
                     '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
@@ -844,15 +853,18 @@ export function renderStockKline(containerId, dates, values, retryCount) {
 
                     var dateStr = dates[idx];
 
+                    // ---------- 收盘价颜色 ----------
+                    var closeColor = close > open ? '#ef5350' : (close < open ? '#26a69a' : '#ffffff');
+
                     return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:12px 16px;min-width:320px;">' +
                         '<div style="color:#ffffff;font-weight:600;margin-bottom:10px;font-size:13px;">' + dateStr + '</div>' +
                         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:10px;">' +
-                        '<div><span style="color:#9aa9cc;">开盘</span><br><span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">收盘</span><br><span style="font-family:Consolas,monospace;font-weight:bold;">' + close.toFixed(2) + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">最高</span><br><span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">涨跌额</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">最低</span><br><span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">涨跌幅</span><br><span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">开盘</span> <span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">收盘</span> <span style="font-family:Consolas,monospace;font-weight:bold;color:' + closeColor + ';">' + close.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">最高</span> <span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">涨跌额</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">最低</span> <span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">涨跌幅</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
                         '</div>' +
                         '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
                         '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
