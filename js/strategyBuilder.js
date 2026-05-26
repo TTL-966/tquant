@@ -747,6 +747,22 @@ function showStrategyListModal() {
     document.body.appendChild(popup);
 }
 
+function saveCurrentBacktestResult(result, strategyName, stockCodes, start, end, cash) {
+    if (!bridge || typeof bridge.save_backtest_result !== 'function') return;
+    var saveData = {
+        strategyName: strategyName,
+        stockPool: stockCodes,
+        startDate: start,
+        endDate: end,
+        initialCash: cash,
+        metrics: result.metrics || {},
+        signals: result.signals || [],
+        equityCurve: result.equity_curve || [],
+        stockPerformance: result.stock_performance || []
+    };
+    bridge.save_backtest_result(JSON.stringify(saveData)).catch(function(e) { console.warn('保存历史记录失败', e); });
+}
+
 function showBacktestModal() {
     if (!bridge) { showToast('Bridge 未连接', true); return; }
 
@@ -955,6 +971,8 @@ function showBacktestModal() {
                     window.strategyStartDate = start;
                     window.strategyEndDate = end;
 
+                    saveCurrentBacktestResult(mergedResult, sName, stockCodes, start, end, cashVal);
+
                     var posEntries = Object.keys(positionMap).map(function(k) { return { code: k, value: positionMap[k] }; });
                     posEntries.sort(function(a, b) { return b.value - a.value; });
                     window.topPositionCodes = posEntries.slice(0, 6).map(function(e) { return e.code; });
@@ -1037,6 +1055,8 @@ function showBacktestModal() {
                     window._lastBacktestError = null;
                     window.strategyStartDate = start;
                     window.strategyEndDate = end;
+
+                    saveCurrentBacktestResult(finalResult, sName, stockCodes, start, end, cashVal);
 
                     var posMap = {};
                     signals.forEach(function(s) {

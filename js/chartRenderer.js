@@ -1034,6 +1034,26 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
     var values = equityCurve.map(function(item) { return item.value; });
 
     var hasResult = result && result.signals;
+
+    // 构建信号日期索引集合（用于散点标记）
+    var signalDatesSet = new Set();
+    if (hasResult && result.signals) {
+        result.signals.forEach(function(s) {
+            if (s.date) {
+                var pureDate = String(s.date).split(' ')[0].split('T')[0];
+                signalDatesSet.add(pureDate);
+            }
+        });
+    }
+    // 生成散点数据：权益曲线上对应日期的 value
+    var scatterData = [];
+    for (var i = 0; i < equityCurve.length; i++) {
+        var datePure = String(equityCurve[i].date).split(' ')[0].split('T')[0];
+        if (signalDatesSet.has(datePure)) {
+            scatterData.push([i, equityCurve[i].value]);
+        }
+    }
+
     var option = {
         tooltip: {
             trigger: 'axis',
@@ -1111,6 +1131,7 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
             type: 'line',
             data: values,
             smooth: true,
+            showSymbol: false,
             lineStyle: { color: '#4f7eff' },
             areaStyle: {
                 color: {

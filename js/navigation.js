@@ -1041,52 +1041,84 @@ function renderStockPage(container) {
 
 // ========== 历史回测页 ==========
 function renderHistoryPage(container) {
-    var rows = backtestStrategies.map(function(s) {
-        var profitClassStr = profitClass(s.profit);
-        return '<tr style="cursor:pointer;" class="history-strategy-row" data-id="' + s.id + '">' +
-            '<td>' + escapeHtml(s.name) + '</td>' +
-            '<td class="' + profitClassStr + '">' + s.profit + '</td>' +
-            '<td><button class="load-history-btn" data-id="' + s.id + '">📋 加载到编辑器</button></td>' +
-            '</tr>';
-    }).join('');
-
     container.innerHTML = `
         <div class="card">
-            <div class="card-title">📁 历史回测</div>
-            <p style="color:#9aa9cc; margin-bottom:16px;">内置经典策略模板，点击可加载到策略编辑器进行回测。</p>
-            <div class="scrollable-table">
-                <table>
-                    <thead><tr><th>策略名称</th><th>历史收益</th><th>操作</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
+            <div class="card-title">📁 历史回测记录</div>
+            <p style="color:#9aa9cc; margin-bottom:12px;">您运行过的所有回测结果都会自动保存到这里。</p>
+            <div id="historyListContainer" style="margin-top:12px;">
+                <div style="text-align:center; color:#9aa9cc;">加载中...</div>
             </div>
         </div>`;
 
-    // 绑定加载按钮
-    container.querySelectorAll('.load-history-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var id = parseInt(this.getAttribute('data-id'));
-            var found = backtestStrategies.find(function(s) { return s.id === id; });
-            if (found) {
-                window.currentStrategyName = found.name;
-                window.currentStrategyCode = found.code;
-                showToast('已加载策略模板: ' + found.name + '，请切换到策略页查看', false);
-            }
+    if (!bridge) return;
+    bridge.get_backtest_history().then(function(jsonStr) {
+        var list = JSON.parse(jsonStr);
+        var containerDiv = document.getElementById('historyListContainer');
+        if (!list.length) {
+            containerDiv.innerHTML = '<div style="color:#9aa9cc; text-align:center; padding:40px;">暂无历史回测记录，请先在策略页运行回测</div>';
+            return;
+        }
+        var html = '<div class="scrollable-table">' +
+            '<table style="width:100%;"><thead><tr><th>策略名称</th><th>股票池</th><th>回测区间</th><th>累计收益</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+        list.forEach(function(item) {
+            var profit = (item.total_return !== undefined && item.total_return !== null) ? (item.total_return >=0 ? '+' : '') + item.total_return.toFixed(2) + '%' : '--';
+            var profitClass = (item.total_return && item.total_return >=0) ? 'profit-positive' : 'profit-negative';
+            var stockPoolStr = (item.stock_pool && item.stock_pool.length) ? item.stock_pool.slice(0,3).join(',') + (item.stock_pool.length>3?'...':'') : '全市场';
+            html += '<tr>' +
+                '<td><strong>' + escapeHtml(item.name) + '</strong></td>' +
+                '<td>' + escapeHtml(stockPoolStr) + '</td>' +
+                '<td>' + item.start + ' ~ ' + item.end + '</td>' +
+                '<td class="' + profitClass + '">' + profit + '</td>' +
+                '<td>' + item.date + '</td>' +
+                '<td><button class="history-load-btn" data-id="' + item.id + '" style="background:#4f7eff; padding:4px 12px; margin-right:8px;">查看详情</button>' +
+                '<button class="history-del-btn" data-id="' + item.id + '" style="background:#3d3040;">删除</button></td>' +
+                '</tr>';
         });
-    });
+        html += '</tbody></table></div>';
+        containerDiv.innerHTML = html;
 
-    // 点击行也加载
-    container.querySelectorAll('.history-strategy-row').forEach(function(row) {
-        row.addEventListener('click', function() {
-            var id = parseInt(this.getAttribute('data-id'));
-            var found = backtestStrategies.find(function(s) { return s.id === id; });
-            if (found) {
-                window.currentStrategyName = found.name;
-                window.currentStrategyCode = found.code;
-                showToast('已加载策略模板: ' + found.name + '，请切换到策略页查看', false);
-            }
+        containerDiv.querySelectorAll('.history-load-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = parseInt(this.getAttribute('data-id'));
+                bridge.load_backtest_history(id).then(function(jsonStr) {
+                    var data = JSON.parse(jsonStr);
+                    if (data.success) {
+                        window._lastBacktestResult = {
+                            success: true,
+                            equity_curve: data.equityCurve,
+                            signals: data.signals,
+                            metrics: data.metrics,
+                            stock_performance: data.stockPerformance
+                        };
+                        window.currentStrategyName = data.strategyName;
+                        window.strategyStartDate = data.startDate;
+                        window.strategyEndDate = data.endDate;
+                        var detailNav = document.querySelector('.nav-item[data-page="detail"]');
+                        if (detailNav) detailNav.click();
+                    } else {
+                        showToast('加载失败: ' + (data.error || '未知错误'), true);
+                    }
+                }).catch(function(err) {
+                    showToast('加载失败: ' + err, true);
+                });
+            });
         });
+
+        containerDiv.querySelectorAll('.history-del-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = parseInt(this.getAttribute('data-id'));
+                if (confirm('确定删除这条回测记录吗？')) {
+                    bridge.delete_backtest_history(id).then(function() {
+                        showToast('已删除', false);
+                        renderHistoryPage(container);
+                    }).catch(function(err) {
+                        showToast('删除失败', true);
+                    });
+                }
+            });
+        });
+    }).catch(function(err) {
+        document.getElementById('historyListContainer').innerHTML = '<div style="color:#ff6b6b;">加载失败: ' + err + '</div>';
     });
 }
 

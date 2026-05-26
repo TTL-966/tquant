@@ -955,6 +955,109 @@ class WebBridge(QObject):
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "message": str(e)})
+    # ---------- 回测历史记录 CRUD ----------
+    @Slot(str, result=str)
+    def save_backtest_result(self, json_str):
+        try:
+            data = json.loads(json_str)
+            now = __import__('datetime').datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with self.db.engine.connect() as conn:
+                result = conn.execute(text("""
+                    INSERT INTO backtest_history
+                    (strategy_name, stock_pool, start_date, end_date, initial_cash, metrics, signals, equity_curve, stock_performance, created_at)
+                    VALUES (:name, :pool, :start, :end, :cash, :metrics, :signals, :equity, :perf, :created)
+                """), {
+                    "name": data.get("strategyName"),
+                    "pool": json.dumps(data.get("stockPool", [])),
+                    "start": data.get("startDate"),
+                    "end": data.get("endDate"),
+                    "cash": data.get("initialCash"),
+                    "metrics": json.dumps(data.get("metrics")),
+                    "signals": json.dumps(data.get("signals")),
+                    "equity": json.dumps(data.get("equityCurve")),
+                    "perf": json.dumps(data.get("stockPerformance")),
+                    "created": now
+                })
+                conn.commit()
+                return json.dumps({"success": True, "id": result.lastrowid})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_backtest_history(self):
+        try:
+            with self.db.engine.connect() as conn:
+                rows = conn.execute(text("""
+                    SELECT id, strategy_name, stock_pool, start_date, end_date,
+                           created_at, metrics
+                    FROM backtest_history ORDER BY id DESC
+                """)).fetchall()
+            result = []
+            for row in rows:
+                metrics = {}
+                try:
+                    metrics = json.loads(row[6]) if row[6] else {}
+                except Exception:
+                    pass
+                pool = []
+                try:
+                    pool = json.loads(row[2]) if row[2] else []
+                except Exception:
+                    pass
+                result.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "stock_pool": pool,
+                    "start": row[3],
+                    "end": row[4],
+                    "date": row[5],
+                    "total_return": metrics.get("total_return")
+                })
+            return json.dumps(result)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps([])
+
+    @Slot(int, result=str)
+    def load_backtest_history(self, record_id):
+        try:
+            with self.db.engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT * FROM backtest_history WHERE id = :id"),
+                    {"id": record_id}
+                ).fetchone()
+            if not row:
+                return json.dumps({"error": "记录不存在"})
+            return json.dumps({
+                "success": True,
+                "strategyName": row[1],
+                "stockPool": json.loads(row[2]) if row[2] else [],
+                "startDate": row[3],
+                "endDate": row[4],
+                "initialCash": row[5],
+                "metrics": json.loads(row[6]) if row[6] else {},
+                "signals": json.loads(row[7]) if row[7] else [],
+                "equityCurve": json.loads(row[8]) if row[8] else [],
+                "stockPerformance": json.loads(row[9]) if row[9] else []
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
+
+    @Slot(int, result=str)
+    def delete_backtest_history(self, record_id):
+        try:
+            with self.db.engine.connect() as conn:
+                conn.execute(
+                    text("DELETE FROM backtest_history WHERE id = :id"),
+                    {"id": record_id}
+                )
+                conn.commit()
+            return json.dumps({"success": True})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
     # ----------------------------------------
 
     @Slot(result=str)

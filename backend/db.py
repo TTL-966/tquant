@@ -140,6 +140,22 @@ class Database:
             """))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stock_concept_code ON stock_concept(ts_code)"))
 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS backtest_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    strategy_name TEXT,
+                    stock_pool TEXT,
+                    start_date TEXT,
+                    end_date TEXT,
+                    initial_cash REAL,
+                    metrics TEXT,
+                    signals TEXT,
+                    equity_curve TEXT,
+                    stock_performance TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
             conn.commit()
 
     def _get_stock_suffix(self, code):
