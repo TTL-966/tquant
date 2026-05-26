@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": 1,
+    "name": "1",
+    "code": "{\"version\":1,\"cards\":[{\"id\":\"card_mpmjfqol_7uv8uh\",\"type\":\"williams_r\",\"action\":\"buy\",\"params\":{\"period\":14,\"oversold\":-80,\"overbought\":-20}},{\"id\":\"card_mpmjelqf_tcc7d9\",\"type\":\"williams_r\",\"action\":\"sell\",\"params\":{\"period\":14,\"oversold\":-80,\"overbought\":-20}},{\"id\":\"card_mpmjfv74_r9wger\",\"type\":\"position\",\"action\":null,\"params\":{\"positionType\":\"fixed\",\"fixedPercent\":0.8}}],\"capital\":100000,\"startDate\":\"2025-01-01\",\"endDate\":\"2026-05-26\",\"stockPool\":\"\",\"slippage\":\"close\",\"commission_rate\":0.0003,\"stamp_tax_rate\":0.001,\"slippage_cost_type\":\"percent\",\"slippage_cost_value\":0.1,\"poolConfig\":{\"poolSource\":\"hs300\",\"customStockCodes\":\"\",\"poolIndustryFilter\":\"\",\"poolConceptFilter\":[],\"poolConceptMatchMode\":\"any\",\"poolMarketCapMin\":\"\",\"poolMarketCapMax\":\"\",\"poolFloatSharesMin\":\"\",\"poolFloatSharesMax\":\"\"}}"
+  },
+  {
+    "id": 2,
+    "name": "双均线交叉策略",
+    "code": "{\"version\":1,\"cards\":[{\"id\":\"card_mpmksihp_q97707\",\"type\":\"ma_cross\",\"action\":\"buy\",\"params\":{\"fastPeriod\":5,\"slowPeriod\":20,\"direction\":\"golden\"}},{\"id\":\"card_mpmksihp_5zhba4\",\"type\":\"ma_cross\",\"action\":\"sell\",\"params\":{\"fastPeriod\":5,\"slowPeriod\":20,\"direction\":\"death\"}},{\"id\":\"card_mpmksihp_084n72\",\"type\":\"position\",\"action\":null,\"params\":{\"positionType\":\"fixed\",\"fixedPercent\":1}}],\"capital\":100000,\"startDate\":\"2025-01-01\",\"endDate\":\"2026-05-26\",\"stockPool\":\"000001\",\"slippage\":\"close\",\"commission_rate\":0.0003,\"stamp_tax_rate\":0.001,\"slippage_cost_type\":\"percent\",\"slippage_cost_value\":0.1,\"poolConfig\":{\"poolSource\":\"custom\",\"customStockCodes\":\"000001\",\"poolIndustryFilter\":\"\",\"poolConceptFilter\":[],\"poolConceptMatchMode\":\"any\",\"poolMarketCapMin\":\"\",\"poolMarketCapMax\":\"\",\"poolFloatSharesMin\":\"\",\"poolFloatSharesMax\":\"\"}}"
+  }
+]

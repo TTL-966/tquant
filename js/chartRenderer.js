@@ -84,9 +84,12 @@ function createDropdownControl(chart, fullSeries, rawValues) {
 
         chart.setOption({ series: newSeriesList }, { replaceMerge: ['series'] });
 
+        var visibleIndicatorNames = visibleNames.filter(function(n) { return alwaysKeep.indexOf(n) === -1; });
+        if (!window._enabledIndicators) window._enabledIndicators = {};
+        window._enabledIndicators[containerId] = visibleIndicatorNames;
+
         var statusDiv = document.getElementById('indicatorStatus_' + containerId);
         if (statusDiv) {
-            var visibleIndicatorNames = visibleNames.filter(function(n) { return alwaysKeep.indexOf(n) === -1; });
             statusDiv.textContent = '已显示：' + (visibleIndicatorNames.length ? visibleIndicatorNames.join(', ') : '无');
         }
     }
@@ -483,6 +486,19 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                 var open = data[0], close = data[1], low = data[2], high = data[3];
                 var rawVolume = data.length > 4 ? data[4] : 0;
 
+                // ---------- 容器ID和启用的指标 ----------
+                var containerId = 'klineMainChart';
+                var enabledIndicators = (window._enabledIndicators && window._enabledIndicators[containerId]) || [];
+
+                // ---------- 价格颜色（基于前收盘）----------
+                var openColor = '#ffffff', highColor = '#ffffff', lowColor = '#ffffff';
+                if (idx > 0) {
+                    var prevClose = values[idx - 1][1];
+                    openColor = open > prevClose ? '#ef5350' : (open < prevClose ? '#26a69a' : '#ffffff');
+                    highColor = high > prevClose ? '#ef5350' : (high < prevClose ? '#26a69a' : '#ffffff');
+                    lowColor  = low  > prevClose ? '#ef5350' : (low  < prevClose ? '#26a69a' : '#ffffff');
+                }
+
                 // ---------- 成交量转换（股 → 手/万手/亿手）----------
                 var volumeDisplay = '--';
                 if (rawVolume && !isNaN(rawVolume) && rawVolume > 0) {
@@ -501,7 +517,6 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                 // ---------- 涨跌幅计算（基于前收盘）----------
                 var changeAbs = '--', changePct = '--', changeSymbol = '', changeColor = '#9aa9cc';
                 if (idx > 0) {
-                    var prevClose = values[idx - 1][1];
                     var change = close - prevClose;
                     changeAbs = change.toFixed(2);
                     changePct = (change / prevClose * 100).toFixed(2);
@@ -520,34 +535,51 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                         return maArray[idx].toFixed(2);
                     return '--';
                 }
-                var ma5Val = getMa(maData && maData.ma5);
-                var ma10Val = getMa(maData && maData.ma10);
-                var ma20Val = getMa(maData && maData.ma20);
-                var ma30Val = getMa(maData && maData.ma30);
 
                 var dateStr = dates[idx];
 
                 // ---------- 收盘价颜色 ----------
                 var closeColor = close > open ? '#ef5350' : (close < open ? '#26a69a' : '#ffffff');
 
+                // ---------- 副图指标 HTML（仅显示启用的，不含 SAR）----------
+                var indicatorGetters = {
+                    'MA5': function() { return getMa(maData && maData.ma5); },
+                    'MA10': function() { return getMa(maData && maData.ma10); },
+                    'MA20': function() { return getMa(maData && maData.ma20); },
+                    'MA30': function() { return getMa(maData && maData.ma30); },
+                    'VWAP60': function() { return vwap60Data && vwap60Data[idx] !== undefined && vwap60Data[idx] !== null ? vwap60Data[idx].toFixed(2) : null; },
+                    'Median60': function() { return median60Data && median60Data[idx] !== undefined && median60Data[idx] !== null ? median60Data[idx].toFixed(2) : null; },
+                    'Mean60': function() { return mean60Data && mean60Data[idx] !== undefined && mean60Data[idx] !== null ? mean60Data[idx].toFixed(2) : null; }
+                };
+                var indicatorsHtml = '';
+                for (var mi = 0; mi < enabledIndicators.length; mi++) {
+                    var name = enabledIndicators[mi];
+                    if (name === 'SAR') continue;
+                    var getter = indicatorGetters[name];
+                    if (getter) {
+                        var val = getter();
+                        if (val !== null && val !== '--') {
+                            indicatorsHtml += '<span>' + name + ' <span style="color:#fff;">' + val + '</span></span>';
+                        }
+                    }
+                }
+                if (indicatorsHtml === '') indicatorsHtml = '<span style="color:#9aa9cc;">无副图指标</span>';
+
                 // ---------- HTML ----------
                 return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:12px 16px;min-width:320px;">' +
                     '<div style="color:#ffffff;font-weight:600;margin-bottom:10px;font-size:13px;">' + dateStr + '</div>' +
                     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:10px;">' +
-                    '<div><span style="color:#9aa9cc;">开盘</span> <span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">开盘</span> <span style="font-family:Consolas,monospace;color:' + openColor + ';">' + open.toFixed(2) + '</span></div>' +
                     '<div><span style="color:#9aa9cc;">收盘</span> <span style="font-family:Consolas,monospace;font-weight:bold;color:' + closeColor + ';">' + close.toFixed(2) + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">最高</span> <span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">最高</span> <span style="font-family:Consolas,monospace;color:' + highColor + ';">' + high.toFixed(2) + '</span></div>' +
                     '<div><span style="color:#9aa9cc;">涨跌额</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
-                    '<div><span style="color:#9aa9cc;">最低</span> <span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">最低</span> <span style="font-family:Consolas,monospace;color:' + lowColor + ';">' + low.toFixed(2) + '</span></div>' +
                     '<div><span style="color:#9aa9cc;">涨跌幅</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
                     '</div>' +
                     '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
                     '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
                     '<div style="margin-top:8px;font-size:12px;color:#9aa9cc;display:flex;gap:12px;flex-wrap:wrap;">' +
-                    '<span>MA5 <span style="color:#fff;">' + ma5Val + '</span></span>' +
-                    '<span>MA10 <span style="color:#fff;">' + ma10Val + '</span></span>' +
-                    '<span>MA20 <span style="color:#fff;">' + ma20Val + '</span></span>' +
-                    '<span>MA30 <span style="color:#fff;">' + ma30Val + '</span></span>' +
+                    indicatorsHtml +
                     '</div></div>';
             },
         },
@@ -620,7 +652,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         signalCard = document.createElement('div');
         signalCard.id = 'signalInfoCard';
         dom.style.position = 'relative';
-        signalCard.style.cssText = 'display:none; position:absolute; bottom:280px; right:80px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; pointer-events:none; line-height:1.6; max-width:260px;';
+        signalCard.style.cssText = 'display:none; position:absolute; bottom:260px; right:1px; background:rgba(15,18,32,0.85); border:1px solid #4f7eff; border-radius:6px; padding:4px 12px; color:#ffffff; font-family:monospace; font-size:12px; z-index:10; pointer-events:none; line-height:1.6; max-width:260px;';
         dom.parentElement.style.position = 'relative';
         dom.appendChild(signalCard);
     }
@@ -809,6 +841,18 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                     var open = data[0], close = data[1], low = data[2], high = data[3];
                     var rawVolume = data.length > 4 ? data[4] : 0;
 
+                    // ---------- 容器ID和启用的指标 ----------
+                    var enabledIndicators = (window._enabledIndicators && window._enabledIndicators[containerId]) || [];
+
+                    // ---------- 价格颜色（基于前收盘）----------
+                    var openColor = '#ffffff', highColor = '#ffffff', lowColor = '#ffffff';
+                    if (idx > 0) {
+                        var prevClose = values[idx - 1][1];
+                        openColor = open > prevClose ? '#ef5350' : (open < prevClose ? '#26a69a' : '#ffffff');
+                        highColor = high > prevClose ? '#ef5350' : (high < prevClose ? '#26a69a' : '#ffffff');
+                        lowColor  = low  > prevClose ? '#ef5350' : (low  < prevClose ? '#26a69a' : '#ffffff');
+                    }
+
                     // ---------- 成交量转换（股 → 手/万手/亿手）----------
                     var volumeDisplay = '--';
                     if (rawVolume && !isNaN(rawVolume) && rawVolume > 0) {
@@ -827,7 +871,6 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                     // ---------- 涨跌幅计算（基于前收盘）----------
                     var changeAbs = '--', changePct = '--', changeSymbol = '', changeColor = '#9aa9cc';
                     if (idx > 0) {
-                        var prevClose = values[idx - 1][1];
                         var change = close - prevClose;
                         changeAbs = change.toFixed(2);
                         changePct = (change / prevClose * 100).toFixed(2);
@@ -846,33 +889,50 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                             return maArray[idx].toFixed(2);
                         return '--';
                     }
-                    var ma5Val = getMa(ma5Data);
-                    var ma10Val = getMa(ma10Data);
-                    var ma20Val = getMa(ma20Data);
-                    var ma30Val = getMa(ma30Data);
 
                     var dateStr = dates[idx];
 
                     // ---------- 收盘价颜色 ----------
                     var closeColor = close > open ? '#ef5350' : (close < open ? '#26a69a' : '#ffffff');
 
+                    // ---------- 副图指标 HTML（仅显示启用的，不含 SAR）----------
+                    var indicatorGetters = {
+                        'MA5': function() { return getMa(ma5Data); },
+                        'MA10': function() { return getMa(ma10Data); },
+                        'MA20': function() { return getMa(ma20Data); },
+                        'MA30': function() { return getMa(ma30Data); },
+                        'VWAP60': function() { return vwap60Data && vwap60Data[idx] !== undefined && vwap60Data[idx] !== null ? vwap60Data[idx].toFixed(2) : null; },
+                        'Median60': function() { return median60Data && median60Data[idx] !== undefined && median60Data[idx] !== null ? median60Data[idx].toFixed(2) : null; },
+                        'Mean60': function() { return mean60Data && mean60Data[idx] !== undefined && mean60Data[idx] !== null ? mean60Data[idx].toFixed(2) : null; }
+                    };
+                    var indicatorsHtml = '';
+                    for (var mi = 0; mi < enabledIndicators.length; mi++) {
+                        var name = enabledIndicators[mi];
+                        if (name === 'SAR') continue;
+                        var getter = indicatorGetters[name];
+                        if (getter) {
+                            var val = getter();
+                            if (val !== null && val !== '--') {
+                                indicatorsHtml += '<span>' + name + ' <span style="color:#fff;">' + val + '</span></span>';
+                            }
+                        }
+                    }
+                    if (indicatorsHtml === '') indicatorsHtml = '<span style="color:#9aa9cc;">无副图指标</span>';
+
                     return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:12px 16px;min-width:320px;">' +
                         '<div style="color:#ffffff;font-weight:600;margin-bottom:10px;font-size:13px;">' + dateStr + '</div>' +
                         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:10px;">' +
-                        '<div><span style="color:#9aa9cc;">开盘</span> <span style="font-family:Consolas,monospace;">' + open.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">开盘</span> <span style="font-family:Consolas,monospace;color:' + openColor + ';">' + open.toFixed(2) + '</span></div>' +
                         '<div><span style="color:#9aa9cc;">收盘</span> <span style="font-family:Consolas,monospace;font-weight:bold;color:' + closeColor + ';">' + close.toFixed(2) + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">最高</span> <span style="font-family:Consolas,monospace;">' + high.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">最高</span> <span style="font-family:Consolas,monospace;color:' + highColor + ';">' + high.toFixed(2) + '</span></div>' +
                         '<div><span style="color:#9aa9cc;">涨跌额</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changeAbs !== '--' && parseFloat(changeAbs) > 0 ? '+' : '') + changeAbs + changeSymbol + '</span></div>' +
-                        '<div><span style="color:#9aa9cc;">最低</span> <span style="font-family:Consolas,monospace;">' + low.toFixed(2) + '</span></div>' +
+                        '<div><span style="color:#9aa9cc;">最低</span> <span style="font-family:Consolas,monospace;color:' + lowColor + ';">' + low.toFixed(2) + '</span></div>' +
                         '<div><span style="color:#9aa9cc;">涨跌幅</span> <span style="font-family:Consolas,monospace;color:' + changeColor + ';">' + (changePct !== '--' && parseFloat(changePct) > 0 ? '+' : '') + changePct + '%' + changeSymbol + '</span></div>' +
                         '</div>' +
                         '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
                         '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
                         '<div style="margin-top:8px;font-size:12px;color:#9aa9cc;display:flex;gap:12px;flex-wrap:wrap;">' +
-                        '<span>MA5 <span style="color:#fff;">' + ma5Val + '</span></span>' +
-                        '<span>MA10 <span style="color:#fff;">' + ma10Val + '</span></span>' +
-                        '<span>MA20 <span style="color:#fff;">' + ma20Val + '</span></span>' +
-                        '<span>MA30 <span style="color:#fff;">' + ma30Val + '</span></span>' +
+                        indicatorsHtml +
                         '</div></div>';
                 },
             },
