@@ -1,7 +1,6 @@
 import { bridge, log } from './bridge.js';
 import { formatStockDisplayHtml } from './chartRenderer.js';
 import { populateStockDatalist, profitClass, formatStockNameOnly } from './main.js';
-import { dailyHoldings } from './stockData.js';
 
 var _tradeHistoryExpanded = false;
 
@@ -46,17 +45,42 @@ function useMockProfile() {
     renderProfileWithData(mock);
 }
 
-function buildDailyRows() {
-    return dailyHoldings.map(function(h) {
-        var profitCls = profitClass(h.dailyProfit);
-        var cumCls = profitClass(h.cumulative);
-        return '<tr>' +
-            '<td>' + h.date + '</td>' +
-            '<td>' + h.cash + '</td>' +
-            '<td class="' + profitCls + '">' + h.dailyProfit + '</td>' +
-            '<td class="' + cumCls + '">' + h.cumulative + '</td>' +
-            '</tr>';
-    }).join('');
+function renderDailyAssetsTable(rowsHtml) {
+    var tbody = document.getElementById('dailyAssetsTbody');
+    if (tbody) { tbody.innerHTML = rowsHtml; }
+}
+
+function fetchDailyAssets() {
+    var tbody = document.getElementById('dailyAssetsTbody');
+    if (!bridge || typeof bridge.get_daily_assets !== 'function') {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#9aa9cc;padding:20px;">暂无可展示的每日收益数据，请先进行模拟交易</td></tr>';
+        return;
+    }
+    bridge.get_daily_assets().then(function(jsonStr) {
+        var result = JSON.parse(jsonStr);
+        if (!result || !result.dates || result.dates.length === 0) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#9aa9cc;padding:20px;">暂无可展示的每日收益数据，请先进行模拟交易</td></tr>';
+            return;
+        }
+        var dates = result.dates;
+        var cashArr = result.cash || [];
+        var dailyReturns = result.daily_returns || [];
+        var cumulativeReturns = result.cumulative_returns || [];
+        var rows = '';
+        for (var i = 0; i < dates.length; i++) {
+            var dailyCls = profitClass(dailyReturns[i] || 0);
+            var cumCls = profitClass(cumulativeReturns[i] || 0);
+            rows += '<tr>' +
+                '<td>' + dates[i] + '</td>' +
+                '<td>' + (cashArr[i] != null ? cashArr[i].toLocaleString() : '--') + '</td>' +
+                '<td class="' + dailyCls + '">' + (dailyReturns[i] != null ? dailyReturns[i].toLocaleString() : '--') + '</td>' +
+                '<td class="' + cumCls + '">' + (cumulativeReturns[i] != null ? cumulativeReturns[i].toLocaleString() : '--') + '</td>' +
+                '</tr>';
+        }
+        if (tbody) tbody.innerHTML = rows;
+    }).catch(function(err) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#ff4c4c;padding:20px;">加载每日收益数据失败: ' + err + '</td></tr>';
+    });
 }
 
 function renderProfileWithData(data) {
@@ -122,7 +146,7 @@ function renderProfileWithData(data) {
                 <div class="scrollable-table" style="max-height:300px; overflow-y:auto;">
                     <table>
                         <thead><tr><th>日期</th><th>账户现金</th><th>日收益</th><th>累计收益</th></tr></thead>
-                        <tbody>${buildDailyRows()}</tbody>
+                        <tbody id="dailyAssetsTbody"><tr><td colspan="4" style="text-align:center;color:#9aa9cc;padding:20px;">⏳ 加载中...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -139,6 +163,9 @@ function renderProfileWithData(data) {
                 <div id="tradeResult" style="margin-top:8px; font-size:13px;"></div>
             </div>
         `;
+
+    // ---- Fetch daily assets ----
+    fetchDailyAssets();
 
     // ---- Fetch portfolio summary ----
     if (bridge && typeof bridge.get_portfolio_summary === 'function') {

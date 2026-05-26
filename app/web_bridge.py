@@ -980,6 +980,120 @@ class WebBridge(QObject):
             return json.dumps({"success": False, "error": str(e)})
 
     @Slot(result=str)
+    def get_daily_assets(self):
+        """返回基于交易历史重构的每日净资产曲线"""
+        try:
+            from datetime import datetime, timedelta
+            history = list(self.trade.history)
+            if not history:
+                return json.dumps({
+                    "success": True, "dates": [], "cash": [],
+                    "total_assets": [], "daily_returns": [], "cumulative_returns": []
+                })
+
+            sorted_hist = sorted(history, key=lambda x: x['date'])
+            first_date = sorted_hist[0]['date']
+            last_date = sorted_hist[-1]['date']
+
+            start = datetime.strptime(first_date, '%Y-%m-%d')
+            end = datetime.strptime(last_date, '%Y-%m-%d')
+
+            # Limit range to avoid excessive iteration
+            max_days = 600
+            if (end - start).days > max_days:
+                start = end - timedelta(days=max_days)
+
+            # Group trades by date
+            trades_by_date = {}
+            for t in sorted_hist:
+                d = t['date']
+                if d not in trades_by_date:
+                    trades_by_date[d] = []
+                trades_by_date[d].append(t)
+
+            cash = 1000000.0
+            holdings = {}  # {code: shares}
+            cost_basis = {}  # {code: avg_cost}
+
+            dates_out = []
+            cash_out = []
+            assets_out = []
+
+            current = start
+            prev_total = 1000000.0
+            price_cache = {}  # {code: {date: price}}
+
+            while current <= end:
+                date_str = current.strftime('%Y-%m-%d')
+
+                # Apply trades for this date
+                if date_str in trades_by_date:
+                    for t in trades_by_date[date_str]:
+                        code = t['code']
+                        shares = t['shares']
+                        price = t['price']
+                        if t['type'] == '买入':
+                            cost = price * shares
+                            cash -= cost
+                            old_shares = holdings.get(code, 0)
+                            old_cost = cost_basis.get(code, 0)
+                            new_shares = old_shares + shares
+                            holdings[code] = new_shares
+                            cost_basis[code] = round((old_cost * old_shares + cost) / new_shares, 2) if new_shares > 0 else 0
+                        else:
+                            cash += price * shares
+                            holdings[code] = holdings.get(code, 0) - shares
+                            if holdings[code] <= 0:
+                                holdings.pop(code, None)
+                                cost_basis.pop(code, None)
+
+                # Calculate market value of current holdings
+                market_value = 0.0
+                for code, shares in holdings.items():
+                    if shares > 0:
+                        if code not in price_cache:
+                            price_cache[code] = {}
+                        if date_str not in price_cache[code]:
+                            p = self.data_feed.get_close_price_on_date(code, date_str)
+                            price_cache[code][date_str] = p
+                        close_p = price_cache[code].get(date_str)
+                        if close_p is None:
+                            close_p = cost_basis.get(code, 0)
+                        market_value += close_p * shares
+
+                total_assets = round(cash + market_value, 2)
+
+                dates_out.append(date_str)
+                cash_out.append(round(cash, 2))
+                assets_out.append(total_assets)
+
+                current += timedelta(days=1)
+
+            # Calculate returns
+            initial = 1000000.0
+            daily_returns = []
+            cumulative_returns = []
+            prev_assets = initial
+            for i, ta in enumerate(assets_out):
+                dr = round((ta - prev_assets) / prev_assets * 100, 2) if prev_assets != 0 else 0
+                cr = round((ta - initial) / initial * 100, 2)
+                daily_returns.append(dr)
+                cumulative_returns.append(cr)
+                prev_assets = ta
+
+            return json.dumps({
+                "success": True,
+                "dates": dates_out,
+                "cash": cash_out,
+                "total_assets": assets_out,
+                "daily_returns": daily_returns,
+                "cumulative_returns": cumulative_returns
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
     def test_db_connection(self):
         try:
             return json.dumps(self.db.connection_status())

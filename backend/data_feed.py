@@ -329,6 +329,32 @@ class DataFeed:
         values = [[round(opens[i],2), round(closes[i],2), round(lows[i],2), round(highs[i],2), int(volumes[i])] for i in range(n)]
         return json.dumps({"dates": date_strs, "values": values})
 
+    def get_close_price_on_date(self, code, target_date):
+        """从缓存中获取指定日期（或最近的前一日）的收盘价。
+
+        :param code: 股票纯数字代码
+        :param target_date: 'YYYY-MM-DD' 字符串
+        :return: float 或 None
+        """
+        code_pure = code.split('.')[0]
+        if code_pure not in self._kline_cache:
+            self.get_kline_json(code)
+        cached = self._kline_cache.get(code_pure)
+        if cached is None:
+            return None
+        dates = cached["dates"]
+        values = cached["values"]
+        if not dates:
+            return None
+        try:
+            idx = dates.index(target_date)
+            return values[idx][1]
+        except ValueError:
+            lo = bisect.bisect_left(dates, target_date)
+            if lo > 0 and lo <= len(values):
+                return values[lo - 1][1]
+            return values[0][1] if values else None
+
     def get_prev_close(self, code, target_date=None):
         """从 K 线缓存中获取指定日期（或最近日期）的前一交易日收盘价。
 
