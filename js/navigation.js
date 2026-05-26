@@ -1411,10 +1411,10 @@ Ctrl+Shift+D     → 切换调试面板（右下角浮窗）</div>
 // ========== 策略详情页（内部辅助） ==========
 function buildMetricCards(metrics) {
     var cards = [];
-    function add(label, value, cls) {
+    function add(label, value, color) {
         cards.push(
             '<div style="background:#151c2c;border:1px solid #242a40;border-radius:12px;padding:14px 12px;text-align:center;">' +
-            '<div style="font-size:20px;font-weight:700;color:' + (cls || '#4f7eff') + ';">' + value + '</div>' +
+            '<div style="font-size:20px;font-weight:700;color:' + color + ';">' + value + '</div>' +
             '<div style="font-size:11px;color:#9aa9cc;margin-top:4px;">' + label + '</div>' +
             '</div>'
         );
@@ -1423,28 +1423,34 @@ function buildMetricCards(metrics) {
         if (val === undefined || val === null || isNaN(val)) return 'N/A';
         return (val >= 0 ? '+' : '') + val.toFixed(2) + '%';
     }
+    function getColor(val, alwaysGreenForNegative) {
+        if (alwaysGreenForNegative && val < 0) return '#26a69a';
+        if (val > 0) return '#ef5350';
+        if (val < 0) return '#26a69a';
+        return '#9aa9cc';
+    }
     var tr = metrics.total_return;
-    add('累计收益率', fmtPct(tr), tr != null ? profitClass(fmtPct(tr)) : null);
+    add('累计收益率', fmtPct(tr), tr != null ? getColor(tr, true) : '#9aa9cc');
     var ar = metrics.annual_return;
-    add('年化收益率', fmtPct(ar), ar != null ? profitClass(fmtPct(ar)) : null);
+    add('年化收益率', fmtPct(ar), ar != null ? getColor(ar, true) : '#9aa9cc');
     var md = metrics.max_drawdown;
-    add('最大回撤', (md != null ? md.toFixed(2) + '%' : 'N/A'), md != null ? profitClass((md >= 0 ? '+' : '') + md.toFixed(2) + '%') : null);
+    add('最大回撤', (md != null ? md.toFixed(2) + '%' : 'N/A'), md != null ? '#26a69a' : '#9aa9cc');
     var sr = metrics.sharpe_ratio;
-    add('夏普比率', (sr != null ? sr.toFixed(2) : 'N/A'));
+    add('夏普比率', (sr != null ? sr.toFixed(2) : 'N/A'), sr != null ? getColor(sr) : '#9aa9cc');
     var wr = metrics.win_rate;
     if (wr != null) {
-        add('胜率', (typeof wr === 'number' ? wr.toFixed(1) + '%' : wr));
+        add('胜率', (typeof wr === 'number' ? wr.toFixed(1) + '%' : wr), getColor(wr, true));
     } else {
-        add('胜率', 'N/A');
+        add('胜率', 'N/A', '#9aa9cc');
     }
     var tt = metrics.total_trades;
-    add('交易次数', (tt != null ? tt : 'N/A'));
+    add('交易次数', (tt != null ? tt : 'N/A'), '#ffffff');
     var av = metrics.annual_volatility;
-    if (av != null) add('年化波动率', av.toFixed(2) + '%');
+    if (av != null) add('年化波动率', av.toFixed(2) + '%', av > 0 ? '#ef5350' : '#9aa9cc');
     var ir = metrics.information_ratio;
-    if (ir != null) add('信息比率', ir.toFixed(2));
+    if (ir != null) add('信息比率', ir.toFixed(2), getColor(ir));
     var mdd_dur = metrics.max_drawdown_duration;
-    if (mdd_dur != null) add('最长回撤期', mdd_dur + '天');
+    if (mdd_dur != null) add('最长回撤期', mdd_dur + '天', '#9aa9cc');
     return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">' + cards.join('') + '</div>';
 }
 
@@ -1681,7 +1687,7 @@ function renderBacktestDetail(container, result) {
     setTimeout(function() {
         // 权益曲线
         if (result.equity_curve && result.equity_curve.length > 0) {
-            drawEquityCurve('detailCurveContainer', result.equity_curve);
+            drawEquityCurve('detailCurveContainer', result.equity_curve, result);
         } else {
             var curveDom = document.getElementById('detailCurveContainer');
             if (curveDom) {

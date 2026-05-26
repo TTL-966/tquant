@@ -23,9 +23,9 @@ function formatMaLegend(maArray, name) {
 export function formatStockDisplayHtml(code) {
     var name = stockNameMap[code] || code;
     var codeStr = code;
-    return '<div class="stock-display"><span class="stock-name">' + name + '</span><span class="stock-code">' + codeStr + '</span></div>';
+    return '<div class="stock-display"><span class="stock-name">' + name + '</span><span class="stock-code">' + codeStr + '</span></div>';   
 }
-
+    
 // ---- 创建下拉指标选择器（按钮 + 浮层面板）----
 function createDropdownControl(chart, fullSeries, rawValues) {
     var container = chart.getDom();
@@ -1006,7 +1006,7 @@ export function drawDetailCurve() {
 }
 
 // ---- 收益曲线（动态数据）----
-export function drawEquityCurve(containerId, equityCurve, retry) {
+export function drawEquityCurve(containerId, equityCurve, result, retry) {
     if (retry === undefined) retry = 0;
     var dom = document.getElementById(containerId);
     if (!dom) {
@@ -1015,7 +1015,7 @@ export function drawEquityCurve(containerId, equityCurve, retry) {
     }
     if (dom.clientHeight === 0) {
         if (retry < 5) {
-            setTimeout(() => drawEquityCurve(containerId, equityCurve, retry + 1), 200);
+            setTimeout(function() { drawEquityCurve(containerId, equityCurve, result, retry + 1); }, 200);
         } else {
             dom.innerHTML = '<div style="color:#9aa9cc; padding:40px; text-align:center;">图表加载失败</div>';
         }
@@ -1030,10 +1030,81 @@ export function drawEquityCurve(containerId, equityCurve, retry) {
         return;
     }
     var chart = echarts.init(dom);
-    var dates = equityCurve.map(item => item.date);
-    var values = equityCurve.map(item => item.value);
+    var dates = equityCurve.map(function(item) { return item.date; });
+    var values = equityCurve.map(function(item) { return item.value; });
+
+    var hasResult = result && result.signals;
     var option = {
-        tooltip: { trigger: 'axis' },
+        tooltip: {
+            trigger: 'axis',
+            formatter: hasResult ? function(params) {
+                if (!params || params.length === 0) return '';
+                var idx = params[0].dataIndex;
+                var equityItem = equityCurve[idx];
+                if (!equityItem) return '';
+                var date = equityItem.date;
+                var value = equityItem.value;
+                var prevValue = idx > 0 ? equityCurve[idx - 1].value : value;
+                var dayChange = value - prevValue;
+                var dayChangePct = prevValue !== 0 ? (dayChange / prevValue * 100) : 0;
+
+                // 规范化权益曲线日期
+                var pureDate = String(date).split(' ')[0].split('T')[0];
+                
+                var signals = result.signals || [];
+                // 调试输出：检查信号数量和格式
+                if (idx === 0) {
+                    console.log('[drawEquityCurve] 权益曲线首日:', pureDate);
+                    console.log('[drawEquityCurve] 信号样本:', signals.slice(0, 3).map(s => ({ date: s.date, type: s.type })));
+                }
+
+                var daySignals = signals.filter(function(s) {
+                    if (!s.date) return false;
+                    var signalDate = String(s.date).split(' ')[0].split('T')[0];
+                    return signalDate === pureDate;
+                });
+
+                // 调试信息
+                var debugInfo = '';
+                if (daySignals.length === 0 && signals.length > 0) {
+                    var sampleSignal = signals[0];
+                    var sampleDate = sampleSignal.date ? String(sampleSignal.date).split(' ')[0].split('T')[0] : '无日期';
+                    debugInfo = '<div style="color:#f2c94c; font-size:10px; margin-bottom:4px;">⚠️ 未匹配到信号 (曲线日期: ' + pureDate + ', 信号样本: ' + sampleDate + ')</div>';
+                } else if (daySignals.length > 0) {
+                    debugInfo = '<div style="color:#4cff4c; font-size:10px; margin-bottom:4px;">✓ 匹配到 ' + daySignals.length + ' 个信号</div>';
+                }
+
+                var buySignals = daySignals.filter(function(s) { return s.type === 'buy'; });
+                var sellSignals = daySignals.filter(function(s) { return s.type === 'sell'; });
+                var buyCount = buySignals.length;
+                var sellCount = sellSignals.length;
+                var buyShares = buySignals.reduce(function(sum, s) { return sum + (s.shares || 0); }, 0);
+                var sellShares = sellSignals.reduce(function(sum, s) { return sum + (s.shares || 0); }, 0);
+                var dayProfit = dayChange > 0 ? dayChange : 0;
+                var dayLoss = dayChange < 0 ? -dayChange : 0;
+
+                var changeColor = dayChange >= 0 ? '#ef5350' : '#26a69a';
+                var changeSymbol = dayChange >= 0 ? '▲' : '▼';
+                var changeSign = dayChange >= 0 ? '+' : '';
+
+                return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:10px 14px;min-width:260px;">' +
+                    '<div style="color:#fff;font-weight:600;margin-bottom:6px;">' + pureDate + '</div>' +
+                    '<div style="margin-bottom:6px;">' +
+                    '<span style="color:#9aa9cc;">账户价值 </span>' +
+                    '<span style="color:#fff;font-weight:bold;">' + value.toFixed(2) + '</span>' +
+                    '</div>' +
+                    '<div style="margin-bottom:6px;">' +
+                    '<span style="color:#9aa9cc;">当日盈亏 </span>' +
+                    '<span style="color:' + changeColor + ';">' + changeSign + dayChange.toFixed(2) + ' (' + changeSign + dayChangePct.toFixed(2) + '%) ' + changeSymbol + '</span>' +
+                    '</div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:6px;border-top:1px solid #2a314a;padding-top:4px;">' +
+                    '<div><span style="color:#9aa9cc;">开仓</span><br><span style="color:#fff;">' + buyCount + '次 (' + buyShares + '股)</span></div>' +
+                    '<div><span style="color:#9aa9cc;">平仓</span><br><span style="color:#fff;">' + sellCount + '次 (' + sellShares + '股)</span></div>' +
+                    '<div><span style="color:#9aa9cc;">盈利</span><br><span style="color:#ef5350;">+' + dayProfit.toFixed(2) + '</span></div>' +
+                    '<div><span style="color:#9aa9cc;">亏损</span><br><span style="color:#26a69a;">-' + dayLoss.toFixed(2) + '</span></div>' +
+                    '</div></div>';
+            } : undefined
+        },
         xAxis: { type: 'category', data: dates, axisLabel: { color: '#9aa9cc' } },
         yAxis: { type: 'value', name: '账户价值 (元)', axisLabel: { color: '#9aa9cc' } },
         series: [{
