@@ -12,7 +12,7 @@ import { renderTroubleshootPage } from './troubleshoot.js';
 import { CARD_TYPE_META } from './strategyTemplates.js';
 import { renderCompareView } from './compareView.js';
 import { renderScreenerPage } from './stockScreener.js';
-import { renderRealtimeSimPage } from './realtimeSim.js';
+import { renderRealtimeSimPage, resumeUIIfEngineRunning } from './realtimeSim.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
@@ -299,6 +299,7 @@ export function loadPage(pageId) {
     } else if (pageId === 'realtimeSim') {
         container.innerHTML = '';
         renderRealtimeSimPage(container);
+        resumeUIIfEngineRunning();
     } else if (pageId === 'kchart') {
         renderKchartPage(container);
     } else if (pageId === 'stock') {
@@ -404,6 +405,7 @@ function renderKchartPage(container) {
                 </div>
                 <button id="searchStockBtn" style="margin-left:4px; background:#2d3a5e; color:#fff; border:none; border-radius:30px; padding:4px 10px; cursor:pointer; font-size:12px;">🔍</button>
                 <button id="loadStrategySignalsBtn" style="padding:4px 12px;font-size:12px;">📊 加载策略信号</button>
+                <button id="loadRealtimeSignalsBtn" style="padding:4px 12px;font-size:12px;">📡 加载实时信号</button>
                 <button id="gotoStrategyBtn" style="padding:4px 12px;font-size:12px;">📝 跳转到策略页</button>
                 <button id="refreshKlineBtn" style="padding:4px 12px;font-size:12px;">刷新K线</button>
                 <button id="kchartFundamentalBtn" style="margin-left:4px;background:#2a3a5a;color:#fff;border:none;border-radius:30px;padding:4px 10px;cursor:pointer;font-size:12px;">📊 个股资料</button>
@@ -708,6 +710,58 @@ function renderKchartPage(container) {
                 }
                 refreshStockSelect();
                 showToast('已加载 ' + matched.length + ' 个信号', false);
+            });
+        }
+
+        // 加载实时信号按钮
+        var loadRealtimeBtn = document.getElementById('loadRealtimeSignalsBtn');
+        if (loadRealtimeBtn) {
+            loadRealtimeBtn.addEventListener('click', async function() {
+                if (!bridge || typeof bridge.get_realtime_signals_history !== 'function') {
+                    showToast('Bridge 未连接或接口不可用', true);
+                    return;
+                }
+                try {
+                    var resp = JSON.parse(await bridge.get_realtime_signals_history());
+                    if (!resp.success || !resp.signals || resp.signals.length === 0) {
+                        showToast('暂无实时信号', true);
+                        return;
+                    }
+                    var code = currentStockCode;
+                    var candidates = [code, code + '.SZ', code + '.SH', code + '.BJ'];
+                    var matched = resp.signals.filter(function(s) {
+                        return candidates.indexOf(s.code) !== -1;
+                    });
+                    if (matched.length === 0) {
+                        showToast('当前股票无匹配的实时信号', true);
+                        return;
+                    }
+                    // 合并到 buyPoints/sellPoints（不清空，追加模式）
+                    matched.forEach(function(s) {
+                        var dateOnly = (s.date || '').split(' ')[0];
+                        if (s.type === 'buy') {
+                            buyPoints.push({ date: dateOnly, code: code, price: s.price, shares: s.shares, reason: (s.reason || '买入') + ' (实时)' });
+                        } else {
+                            sellPoints.push({ date: dateOnly, code: code, price: s.price, shares: s.shares, reason: (s.reason || '卖出') + ' (实时)' });
+                        }
+                    });
+                    if (currentKlineDates.length > 0) {
+                        var maData = {
+                            dates: currentKlineDates,
+                            ma5: calcMAHelper(currentKlineValues, 5),
+                            ma10: calcMAHelper(currentKlineValues, 10),
+                            ma20: calcMAHelper(currentKlineValues, 20),
+                            ma30: calcMAHelper(currentKlineValues, 30)
+                        };
+                        renderKlineWithSignals(currentKlineDates, currentKlineValues, buyPoints, sellPoints, maData);
+                    } else {
+                        fetchAndRenderKline(code, backtestStart, backtestEnd);
+                    }
+                    refreshStockSelect();
+                    showToast('已加载 ' + matched.length + ' 个实时信号', false);
+                } catch (e) {
+                    showToast('加载失败: ' + e.message, true);
+                }
             });
         }
 

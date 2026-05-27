@@ -20,6 +20,9 @@ from backend.backtest_executor import BacktestExecutor   # 新增导入
 from backend.multi_backtest_executor import MultiBacktestExecutor # 多股回测
 from backend.stock_screener import StockScreener
 from backend.realtime_strategy_engine import RealtimeStrategyEngine
+from backend.multi_realtime_strategy_engine import MultiRealtimeStrategyEngine
+from backend.realtime_quote_fetcher import RealtimeQuoteFetcher
+from backend import realtime_config
 from sqlalchemy import text
 
 class WebBridge(QObject):
@@ -34,6 +37,9 @@ class WebBridge(QObject):
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
         self.stock_screener = StockScreener(self.data_feed)
         self._realtime_engine = None   # 实时策略引擎实例
+        self._multi_realtime_engine = None  # 多股实时策略引擎
+        self._quote_fetcher = RealtimeQuoteFetcher()  # 批量行情获取器
+        self._all_realtime_signals = []   # 所有实时信号历史
         self._update_process = None   # 日线数据更新子进程句柄
         self._financial_update_process = None  # 财务数据更新子进程句柄
 
@@ -1160,7 +1166,7 @@ class WebBridge(QObject):
                 trade_sim=self.trade,
                 initial_cash=cash,
                 quote_interval=interval,
-                on_signal=None,
+                on_signal=self._on_realtime_signal,
                 on_log=None,
             )
             self._realtime_engine.start()
@@ -1212,6 +1218,234 @@ class WebBridge(QObject):
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
+
+    # ---------- 信号回调与历史 ----------
+    def _on_realtime_signal(self, signal):
+        self._all_realtime_signals.append(signal)
+
+    @Slot(result=str)
+    def get_realtime_signals_history(self):
+        """获取所有实时信号历史（供 K 线页面叠加显示）。"""
+        try:
+            return json.dumps({
+                "success": True,
+                "signals": self._all_realtime_signals
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    # ---------- 多股实时策略 Slot ----------
+    @Slot(str, result=str)
+    def start_multi_realtime_strategy(self, params_json):
+        """启动多股实时策略引擎。"""
+        try:
+            params = json.loads(params_json)
+            stock_codes = params.get("stock_codes", [])
+            strategy_code = params.get("strategy_code", "")
+            cash = float(params.get("cash", 100000))
+            interval = float(params.get("interval", 3))
+            commission_rate = float(params.get("commission_rate", 0.0003))
+            stamp_tax_rate = float(params.get("stamp_tax_rate", 0.001))
+            slippage_cost_type = params.get("slippage_cost_type", "percent")
+            slippage_cost_value = float(params.get("slippage_cost_value", 0.1))
+
+            if not stock_codes:
+                return json.dumps({"success": False, "message": "股票池为空"})
+            if not strategy_code:
+                return json.dumps({"success": False, "message": "策略代码为空"})
+
+            if self._multi_realtime_engine and self._multi_realtime_engine.running:
+                return json.dumps({"success": False, "message": "已有策略正在运行，请先停止"})
+
+            self._multi_realtime_engine = MultiRealtimeStrategyEngine(
+                stock_codes=stock_codes,
+                user_code=strategy_code,
+                trade_sim=self.trade,
+                initial_cash=cash,
+                quote_interval=interval,
+                on_signal=self._on_realtime_signal,
+                commission_rate=commission_rate,
+                stamp_tax_rate=stamp_tax_rate,
+                slippage_cost_type=slippage_cost_type,
+                slippage_cost_value=slippage_cost_value,
+            )
+            self._multi_realtime_engine.start()
+
+            # 持久化配置
+            realtime_config.save_config({
+                "type": "multi",
+                "stock_codes": stock_codes,
+                "strategy_code": strategy_code,
+                "cash": cash,
+                "interval": interval,
+                "commission_rate": commission_rate,
+                "stamp_tax_rate": stamp_tax_rate,
+                "slippage_cost_type": slippage_cost_type,
+                "slippage_cost_value": slippage_cost_value,
+                "start_time": __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "running": True,
+            })
+
+            return json.dumps({"success": True, "message": f"多股策略已启动 ({len(stock_codes)} 只股票)"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": str(e)})
+
+    @Slot(result=str)
+    def stop_multi_realtime_strategy(self):
+        """停止多股实时策略引擎。"""
+        try:
+            if not self._multi_realtime_engine or not self._multi_realtime_engine.running:
+                return json.dumps({"success": False, "message": "没有正在运行的策略"})
+            self._multi_realtime_engine.stop()
+            realtime_config.clear_config()
+            return json.dumps({"success": True, "message": "多股策略已停止"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": str(e)})
+
+    @Slot(result=str)
+    def get_multi_realtime_signals(self):
+        """获取多股实时策略的新交易信号。"""
+        try:
+            if not self._multi_realtime_engine:
+                return json.dumps({"success": True, "signals": [], "running": False})
+            signals = self._multi_realtime_engine.get_new_signals()
+            return json.dumps({
+                "success": True,
+                "signals": signals,
+                "running": self._multi_realtime_engine.running,
+                "stock_codes": self._multi_realtime_engine.stock_codes,
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_multi_realtime_logs(self):
+        """获取多股实时策略引擎的新日志。"""
+        try:
+            if not self._multi_realtime_engine:
+                return json.dumps({"success": True, "logs": [], "running": False})
+            logs = self._multi_realtime_engine.get_new_logs()
+            return json.dumps({
+                "success": True,
+                "logs": logs,
+                "running": self._multi_realtime_engine.running,
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_multi_realtime_all_signals(self):
+        """获取多股实时策略引擎的所有信号（不消费游标），供页面恢复时使用。"""
+        try:
+            if not self._multi_realtime_engine:
+                return json.dumps({"success": True, "signals": [], "running": False})
+            signals = self._multi_realtime_engine.get_all_signals()
+            return json.dumps({
+                "success": True,
+                "signals": signals,
+                "running": self._multi_realtime_engine.running,
+                "stock_codes": self._multi_realtime_engine.stock_codes,
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_multi_realtime_all_logs(self):
+        """获取多股实时策略引擎的所有日志（不消费游标），供页面恢复时使用。"""
+        try:
+            if not self._multi_realtime_engine:
+                return json.dumps({"success": True, "logs": [], "running": False})
+            logs = self._multi_realtime_engine.get_all_logs()
+            return json.dumps({
+                "success": True,
+                "logs": logs,
+                "running": self._multi_realtime_engine.running,
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_current_realtime_config(self):
+        """返回当前运行的实时策略配置（从持久化文件读取），供页面恢复时填充表单。"""
+        try:
+            config = realtime_config.load_config()
+            if config:
+                return json.dumps({"success": True, "config": config})
+            return json.dumps({"success": False, "error": "无运行中策略"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def get_realtime_quotes(self, codes_json):
+        """批量获取实时行情。codes_json: JSON 数组如 ["000001","000858"]。"""
+        try:
+            codes = json.loads(codes_json) if isinstance(codes_json, str) else codes_json
+            if not codes:
+                return json.dumps({"success": False, "error": "代码列表为空"})
+            quotes = self._quote_fetcher.fetch_quotes(codes)
+            return json.dumps({"success": True, "quotes": quotes})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    def auto_restore_realtime_strategy(self):
+        """应用启动时检查是否有未停止的实时策略配置，询问用户是否恢复。"""
+        try:
+            config = realtime_config.load_config()
+            if not config or not config.get("running"):
+                return
+
+            from PySide6.QtWidgets import QMessageBox
+            stock_codes = config.get("stock_codes", [])
+            start_time = config.get("start_time", "未知")
+            msg = (f"检测到上次未停止的实时策略：\n"
+                   f"股票池：{', '.join(stock_codes[:5])}"
+                   f"{'...' if len(stock_codes) > 5 else ''} ({len(stock_codes)} 只)\n"
+                   f"启动时间：{start_time}\n\n是否恢复运行？")
+
+            reply = QMessageBox.question(
+                self.main_window, "恢复实时策略",
+                msg,
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply == QMessageBox.Yes:
+                strategy_code = config.get("strategy_code", "")
+                cash = config.get("cash", 100000)
+                interval = config.get("interval", 3)
+                commission_rate = config.get("commission_rate", 0.0003)
+                stamp_tax_rate = config.get("stamp_tax_rate", 0.001)
+                slippage_cost_type = config.get("slippage_cost_type", "percent")
+                slippage_cost_value = config.get("slippage_cost_value", 0.1)
+
+                self._multi_realtime_engine = MultiRealtimeStrategyEngine(
+                    stock_codes=stock_codes,
+                    user_code=strategy_code,
+                    trade_sim=self.trade,
+                    initial_cash=cash,
+                    quote_interval=interval,
+                    on_signal=self._on_realtime_signal,
+                    commission_rate=commission_rate,
+                    stamp_tax_rate=stamp_tax_rate,
+                    slippage_cost_type=slippage_cost_type,
+                    slippage_cost_value=slippage_cost_value,
+                )
+                self._multi_realtime_engine.start()
+                print(f"[WebBridge] 已恢复实时策略 ({len(stock_codes)} 只股票)")
+            else:
+                realtime_config.clear_config()
+                print("[WebBridge] 用户拒绝恢复，配置已清除")
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
 
     # ---------- 策略相关 Slot ----------
     @Slot(result=str)

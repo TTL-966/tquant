@@ -62,6 +62,9 @@ class MainWindow(QMainWindow):
         from backend.data_updater.daily_kline_updater import DailyKlineUpdater
         QTimer.singleShot(2000, lambda: DailyKlineUpdater(self.bridge.db.engine).run())
 
+        # 自动恢复上次未停止的实时策略
+        QTimer.singleShot(3000, lambda: self.bridge.auto_restore_realtime_strategy())
+
     def on_fullscreen_requested(self, request):
         request.accept()
         if not self.is_fullscreen:

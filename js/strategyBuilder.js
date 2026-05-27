@@ -1702,7 +1702,7 @@ export function renderStrategyPage(container) {
         });
     }
 
-    // ---- 实时策略按钮 ----
+    // ---- 实时策略按钮：一键跳转到实时模拟页面 ----
     var startRealtimeBtn = document.getElementById('startRealtimeBtn');
     if (startRealtimeBtn) {
         startRealtimeBtn.addEventListener('click', function() {
@@ -1716,22 +1716,26 @@ export function renderStrategyPage(container) {
                 showToast('请先添加策略卡片', true);
                 return;
             }
+            if (!currentStockPool || currentStockPool.length === 0) {
+                showToast('请先在股票池中添加股票', true);
+                return;
+            }
             var code = generateCode(cards);
-            var defaultStock = (currentStockPool && currentStockPool.length > 0) ? currentStockPool[0] : '000001';
             var capitalInput = document.getElementById('initialCapitalInput');
             var cash = capitalInput ? (Number(capitalInput.value) || 100000) : 100000;
-            var params = {
-                stock_code: defaultStock,
-                strategy_code: code,
+            window._realtimeSimParams = {
+                strategyCode: code,
+                stockPool: currentStockPool.slice(0, 50),
                 cash: cash,
                 interval: 3
             };
-            bridge.start_realtime_strategy(JSON.stringify(params)).then(function(resp) {
-                var r = JSON.parse(resp);
-                showToast(r.message || '实时策略已启动', !r.success);
-            }).catch(function(err) {
-                showToast('启动失败: ' + err.message, true);
-            });
+            var nav = document.querySelector('.nav-item[data-page="realtimeSim"]');
+            if (nav) {
+                nav.click();
+                showToast('参数已传递到实时模拟页面，请确认后启动');
+            } else {
+                showToast('未找到实时模拟导航项', true);
+            }
         });
     }
 
