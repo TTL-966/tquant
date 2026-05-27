@@ -12,6 +12,7 @@ import { renderTroubleshootPage } from './troubleshoot.js';
 import { CARD_TYPE_META } from './strategyTemplates.js';
 import { renderCompareView } from './compareView.js';
 import { renderScreenerPage } from './stockScreener.js';
+import { renderRealtimeSimPage } from './realtimeSim.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
@@ -287,9 +288,17 @@ export function loadPage(pageId) {
         clearInterval(_quotePollTimer);
         _quotePollTimer = null;
     }
+    // 清理实时模拟页面的轮询定时器
+    if (pageId !== 'realtimeSim' && window._realtimeSimCleanup) {
+        window._realtimeSimCleanup();
+        window._realtimeSimCleanup = null;
+    }
 
     if (pageId === 'profile') {
         renderProfile();
+    } else if (pageId === 'realtimeSim') {
+        container.innerHTML = '';
+        renderRealtimeSimPage(container);
     } else if (pageId === 'kchart') {
         renderKchartPage(container);
     } else if (pageId === 'stock') {

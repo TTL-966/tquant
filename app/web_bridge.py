@@ -19,6 +19,7 @@ from backend.strategy_storage import StrategyStorage
 from backend.backtest_executor import BacktestExecutor   # 新增导入
 from backend.multi_backtest_executor import MultiBacktestExecutor # 多股回测
 from backend.stock_screener import StockScreener
+from backend.realtime_strategy_engine import RealtimeStrategyEngine
 from sqlalchemy import text
 
 class WebBridge(QObject):
@@ -32,6 +33,7 @@ class WebBridge(QObject):
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
         self.stock_screener = StockScreener(self.data_feed)
+        self._realtime_engine = None   # 实时策略引擎实例
         self._update_process = None   # 日线数据更新子进程句柄
         self._financial_update_process = None  # 财务数据更新子进程句柄
 
@@ -1132,6 +1134,69 @@ class WebBridge(QObject):
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps([])
+
+    # ---------- 实时策略 Slot ----------
+    @Slot(str, result=str)
+    def start_realtime_strategy(self, params_json):
+        """启动实时策略引擎。
+        params_json: {"stock_code":"000001","strategy_code":"...","cash":100000,"interval":3}
+        """
+        try:
+            params = json.loads(params_json)
+            stock_code = params.get("stock_code", "")
+            strategy_code = params.get("strategy_code", "")
+            cash = float(params.get("cash", 100000))
+            interval = float(params.get("interval", 3))
+
+            if not stock_code or not strategy_code:
+                return json.dumps({"success": False, "message": "股票代码或策略代码为空"})
+
+            if self._realtime_engine and self._realtime_engine.running:
+                return json.dumps({"success": False, "message": "已有实时策略正在运行，请先停止"})
+
+            self._realtime_engine = RealtimeStrategyEngine(
+                stock_code=stock_code,
+                user_code=strategy_code,
+                trade_sim=self.trade,
+                initial_cash=cash,
+                quote_interval=interval,
+                on_signal=None,
+                on_log=None,
+            )
+            self._realtime_engine.start()
+            return json.dumps({"success": True, "message": "实时策略已启动"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": str(e)})
+
+    @Slot(result=str)
+    def stop_realtime_strategy(self):
+        """停止实时策略引擎。"""
+        try:
+            if not self._realtime_engine or not self._realtime_engine.running:
+                return json.dumps({"success": False, "message": "没有正在运行的实时策略"})
+            self._realtime_engine.stop()
+            return json.dumps({"success": True, "message": "实时策略已停止"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": str(e)})
+
+    @Slot(result=str)
+    def get_realtime_signals(self):
+        """获取实时策略产生的新交易信号。"""
+        try:
+            if not self._realtime_engine:
+                return json.dumps({"success": True, "signals": [], "running": False})
+            signals = self._realtime_engine.get_new_signals()
+            return json.dumps({
+                "success": True,
+                "signals": signals,
+                "running": self._realtime_engine.running,
+                "logs": self._realtime_engine.logs[-20:] if self._realtime_engine.logs else [],
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
 
     # ---------- 策略相关 Slot ----------
     @Slot(result=str)

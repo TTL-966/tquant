@@ -1536,6 +1536,8 @@ export function renderStrategyPage(container) {
         '<button id="toggleCodePreviewBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:6px 14px;border-radius:20px;cursor:pointer;">📝 预览代码</button>' +
         '<button id="runBacktestBtn" style="background:#4f7eff;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;">▶ 运行回测</button>' +
         '<button id="compareBacktestBtn" style="background:transparent;border:1px solid #f2c94c;padding:6px 16px;border-radius:30px;color:#f2c94c;font-weight:600;cursor:pointer;">🔬 对比回测</button>' +
+        '<button id="startRealtimeBtn" style="background:#22c55e;border:none;padding:6px 16px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;margin-left:6px;">▶ 实时模拟</button>' +
+        '<button id="stopRealtimeBtn" style="background:transparent;border:1px solid #ef4444;padding:6px 16px;border-radius:30px;color:#ef4444;font-weight:600;cursor:pointer;margin-left:6px;">⏹ 停止实时</button>' +
         '</div>' +
         '<pre id="codePreviewArea" style="display:none;max-height:300px;overflow-y:auto;background:#0e1220;border:1px solid #323d5a;border-radius:12px;padding:12px;color:#9aa9cc;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-all;"></pre>' +
         '</div>' +
@@ -1697,6 +1699,52 @@ export function renderStrategyPage(container) {
 
             showCompareBacktestModal(cards, defaultStock, startDt, endDt, cashVal, slippageType,
                 commissionVal, stampTaxVal, slCostTypeVal, slCostValueVal);
+        });
+    }
+
+    // ---- 实时策略按钮 ----
+    var startRealtimeBtn = document.getElementById('startRealtimeBtn');
+    if (startRealtimeBtn) {
+        startRealtimeBtn.addEventListener('click', function() {
+            if (!bridge) { showToast('Bridge 未连接', true); return; }
+            var validation = validateCards(cards);
+            if (!validation.valid) {
+                showToast(validation.errors[0], true);
+                return;
+            }
+            if (cards.length === 0) {
+                showToast('请先添加策略卡片', true);
+                return;
+            }
+            var code = generateCode(cards);
+            var defaultStock = (currentStockPool && currentStockPool.length > 0) ? currentStockPool[0] : '000001';
+            var capitalInput = document.getElementById('initialCapitalInput');
+            var cash = capitalInput ? (Number(capitalInput.value) || 100000) : 100000;
+            var params = {
+                stock_code: defaultStock,
+                strategy_code: code,
+                cash: cash,
+                interval: 3
+            };
+            bridge.start_realtime_strategy(JSON.stringify(params)).then(function(resp) {
+                var r = JSON.parse(resp);
+                showToast(r.message || '实时策略已启动', !r.success);
+            }).catch(function(err) {
+                showToast('启动失败: ' + err.message, true);
+            });
+        });
+    }
+
+    var stopRealtimeBtn = document.getElementById('stopRealtimeBtn');
+    if (stopRealtimeBtn) {
+        stopRealtimeBtn.addEventListener('click', function() {
+            if (!bridge) { showToast('Bridge 未连接', true); return; }
+            bridge.stop_realtime_strategy().then(function(resp) {
+                var r = JSON.parse(resp);
+                showToast(r.message || '实时策略已停止', !r.success);
+            }).catch(function(err) {
+                showToast('停止失败: ' + err.message, true);
+            });
         });
     }
 
