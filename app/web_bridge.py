@@ -1192,7 +1192,22 @@ class WebBridge(QObject):
                 "success": True,
                 "signals": signals,
                 "running": self._realtime_engine.running,
-                "logs": self._realtime_engine.logs[-20:] if self._realtime_engine.logs else [],
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_realtime_logs(self):
+        """获取实时策略引擎产生的新日志。"""
+        try:
+            if not self._realtime_engine:
+                return json.dumps({"success": True, "logs": [], "running": False})
+            logs = self._realtime_engine.get_new_logs()
+            return json.dumps({
+                "success": True,
+                "logs": logs,
+                "running": self._realtime_engine.running,
             })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
