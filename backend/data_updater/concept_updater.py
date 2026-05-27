@@ -9,7 +9,7 @@ import random
 import pandas as pd
 from sqlalchemy import text
 from backend.db import Database
-from backend.data_updater.base_updater import BaseUpdater
+from backend.base_updater import BaseUpdater
 
 try:
     import akshare as ak
