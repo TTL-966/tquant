@@ -1273,8 +1273,15 @@ function loadStrategyById(id) {
         }
         var indSel = document.getElementById('poolIndustryFilter');
         if (indSel) indSel.value = poolIndustryFilter;
+        var indInp = document.getElementById('poolIndustryFilterInput');
+        if (indInp && poolIndustryFilter) {
+            var found = (industryListCache || []).find(function(o) { return o.value === poolIndustryFilter; });
+            indInp.value = found ? found.label : poolIndustryFilter;
+        }
         var mmSel = document.getElementById('poolConceptMatchMode');
         if (mmSel) mmSel.value = poolConceptMatchMode;
+        var mmInp = document.getElementById('poolConceptMatchModeInput');
+        if (mmInp) mmInp.value = poolConceptMatchMode === 'all' ? '全部' : '任一';
         var mcMinEl = document.getElementById('poolMarketCapMin');
         if (mcMinEl) mcMinEl.value = poolMarketCapMin;
         var mcMaxEl = document.getElementById('poolMarketCapMax');
@@ -1474,18 +1481,23 @@ export function renderStrategyPage(container) {
         '<span style="color:#7a8ba8;font-size:10px;">-</span>' +
         '<input id="poolFloatSharesMax" type="number" min="0" step="0.1" placeholder="最大" value="' + escapeHtml(poolFloatSharesMax) + '" ' +
         'style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
-        // Industry filter
-        '<select id="poolIndustryFilter" style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;max-width:160px;">' +
+        // Industry filter (custom select)
+        '<select id="poolIndustryFilter" style="display:none;">' +
         '<option value="">-- 行业(可选) --</option>' +
         '</select>' +
+        '<input id="poolIndustryFilterInput" type="text" readonly placeholder="-- 行业(可选) --" ' +
+        'style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;max-width:160px;cursor:pointer;">' +
         '<input id="poolConceptSearch" type="text" placeholder="搜索概念..." ' +
         'style="width:110px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;">' +
         '<select id="poolConceptFilter" multiple size="3" ' +
         'style="min-width:160px;max-width:240px;background:#1e253b;border:1px solid #323d5a;border-radius:8px;color:#fff;font-size:11px;padding:2px;"></select>' +
-        '<select id="poolConceptMatchMode" style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">' +
+        '<select id="poolConceptMatchMode" style="display:none;">' +
         '<option value="any"' + (poolConceptMatchMode === 'any' ? ' selected' : '') + '>任一</option>' +
         '<option value="all"' + (poolConceptMatchMode === 'all' ? ' selected' : '') + '>全部</option>' +
         '</select>' +
+        '<input id="poolConceptMatchModeInput" type="text" readonly ' +
+        'value="' + (poolConceptMatchMode === 'all' ? '全部' : '任一') + '" ' +
+        'style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;cursor:pointer;">' +
         '<span id="poolConceptCount" style="color:#9aa9cc;font-size:11px;"></span>' +
         '<button id="poolResetFiltersBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:3px 10px;border-radius:20px;font-size:11px;cursor:pointer;">重置</button>' +
         '</div>' +
@@ -1796,6 +1808,37 @@ export function renderStrategyPage(container) {
         industryFilterEl.addEventListener('change', function() {
             poolIndustryFilter = this.value;
             updateStockPool();
+            // 同步自定义输入框
+            var inp = document.getElementById('poolIndustryFilterInput');
+            if (inp) {
+                var found = (industryListCache || []).find(function(o) { return o.value === poolIndustryFilter; });
+                inp.value = found ? found.label : (poolIndustryFilter || '');
+                if (!poolIndustryFilter) inp.placeholder = '-- 行业(可选) --';
+            }
+        });
+    }
+    // 行业自定义下拉输入框
+    var indCustomInput = document.getElementById('poolIndustryFilterInput');
+    if (indCustomInput) {
+        indCustomInput.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var sel = document.getElementById('poolIndustryFilter');
+            if (!sel) return;
+            var opts = [];
+            for (var k = 0; k < sel.options.length; k++) {
+                opts.push({ value: sel.options[k].value, label: sel.options[k].textContent });
+            }
+            showCustomSelect(this, opts, function(val) {
+                sel.value = val;
+                poolIndustryFilter = val;
+                updateStockPool();
+                var inp = document.getElementById('poolIndustryFilterInput');
+                if (inp) {
+                    var found = (industryListCache || []).find(function(o) { return o.value === val; });
+                    inp.value = found ? found.label : (val || '');
+                    if (!val) inp.placeholder = '-- 行业(可选) --';
+                }
+            });
         });
     }
 
@@ -1852,6 +1895,22 @@ export function renderStrategyPage(container) {
         matchModeEl.addEventListener('change', function() {
             poolConceptMatchMode = this.value;
             updateStockPool();
+            var inp = document.getElementById('poolConceptMatchModeInput');
+            if (inp) inp.value = poolConceptMatchMode === 'all' ? '全部' : '任一';
+        });
+    }
+    // 概念匹配模式自定义下拉
+    var mmCustomInput = document.getElementById('poolConceptMatchModeInput');
+    if (mmCustomInput) {
+        mmCustomInput.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showCustomSelect(this, [
+                { value: 'any', label: '任一' },
+                { value: 'all', label: '全部' }
+            ], function(val) {
+                var sel = document.getElementById('poolConceptMatchMode');
+                if (sel) { sel.value = val; sel.dispatchEvent(new Event('change')); }
+            });
         });
     }
 
@@ -1871,10 +1930,14 @@ export function renderStrategyPage(container) {
             document.getElementById('poolFloatSharesMax').value = '';
             var indSel = document.getElementById('poolIndustryFilter');
             if (indSel) indSel.value = '';
+            var indInp = document.getElementById('poolIndustryFilterInput');
+            if (indInp) { indInp.value = ''; indInp.placeholder = '-- 行业(可选) --'; }
             var conSel = document.getElementById('poolConceptFilter');
             if (conSel) { conSel.querySelectorAll('option').forEach(function(o) { o.selected = false; }); }
             var mmSel = document.getElementById('poolConceptMatchMode');
             if (mmSel) mmSel.value = 'any';
+            var mmInp = document.getElementById('poolConceptMatchModeInput');
+            if (mmInp) mmInp.value = '任一';
             updatePoolConceptCount();
             updateStockPool();
         });
@@ -2101,6 +2164,18 @@ function populatePoolIndustrySelect() {
         select.appendChild(option);
     });
     if (currentVal) select.value = currentVal;
+
+    // 同步自定义输入框显示
+    var customInput = document.getElementById('poolIndustryFilterInput');
+    if (customInput) {
+        if (currentVal) {
+            var found = (industryListCache || []).find(function(o) { return o.value === currentVal; });
+            customInput.value = found ? found.label : currentVal;
+        } else {
+            customInput.value = '';
+            customInput.placeholder = '-- 行业(可选) --';
+        }
+    }
 }
 
 function updatePoolConceptCount() {
