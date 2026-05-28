@@ -156,6 +156,25 @@ class Database:
                 )
             """))
 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS fund_flow_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts_code TEXT NOT NULL,
+                    trade_date TEXT NOT NULL,
+                    main_net REAL,
+                    super_net REAL,
+                    big_net REAL,
+                    medium_net REAL,
+                    small_net REAL,
+                    update_time TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(ts_code, trade_date)
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_ff_ts_date
+                ON fund_flow_history(ts_code, trade_date)
+            """))
+
             conn.commit()
 
     def _get_stock_suffix(self, code):
@@ -418,3 +437,81 @@ class Database:
             ],
         }
         return mock_indices.get(index_code, [])
+
+    def save_fund_flow_batch(self, records):
+        """批量插入或替换资金流向记录。
+
+        Args:
+            records: list[dict], 每条包含 ts_code, trade_date, main_net,
+                     super_net, big_net, medium_net, small_net
+        """
+        if not records:
+            return
+        sql = text("""
+            INSERT OR REPLACE INTO fund_flow_history
+                (ts_code, trade_date, main_net, super_net, big_net, medium_net, small_net)
+            VALUES (:ts_code, :trade_date, :main_net, :super_net, :big_net, :medium_net, :small_net)
+        """)
+        try:
+            with self.engine.begin() as conn:
+                for r in records:
+                    conn.execute(sql, {
+                        "ts_code": r["ts_code"],
+                        "trade_date": r["trade_date"],
+                        "main_net": r.get("main_net"),
+                        "super_net": r.get("super_net"),
+                        "big_net": r.get("big_net"),
+                        "medium_net": r.get("medium_net"),
+                        "small_net": r.get("small_net"),
+                    })
+        except Exception as e:
+            print(f"[DB] 保存资金流向失败: {e}")
+
+    def get_fund_flow_history(self, code, start_date=None, end_date=None, limit=30):
+        """查询某只股票的历史资金流向（按日期升序）。
+
+        Args:
+            code: 纯数字代码（如 '000001'）
+            start_date: 起始日期 'YYYY-MM-DD'，默认不限
+            end_date: 结束日期 'YYYY-MM-DD'，默认不限
+            limit: 最大返回条数
+
+        Returns:
+            list[dict]: 按 trade_date 升序排列的历史记录
+        """
+        ts_code = f"{code}{self._get_stock_suffix(code)}"
+        clauses = ["ts_code = :ts_code"]
+        params = {"ts_code": ts_code, "limit": limit}
+
+        if start_date:
+            clauses.append("trade_date >= :start")
+            params["start"] = start_date
+        if end_date:
+            clauses.append("trade_date <= :end")
+            params["end"] = end_date
+
+        where = " AND ".join(clauses)
+        sql = text(f"""
+            SELECT trade_date, main_net, super_net, big_net, medium_net, small_net
+            FROM fund_flow_history
+            WHERE {where}
+            ORDER BY trade_date ASC
+            LIMIT :limit
+        """)
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+            return [
+                {
+                    "date": r[0],
+                    "main_net": r[1],
+                    "super_net": r[2],
+                    "big_net": r[3],
+                    "medium_net": r[4],
+                    "small_net": r[5],
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            print(f"[DB] 查询资金流向历史失败 {code}: {e}")
+            return []

@@ -828,6 +828,18 @@ function renderStockPage(container) {
                     </div>
                 </div>
             </div>
+            <!-- 资金流向卡片（紧凑版） -->
+			<div class="fund-flow-card" id="fundFlowCard" style="margin:2px 0; background:#151c2c; border-radius:10px; padding:4px 8px; border:1px solid #323d5a;">
+			    <div class="fund-flow-summary" id="fundFlowSummary" style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+			        <div style="display:flex; align-items:center; gap:6px; flex-wrap:nowrap; min-width:0;">
+			            <span style="color:#9aa9cc; white-space:nowrap;">💰 主力净流入</span>
+			            <span id="fundFlowMain" style="font-weight:600; white-space:nowrap;">--</span>
+			            <span id="fundFlowSuggestion" style="color:#4f7eff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;"></span>
+			        </div>
+			        <button id="fundFlowToggleBtn" class="fund-flow-toggle" style="background:transparent; border:none; color:#9aa9cc; cursor:pointer; font-size:11px; padding:0 4px;">▼ 详情</button>
+			    </div>
+			    <div id="fundFlowDetail" style="display:none; margin-top:8px; border-top:1px solid #323d5a; padding-top:6px;"></div>
+			</div>
             <div id="stockKlineChart" style="width:100%; min-height:0;"></div>
             <div class="subchart-wrapper" data-subchart="stockSub1">
                 <div class="subchart-toolbar">
@@ -930,9 +942,241 @@ function renderStockPage(container) {
             }
         });
 
+        // ---------- 资金流向卡片 ----------
+        var _fundFlowData = null;       // 当日资金流向数据
+        var _fundFlowHistory = null;    // 近 N 日历史数据
+        var _fundFlowChart = null;      // 迷你趋势图 ECharts 实例
+        var _fundFlowLoaded = false;    // 是否已获取过数据
+        var _fundFlowDetailOpen = false;// 详情是否展开
+
+        function resetFundFlowCard() {
+            _fundFlowData = null;
+            _fundFlowHistory = null;
+            _fundFlowLoaded = false;
+            _fundFlowDetailOpen = false;
+            if (_fundFlowChart) {
+                _fundFlowChart.dispose();
+                _fundFlowChart = null;
+            }
+            var mainSpan = document.getElementById('fundFlowMain');
+            var suggestSpan = document.getElementById('fundFlowSuggestion');
+            var detailDiv = document.getElementById('fundFlowDetail');
+            var toggleBtn = document.getElementById('fundFlowToggleBtn');
+            if (mainSpan) mainSpan.innerHTML = '<span style="color:#9aa9cc;">--</span>';
+            if (suggestSpan) suggestSpan.textContent = '';
+            if (detailDiv) { detailDiv.style.display = 'none'; detailDiv.innerHTML = ''; }
+            if (toggleBtn) toggleBtn.textContent = '▼ 详情';
+        }
+
+        async function loadFundFlow(code) {
+            resetFundFlowCard();
+            var mainSpan = document.getElementById('fundFlowMain');
+            var suggestSpan = document.getElementById('fundFlowSuggestion');
+            if (!mainSpan || !bridge || typeof bridge.get_fund_flow !== 'function') return;
+
+            mainSpan.innerHTML = '<span style="color:#9aa9cc;">加载中...</span>';
+
+            try {
+                var jsonStr = await bridge.get_fund_flow(code);
+                var res = JSON.parse(jsonStr);
+                if (res.success && res.data) {
+                    _fundFlowData = res.data;
+                    _fundFlowLoaded = true;
+                    var mainNet = res.data.main_net;
+                    if (mainNet != null) {
+                        var absVal = Math.abs(mainNet);
+                        var formatted;
+                        if (absVal >= 10000) {
+                            formatted = (absVal / 10000).toFixed(2) + '亿';
+                        } else {
+                            formatted = absVal.toFixed(0) + '万';
+                        }
+                        var sign = mainNet > 0 ? '+' : '';
+                        var color = mainNet > 0 ? '#ef5350' : (mainNet < 0 ? '#26a69a' : '#9aa9cc');
+                        var arrow = mainNet > 0 ? '↑' : (mainNet < 0 ? '↓' : '');
+                        mainSpan.innerHTML = '<span style="color:' + color + ';">' + sign + formatted + ' ' + arrow + '</span>';
+                    } else {
+                        mainSpan.innerHTML = '<span style="color:#9aa9cc;">数据暂缺</span>';
+                    }
+                    suggestSpan.textContent = res.suggestion || '';
+                } else {
+                    mainSpan.innerHTML = '<span style="color:#ff6b6b;">获取失败</span>';
+                    suggestSpan.textContent = res.error || '点击重试';
+                    // 点击重试
+                    mainSpan.style.cursor = 'pointer';
+                    mainSpan.onclick = function() { loadFundFlow(code); };
+                }
+            } catch (err) {
+                mainSpan.innerHTML = '<span style="color:#ff6b6b;">网络错误</span>';
+                suggestSpan.textContent = '点击重试';
+                mainSpan.style.cursor = 'pointer';
+                mainSpan.onclick = function() { loadFundFlow(code); };
+            }
+        }
+
+        async function loadFundFlowHistory(code) {
+            if (!bridge || typeof bridge.get_fund_flow_history !== 'function') return;
+            try {
+                // 尝试 7 天数据（包含最近 5 个交易日）
+                var jsonStr = await bridge.get_fund_flow_history(code, 7);
+                var res = JSON.parse(jsonStr);
+                if (res.success && res.history) {
+                    _fundFlowHistory = res.history;
+                }
+            } catch (err) {
+                console.log('[FundFlow] 加载历史失败:', err);
+            }
+        }
+
+        function renderFundFlowDetail() {
+            var detailDiv = document.getElementById('fundFlowDetail');
+            if (!detailDiv) return;
+
+            var data = _fundFlowData;
+            if (!data) {
+                detailDiv.innerHTML = '<div style="color:#9aa9cc;text-align:center;padding:8px;">暂无数据</div>';
+                return;
+            }
+
+            // 格式化辅助
+            function fmtFlow(val) {
+                if (val == null) return '--';
+                var absVal = Math.abs(val);
+                var formatted = absVal >= 10000 ? (absVal / 10000).toFixed(2) + '亿' : absVal.toFixed(0) + '万';
+                var sign = val > 0 ? '+' : '';
+                return sign + formatted;
+            }
+
+            function flowColor(val) {
+                if (val == null) return '#9aa9cc';
+                return val > 0 ? '#ef5350' : (val < 0 ? '#26a69a' : '#9aa9cc');
+            }
+
+            function flowArrow(val) {
+                if (val == null) return '';
+                return val > 0 ? '↑' : (val < 0 ? '↓' : '');
+            }
+
+            // 构建明细表格
+            var fields = [
+                { label: '超大单净流入', key: 'super_net' },
+                { label: '大单净流入', key: 'big_net' },
+                { label: '中单净流入', key: 'medium_net' },
+                { label: '小单净流入', key: 'small_net' },
+            ];
+
+            var rowsHtml = '';
+            fields.forEach(function(f) {
+                var val = data[f.key];
+                rowsHtml += '<tr>' +
+                    '<td style="padding:3px 8px;color:#9aa9cc;">' + f.label + '</td>' +
+                    '<td style="padding:3px 8px;color:' + flowColor(val) + ';font-weight:600;">' + fmtFlow(val) + ' ' + flowArrow(val) + '</td>' +
+                    '</tr>';
+            });
+
+            var tableHtml = '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">' +
+                '<tbody>' + rowsHtml + '</tbody></table>';
+
+            // 历史数值列表
+            var historyListHtml = '';
+            if (_fundFlowHistory && _fundFlowHistory.length > 0) {
+                var items = _fundFlowHistory.map(function(h) {
+                    var val = h.main_net;
+                    return '<span style="display:inline-block;margin-right:10px;font-size:12px;">' +
+                        '<span style="color:#9aa9cc;">' + h.date + '</span> ' +
+                        '<span style="color:' + flowColor(val) + ';">' + fmtFlow(val) + '</span>' +
+                        '</span>';
+                }).join('');
+                historyListHtml = '<div style="margin-bottom:8px;color:#9aa9cc;font-size:12px;">近5日: ' + items + '</div>';
+            }
+
+            // 迷你趋势图容器
+            var chartContainerId = 'fundFlowTrendChart';
+
+            detailDiv.innerHTML = tableHtml + historyListHtml +
+                '<div id="' + chartContainerId + '" style="width:100%;height:80px;"></div>';
+
+            // 绘制迷你趋势图
+            if (_fundFlowHistory && _fundFlowHistory.length > 0 && typeof echarts !== 'undefined') {
+                var chartDom = document.getElementById(chartContainerId);
+                if (chartDom) {
+                    // 合并今日数据到历史末尾
+                    var dates = _fundFlowHistory.map(function(h) { return h.date; });
+                    var values = _fundFlowHistory.map(function(h) { return h.main_net; });
+                    if (_fundFlowData && _fundFlowData.date && _fundFlowData.main_net != null) {
+                        // 避免重复：仅在日期不重复时追加
+                        if (dates.length === 0 || dates[dates.length - 1] !== _fundFlowData.date) {
+                            dates.push(_fundFlowData.date);
+                            values.push(_fundFlowData.main_net);
+                        }
+                    }
+
+                    if (_fundFlowChart) { _fundFlowChart.dispose(); }
+                    _fundFlowChart = echarts.init(chartDom);
+                    _fundFlowChart.setOption({
+                        grid: { top: 6, right: 12, bottom: 6, left: 12 },
+                        tooltip: {
+                            trigger: 'axis',
+                            formatter: function(params) {
+                                var p = params[0];
+                                return p.axisValue + '<br/>主力净流入: ' + (p.value != null ? p.value.toFixed(0) + '万' : '--');
+                            }
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: dates,
+                            axisLabel: { color: '#9aa9cc', fontSize: 10, rotate: 30 },
+                            axisLine: { lineStyle: { color: '#323d5a' } },
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: '万元',
+                            nameTextStyle: { color: '#9aa9cc', fontSize: 10 },
+                            axisLabel: { color: '#9aa9cc', fontSize: 10 },
+                            splitLine: { lineStyle: { color: '#242a40' } },
+                        },
+                        series: [{
+                            type: 'line',
+                            data: values,
+                            smooth: true,
+                            symbol: 'circle',
+                            symbolSize: 4,
+                            lineStyle: { color: '#4f7eff', width: 1.5 },
+                            itemStyle: { color: '#4f7eff' },
+                            areaStyle: { color: 'rgba(79,126,255,0.1)' },
+                        }]
+                    });
+                }
+            }
+        }
+
+        // 折叠/展开按钮
+        function bindFundFlowToggle() {
+            var toggleBtn = document.getElementById('fundFlowToggleBtn');
+            var detailDiv = document.getElementById('fundFlowDetail');
+            if (!toggleBtn || !detailDiv) return;
+
+            toggleBtn.addEventListener('click', async function() {
+                _fundFlowDetailOpen = !_fundFlowDetailOpen;
+                if (_fundFlowDetailOpen) {
+                    toggleBtn.textContent = '▲ 收起';
+                    detailDiv.style.display = 'block';
+                    // 首次展开时加载历史数据
+                    if (!_fundFlowHistory) {
+                        await loadFundFlowHistory(currentStockCode);
+                    }
+                    renderFundFlowDetail();
+                } else {
+                    toggleBtn.textContent = '▼ 详情';
+                    detailDiv.style.display = 'none';
+                }
+            });
+        }
+
         function loadStock(code) {
             currentStockCode = code;
             if (codeInput) codeInput.value = formatStockNameOnly(code);
+            loadFundFlow(code);  // 加载资金流向
             fetchStockName(code, bridge).then(function(fetchedName) {
                 if (fetchedName) stockNameMap[code] = fetchedName;
                 var name = stockNameMap[code] || code;
@@ -1098,6 +1342,7 @@ function renderStockPage(container) {
             initialCode = window.currentStockCode;
             delete window.currentStockCode;  // 使用后清除，避免下次误用
         }
+        bindFundFlowToggle();
         loadStock(initialCode);
     }, 50);
 }

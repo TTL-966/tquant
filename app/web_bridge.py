@@ -22,6 +22,7 @@ from backend.stock_screener import StockScreener
 from backend.realtime_strategy_engine import RealtimeStrategyEngine
 from backend.multi_realtime_strategy_engine import MultiRealtimeStrategyEngine
 from backend.realtime_quote_fetcher import RealtimeQuoteFetcher
+from backend.fund_flow_fetcher import FundFlowFetcher
 from backend import realtime_config
 from sqlalchemy import text
 
@@ -255,6 +256,185 @@ class WebBridge(QObject):
             else:
                 result = {"success": False, "error": "无财务数据"}
             return json.dumps(result, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    # ---------- 资金流向 Slot ----------
+    @Slot(str, result=str)
+    def get_fund_flow(self, code):
+        """获取单只股票实时资金流向及建议。
+
+        :param code: 股票代码
+        :return: JSON 字符串，含 data 和 suggestion 字段
+        """
+        try:
+            pure_code = FundFlowFetcher._normalize_code(code)
+            if pure_code is None:
+                return json.dumps({"success": False, "error": f"无效代码: {code}"})
+
+            fetcher = FundFlowFetcher(cache_ttl=60)
+            data = fetcher.get_fund_flow(pure_code)
+            if data is None:
+                return json.dumps({"success": False, "error": "获取资金流向失败"})
+
+            # 查询近 5 日历史（不含当日），用于生成建议
+            today = data.get("date", "")
+            history = self.db.get_fund_flow_history(pure_code, end_date=today, limit=6)
+            # 过滤掉当日数据（如果历史表中已有）
+            history = [h for h in history if h.get("date", "") != today]
+            recent = history[-5:] if len(history) > 5 else history
+
+            suggestion = self._generate_suggestion(data, recent)
+
+            return json.dumps({
+                "success": True,
+                "data": data,
+                "suggestion": suggestion,
+            }, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def get_batch_fund_flow(self, codes_json):
+        """批量获取资金流向（最多 50 只）。
+
+        :param codes_json: JSON 数组字符串，如 '["000001","600519"]'
+        :return: JSON 字符串，含 quotes 字典
+        """
+        try:
+            codes = json.loads(codes_json) if isinstance(codes_json, str) else codes_json
+            if not codes:
+                return json.dumps({"success": False, "error": "代码列表为空"})
+
+            codes = codes[:50]  # 限制最多 50 只
+            normalized = []
+            for c in codes:
+                pure = FundFlowFetcher._normalize_code(c)
+                if pure:
+                    normalized.append(pure)
+
+            if not normalized:
+                return json.dumps({"success": False, "error": "无有效代码"})
+
+            fetcher = FundFlowFetcher(cache_ttl=60)
+            quotes = fetcher.get_batch_fund_flow(normalized)
+
+            return json.dumps({
+                "success": True,
+                "quotes": quotes,
+            }, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @staticmethod
+    def _generate_suggestion(current, history):
+        """根据当日资金流向和历史趋势生成中文建议。
+
+        Args:
+            current: 当日资金流向 dict，含 main_net(万元) 等字段
+            history: 近 N 日历史记录列表（按日期升序），每条含 main_net 等字段
+
+        Returns:
+            str: 中文建议文案
+        """
+        main_net = current.get("main_net") if current else None
+        source = current.get("source", "") if current else ""
+
+        if main_net is None:
+            return "今日主力资金流向数据暂缺，建议观望"
+
+        # 计算历史趋势
+        hist_values = [h.get("main_net") for h in (history or []) if h.get("main_net") is not None]
+
+        def _fmt(val):
+            """格式化金额，大额用「亿」，小额用「万」。"""
+            if val is None:
+                return "0万"
+            abs_val = abs(val)
+            if abs_val >= 10000:
+                return f"{abs_val/10000:.2f}亿"
+            return f"{abs_val:.0f}万"
+
+        direction = "流入" if main_net > 0 else "流出"
+        abs_main = _fmt(main_net)
+
+        # 无历史数据时的简单建议
+        if not hist_values:
+            if main_net > 5000:
+                return f"主力净流入{abs_main}，大额资金进场，建议关注"
+            if main_net < -3000:
+                return f"主力净流出{abs_main}，资金离场明显，注意风险"
+            if abs(main_net) < 2000:
+                return f"主力小幅净{direction}{abs_main}，建议观望"
+            return f"主力净{direction}{abs_main}"
+
+        # 计算最近连续同向天数
+        recent = hist_values[-3:]  # 最近 3 日
+        same_dir = 0
+        for v in reversed(recent):
+            if (main_net > 0 and v > 0) or (main_net < 0 and v < 0):
+                same_dir += 1
+            else:
+                break
+
+        # 计算累计
+        cumulative = main_net + sum(recent)
+        cum_str = _fmt(cumulative)
+
+        # 规则 1：主力单日大幅净流入 + 连续同向
+        if main_net > 5000:
+            if same_dir >= 2:
+                return f"主力连续{same_dir + 1}日净流入（含今日），累计+{cum_str}，资金持续进场，建议关注"
+            return f"主力净流入{abs_main}，大额资金进场，建议关注"
+
+        # 规则 2：主力单日大幅净流出 + 连续同向
+        if main_net < -3000:
+            if same_dir >= 2:
+                return f"主力连续{same_dir + 1}日净流出（含今日），累计-{cum_str}，注意风险"
+            return f"主力净流出{abs_main}，资金离场明显，注意风险"
+
+        # 规则 3：主力小幅净流入（0~2000万）
+        if 0 < main_net < 2000:
+            if same_dir >= 1:
+                return f"主力连续小幅净流入，累计+{cum_str}，建议观望"
+            return f"主力小幅净流入{abs_main}，建议观望"
+
+        # 规则 4：主力小幅净流出
+        if -2000 < main_net < 0:
+            if same_dir >= 1:
+                return f"主力连续小幅净流出，累计-{cum_str}，建议观望"
+            return f"主力小幅净流出{abs_main}，建议观望"
+
+        # 默认
+        if main_net > 0:
+            return f"主力净流入{abs_main}，近{same_dir + 1}日持续流入，累计+{cum_str}"
+        else:
+            return f"主力净流出{abs_main}，近{same_dir + 1}日持续流出，累计-{cum_str}"
+
+    @Slot(str, int, result=str)
+    def get_fund_flow_history(self, code, days=5):
+        """查询某只股票近 N 日资金流向历史。
+
+        :param code: 股票代码
+        :param days: 返回最近多少天的数据
+        :return: JSON 字符串，含 history 数组
+        """
+        try:
+            pure_code = FundFlowFetcher._normalize_code(code)
+            if pure_code is None:
+                return json.dumps({"success": False, "error": f"无效代码: {code}"})
+
+            today = __import__('datetime').datetime.now().strftime("%Y-%m-%d")
+            history = self.db.get_fund_flow_history(pure_code, end_date=today, limit=days)
+
+            return json.dumps({
+                "success": True,
+                "code": pure_code,
+                "history": history,
+            }, ensure_ascii=False)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
