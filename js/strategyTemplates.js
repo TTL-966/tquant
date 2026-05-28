@@ -505,6 +505,76 @@ export var CARD_TYPE_META = {
             ], default: 'gt' },
             { key: 'threshold', label: '阈值(万元)', type: 'number', min: 0, max: 100000, step: 100, default: 5000 }
         ]
+    },
+
+    supertrend: {
+        type: 'supertrend',
+        label: '超级趋势',
+        icon: '📈',
+        description: '基于ATR的超级趋势指标，上升趋势买入/下降趋势卖出',
+        defaultAction: 'buy',
+        defaultParams: { period: 10, multiplier: 3, direction: 'trend_up' },
+        paramFields: [
+            { key: 'period', label: 'ATR周期', type: 'number', min: 5, max: 30, default: 10 },
+            { key: 'multiplier', label: '倍数', type: 'number', min: 1, max: 5, step: 0.5, default: 3 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'trend_up', label: '上升趋势买入' },
+                { value: 'trend_down', label: '下降趋势卖出' }
+            ], default: 'trend_up' }
+        ]
+    },
+
+    cmf: {
+        type: 'cmf',
+        label: 'Chaikin资金流',
+        icon: '💰',
+        description: 'CMF > 阈值表示资金流入，< -阈值表示资金流出',
+        defaultAction: 'buy',
+        defaultParams: { period: 20, threshold: 0.1, direction: 'gt' },
+        paramFields: [
+            { key: 'period', label: '周期', type: 'number', min: 5, max: 50, default: 20 },
+            { key: 'threshold', label: '阈值', type: 'number', min: 0, max: 0.5, step: 0.01, default: 0.1 },
+            { key: 'direction', label: '方向', type: 'select', options: [
+                { value: 'gt', label: '大于阈值（资金流入）' },
+                { value: 'lt', label: '小于负阈值（资金流出）' }
+            ], default: 'gt' }
+        ]
+    },
+
+    resonance: {
+        type: 'resonance',
+        label: '共振指标',
+        icon: '🔔',
+        description: '多指标共振评分（RSI/KDJ/MACD/均线），分数≥阈值触发信号',
+        defaultAction: 'buy',
+        defaultParams: { rsiOversold: 30, maShort: 5, maMid: 10, maLong: 20, kdjN: 9, kdjM1: 3, kdjM2: 3, threshold: 3 },
+        paramFields: [
+            { key: 'rsiOversold', label: 'RSI超卖阈值', type: 'number', min: 10, max: 50, default: 30 },
+            { key: 'maShort', label: '均线短周期', type: 'number', min: 2, max: 20, default: 5 },
+            { key: 'maMid', label: '均线中周期', type: 'number', min: 3, max: 50, default: 10 },
+            { key: 'maLong', label: '均线长周期', type: 'number', min: 5, max: 200, default: 20 },
+            { key: 'kdjN', label: 'KDJ参数N', type: 'number', min: 5, max: 21, default: 9 },
+            { key: 'kdjM1', label: 'KDJ参数M1', type: 'number', min: 2, max: 9, default: 3 },
+            { key: 'kdjM2', label: 'KDJ参数M2', type: 'number', min: 2, max: 9, default: 3 },
+            { key: 'threshold', label: '共振阈值', type: 'number', min: 1, max: 4, default: 3 }
+        ]
+    },
+
+    trend_strength: {
+        type: 'trend_strength',
+        label: '趋势强度',
+        icon: '📊',
+        description: '短底信号、金手指、压力支撑突破',
+        defaultAction: 'buy',
+        defaultParams: { signal_type: 'short_bottom' },
+        paramFields: [
+            { key: 'signal_type', label: '信号类型', type: 'select', options: [
+                { value: 'short_bottom', label: '短底信号' },
+                { value: 'golden_finger', label: '金手指（MA20上穿MA120）' },
+                { value: 'price_above_pressure', label: '价格突破压力线（20日高点）' },
+                { value: 'price_below_support', label: '价格跌破支撑线（20日低点）' }
+            ], default: 'short_bottom' }
+        ]
     }
 };
 

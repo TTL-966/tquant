@@ -431,6 +431,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
+                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart1Values"></div>
@@ -452,6 +453,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
+                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart2Values"></div>
@@ -863,6 +865,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
+                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart1Values"></div>
@@ -884,6 +887,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
+                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart2Values"></div>
@@ -1556,6 +1560,10 @@ function renderApiPage(container) {
                 '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">威廉 %R</td><td style="padding:4px 8px;">威廉指标(14)，范围 -100~0。%R > -20 超买，%R < -80 超卖。与KDJ的RSV互逆。</td><td style="padding:4px 8px;">-20 / -80</td></tr>' +
                 '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">OBV</td><td style="padding:4px 8px;">能量潮指标。OBV 线（累积能量，蓝）+ MA20 均线（黄虚）。OBV 上穿均线→金叉买入。数值行显示最新 OBV 值及 MA20。</td><td style="padding:4px 8px;">MA20 交叉</td></tr>' +
                 '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">ROC</td><td style="padding:4px 8px;">变动率(12)。ROC = (当日收盘-N日前收盘)/N日前收盘×100%。零轴穿越为买卖信号，数值行正数红色、负数绿色，带%符号。</td><td style="padding:4px 8px;">零轴</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#f2c94c;">超级趋势</td><td style="padding:4px 8px;">基于 ATR 的动态趋势通道。价格在趋势线上方为上升趋势（绿线），跌破趋势线转为下降趋势（红线）。趋势反转时产生买卖三角形标记。参数可调：ATR周期（5-30）和倍数（1-5）。</td><td style="padding:4px 8px;">趋势线方向变化</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">资金流 CMF</td><td style="padding:4px 8px;">Chaikin 资金流指标，衡量资金积累/分布。MFM = ((C-L)-(H-C))/(H-L)，MFV = MFM×VOL，CMF = Sum(MFV,N)/Sum(VOL,N)。正值红色表示资金流入，负值绿色表示资金流出。±0.1 为参考阈值。</td><td style="padding:4px 8px;">±0.1 参考线</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#ef5350;">共振指标</td><td style="padding:4px 8px;">多指标共振评分系统。综合 RSI(14)超卖 + KDJ金叉 + MACD金叉 + 均线多头排列 四项条件，总分 0–4 的柱状图。分数 ≥ 阈值（默认3）显示金色柱和"强烈共振"三角标记。8项参数均可通过⚙按钮配置。</td><td style="padding:4px 8px;">阈值线 y=3（可配）</td></tr>' +
+                '<tr style="color:#9aa9cc;"><td style="padding:4px 8px;color:#4f7eff;">趋势强度</td><td style="padding:4px 8px;">多维度趋势分析工具，含四种信号模式：加权移动均线（EMA×0.9+Norm×0.1）+ 20日压力/支撑线 + 短底信号（蓝色三角，基于168日低点归一化上穿） + 金手指（金色倒三角，MA20上穿MA120）。用于判断趋势强度和关键转折点。</td><td style="padding:4px 8px;">压力/支撑线突破</td></tr>' +
                 '</table>' +
                 '<p style="color:#9aa9cc;font-size:12px;">📌 所有指标基于连续日历日序列计算（消除周末缺口），图表仅显示交易日。数据不足时显示"需≥30根K线"提示。副图支持折叠/展开，dataZoom与主图联动，十字光标同步。SAR 抛物线转向以金色散点叠加在主 K 线图上。</p>'
         }

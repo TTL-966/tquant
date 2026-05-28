@@ -576,6 +576,231 @@ function genMAAlignment(card, idx) {
     return { code: lines, cond: '', reason: reason };
 }
 
+function genSupertrend(card, idx) {
+    var p = card.params;
+    var period = p.period || 10;
+    var multiplier = parseFloat(p.multiplier) || 3;
+    var direction = p.direction || 'trend_up';
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var needBars = period + 5;
+    var lines = [];
+    lines.push('# Card ' + idx + ': 超级趋势');
+    lines.push(contextName(idx, 'highs') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'high\')');
+    lines.push(contextName(idx, 'lows') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'low\')');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'close\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + needBars + ':');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    _h = np.array(' + contextName(idx, 'highs') + ')');
+    lines.push('    _l = np.array(' + contextName(idx, 'lows') + ')');
+    lines.push('    _c = np.array(' + contextName(idx, 'closes') + ')');
+    lines.push('    _n = len(_c)');
+    // ATR
+    lines.push('    _tr = np.maximum(_h - _l, np.maximum(np.abs(_h - np.roll(_c, 1)), np.abs(_l - np.roll(_c, 1))))');
+    lines.push('    _tr[0] = _h[0] - _l[0]');
+    lines.push('    _atr = np.zeros(_n)');
+    lines.push('    _atr[:' + period + '] = np.nan');
+    lines.push('    _atr[' + period + '] = np.mean(_tr[1:' + (period + 1) + '])');
+    lines.push('    for _j in range(' + (period + 1) + ', _n):');
+    lines.push('        _atr[_j] = (_atr[_j-1] * (' + (period - 1) + ') + _tr[_j]) / ' + period);
+    // Basic bands
+    lines.push('    _src = (_h + _l + _c) / 3');
+    lines.push('    _basicUpper = _src + ' + multiplier + ' * _atr');
+    lines.push('    _basicLower = _src - ' + multiplier + ' * _atr');
+    // Trend
+    lines.push('    _trend = np.zeros(_n)');
+    lines.push('    _trendLine = np.zeros(_n)');
+    lines.push('    _currTrend = 1');
+    lines.push('    _start = ' + period);
+    lines.push('    _trend[_start] = _currTrend');
+    lines.push('    _trendLine[_start] = _basicLower[_start] if _currTrend == 1 else _basicUpper[_start]');
+    lines.push('    for _j in range(_start + 1, _n):');
+    lines.push('        if _currTrend == 1:');
+    lines.push('            if _c[_j] > _trendLine[_j-1]:');
+    lines.push('                _trend[_j] = 1');
+    lines.push('                _trendLine[_j] = max(_basicLower[_j], _trendLine[_j-1])');
+    lines.push('            else:');
+    lines.push('                _currTrend = -1');
+    lines.push('                _trend[_j] = -1');
+    lines.push('                _trendLine[_j] = _basicUpper[_j]');
+    lines.push('        else:');
+    lines.push('            if _c[_j] < _trendLine[_j-1]:');
+    lines.push('                _trend[_j] = -1');
+    lines.push('                _trendLine[_j] = min(_basicUpper[_j], _trendLine[_j-1])');
+    lines.push('            else:');
+    lines.push('                _currTrend = 1');
+    lines.push('                _trend[_j] = 1');
+    lines.push('                _trendLine[_j] = _basicLower[_j]');
+    if (direction === 'trend_up') {
+        lines.push('    ' + sigVar + '.append(_trend[-1] == 1)');
+    } else {
+        lines.push('    ' + sigVar + '.append(_trend[-1] == -1)');
+    }
+    var reason = direction === 'trend_up' ? '超级趋势上升(' + (card.action === 'buy' ? '买入' : '卖出') + ')' : '超级趋势下降(' + (card.action === 'buy' ? '买入' : '卖出') + ')';
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genCMF(card, idx) {
+    var p = card.params;
+    var period = p.period || 20;
+    var threshold = parseFloat(p.threshold) || 0.1;
+    var direction = p.direction || 'gt';
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var needBars = period + 2;
+    var lines = [];
+    lines.push('# Card ' + idx + ': CMF资金流');
+    lines.push(contextName(idx, 'highs') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'high\')');
+    lines.push(contextName(idx, 'lows') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'low\')');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'close\')');
+    lines.push(contextName(idx, 'vols') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'volume\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + needBars + ':');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    _h = np.array(' + contextName(idx, 'highs') + ')');
+    lines.push('    _l = np.array(' + contextName(idx, 'lows') + ')');
+    lines.push('    _c = np.array(' + contextName(idx, 'closes') + ')');
+    lines.push('    _v = np.array(' + contextName(idx, 'vols') + ')');
+    lines.push('    _range = _h - _l');
+    lines.push('    _range[_range == 0] = 1e-10');
+    lines.push('    _mfm = ((_c - _l) - (_h - _c)) / _range');
+    lines.push('    _mfv = _mfm * _v');
+    lines.push('    _cmf = np.zeros(len(_c))');
+    lines.push('    _cmf[:' + (period - 1) + '] = np.nan');
+    lines.push('    _sumVol = np.convolve(_v, np.ones(' + period + '), \'valid\')');
+    lines.push('    _sumMfv = np.convolve(_mfv, np.ones(' + period + '), \'valid\')');
+    lines.push('    _cmf[' + (period - 1) + ':] = _sumMfv / np.where(_sumVol == 0, 1, _sumVol)');
+    if (direction === 'gt') {
+        lines.push('    ' + sigVar + '.append(not np.isnan(_cmf[-1]) and _cmf[-1] > ' + threshold + ')');
+    } else {
+        lines.push('    ' + sigVar + '.append(not np.isnan(_cmf[-1]) and _cmf[-1] < -' + threshold + ')');
+    }
+    var reason = direction === 'gt' ? 'CMF>' + threshold + '(资金流入/' + (card.action === 'buy' ? '买入' : '卖出') + ')' : 'CMF<-' + threshold + '(资金流出/' + (card.action === 'buy' ? '买入' : '卖出') + ')';
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genResonance(card, idx) {
+    var p = card.params;
+    var rsiOversold = p.rsiOversold || 30;
+    var maShort = p.maShort || 5;
+    var maMid = p.maMid || 10;
+    var maLong = p.maLong || 20;
+    var kdjN = p.kdjN || 9;
+    var kdjM1 = p.kdjM1 || 3;
+    var kdjM2 = p.kdjM2 || 3;
+    var threshold = p.threshold || 3;
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var maxPeriod = Math.max(maLong, kdjN + kdjM1 + kdjM2, 20);
+    var needBars = maxPeriod + 10;
+    var lines = [];
+    lines.push('# Card ' + idx + ': 共振指标');
+    lines.push(contextName(idx, 'highs') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'high\')');
+    lines.push(contextName(idx, 'lows') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'low\')');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'close\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + needBars + ':');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    _h = np.array(' + contextName(idx, 'highs') + ')');
+    lines.push('    _l = np.array(' + contextName(idx, 'lows') + ')');
+    lines.push('    _c = np.array(' + contextName(idx, 'closes') + ')');
+    lines.push('    _n = len(_c)');
+    // RSI
+    lines.push('    _rsi = np.zeros(_n); _rsi[:] = np.nan');
+    lines.push('    _delta = np.diff(_c)');
+    lines.push('    _gain = np.where(_delta > 0, _delta, 0)');
+    lines.push('    _loss = np.where(_delta < 0, -_delta, 0)');
+    lines.push('    _avgGain = np.mean(_gain[:14]) if len(_gain) >= 14 else 0');
+    lines.push('    _avgLoss = np.mean(_loss[:14]) if len(_loss) >= 14 else 0');
+    lines.push('    if _avgLoss == 0: _rsi[14] = 100');
+    lines.push('    else: _rsi[14] = 100 - 100 / (1 + _avgGain / _avgLoss)');
+    lines.push('    for _j in range(15, _n):');
+    lines.push('        _avgGain = (_avgGain * 13 + _gain[_j-1]) / 14');
+    lines.push('        _avgLoss = (_avgLoss * 13 + _loss[_j-1]) / 14');
+    lines.push('        _rsi[_j] = 100 - 100 / (1 + _avgGain / _avgLoss) if _avgLoss > 0 else 100');
+    // KDJ
+    lines.push('    _lowN = np.array([np.min(_l[max(0,_j-' + kdjN + '+1):_j+1]) for _j in range(_n)])');
+    lines.push('    _highN = np.array([np.max(_h[max(0,_j-' + kdjN + '+1):_j+1]) for _j in range(_n)])');
+    lines.push('    _rsv = np.where(_highN - _lowN > 0, (_c - _lowN) / (_highN - _lowN) * 100, 50)');
+    lines.push('    _kArr = np.zeros(_n); _dArr = np.zeros(_n)');
+    lines.push('    _kArr[:' + (kdjN - 1) + '] = np.nan; _dArr[:' + (kdjN - 1) + '] = np.nan');
+    lines.push('    _kArr[' + (kdjN - 1) + '] = 50; _dArr[' + (kdjN - 1) + '] = 50');
+    lines.push('    for _j in range(' + kdjN + ', _n):');
+    lines.push('        _kArr[_j] = _kArr[_j-1] * (' + kdjM1 + '-1)/' + kdjM1 + ' + _rsv[_j] / ' + kdjM1);
+    lines.push('        _dArr[_j] = _dArr[_j-1] * (' + kdjM2 + '-1)/' + kdjM2 + ' + _kArr[_j] / ' + kdjM2);
+    // MACD
+    lines.push('    _ema12 = np.zeros(_n); _ema26 = np.zeros(_n)');
+    lines.push('    _ema12[11] = np.mean(_c[:12]); _ema26[25] = np.mean(_c[:26])');
+    lines.push('    for _j in range(12, _n): _ema12[_j] = _c[_j] * 2/13 + _ema12[_j-1] * 11/13');
+    lines.push('    for _j in range(26, _n): _ema26[_j] = _c[_j] * 2/27 + _ema26[_j-1] * 25/27');
+    lines.push('    _dif = _ema12 - _ema26');
+    lines.push('    _dea = np.zeros(_n); _dea[33] = np.mean(_dif[26:34])');
+    lines.push('    for _j in range(34, _n): _dea[_j] = _dif[_j] * 2/10 + _dea[_j-1] * 8/10');
+    // MA
+    lines.push('    _maS = np.convolve(_c, np.ones(' + maShort + ')/' + maShort + ', \'valid\')');
+    lines.push('    _maM = np.convolve(_c, np.ones(' + maMid + ')/' + maMid + ', \'valid\')');
+    lines.push('    _maL = np.convolve(_c, np.ones(' + maLong + ')/' + maLong + ', \'valid\')');
+    // Score
+    lines.push('    _score = np.zeros(_n)');
+    lines.push('    _start = max(' + maLong + '-1, ' + kdjN + '+1, 34)');
+    lines.push('    for _j in range(_start, _n):');
+    lines.push('        _cnt = 0');
+    lines.push('        if not np.isnan(_rsi[_j]) and _rsi[_j] < ' + rsiOversold + ': _cnt += 1');
+    lines.push('        if not np.isnan(_kArr[_j]) and not np.isnan(_dArr[_j]) and _kArr[_j-1] <= _dArr[_j-1] and _kArr[_j] > _dArr[_j]: _cnt += 1');
+    lines.push('        if not np.isnan(_dif[_j]) and not np.isnan(_dea[_j]) and _dif[_j-1] <= _dea[_j-1] and _dif[_j] > _dea[_j]: _cnt += 1');
+    lines.push('        _maSIdx = _j - ' + (maShort - 1) + '; _maMIdx = _j - ' + (maMid - 1) + '; _maLIdx = _j - ' + (maLong - 1));
+    lines.push('        if _maSIdx >= 0 and _maMIdx >= 0 and _maLIdx >= 0:');
+    lines.push('            if _maS[_maSIdx] > _maM[_maMIdx] and _maM[_maMIdx] > _maL[_maLIdx]: _cnt += 1');
+    lines.push('        _score[_j] = _cnt');
+    lines.push('    ' + sigVar + '.append(_score[-1] >= ' + threshold + ')');
+    var reason = '共振分数≥' + threshold + '(' + (card.action === 'buy' ? '买入' : '卖出') + ')';
+    return { code: lines, cond: '', reason: reason };
+}
+
+function genTrendStrength(card, idx) {
+    var p = card.params;
+    var signalType = p.signal_type || 'short_bottom';
+    var sigVar = card.action === 'buy' ? 'entry_signals' : 'exit_signals';
+    var needBars = signalType === 'golden_finger' ? 130 : 180;
+    var lines = [];
+    lines.push('# Card ' + idx + ': 趋势强度');
+    lines.push(contextName(idx, 'highs') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'high\')');
+    lines.push(contextName(idx, 'lows') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'low\')');
+    lines.push(contextName(idx, 'closes') + ' = history_bars(stock, ' + needBars + ', \'1d\', \'close\')');
+    lines.push('if len(' + contextName(idx, 'closes') + ') < ' + needBars + ':');
+    lines.push('    ' + sigVar + '.append(False)');
+    lines.push('else:');
+    lines.push('    _h = np.array(' + contextName(idx, 'highs') + ')');
+    lines.push('    _l = np.array(' + contextName(idx, 'lows') + ')');
+    lines.push('    _c = np.array(' + contextName(idx, 'closes') + ')');
+    lines.push('    _n = len(_c)');
+
+    if (signalType === 'short_bottom') {
+        // 短底信号: 基于168日低点和21日高点的归一化EMA交叉
+        lines.push('    _low168 = np.array([np.min(_l[max(0,_j-167):_j+1]) for _j in range(_n)])');
+        lines.push('    _high21 = np.array([np.max(_h[max(0,_j-20):_j+1]) for _j in range(_n)])');
+        lines.push('    _norm = np.where(_high21 - _low168 > 0, (_c - _low168) / (_high21 - _low168), 0.5)');
+        lines.push('    _ema = np.zeros(_n); _ema[0] = _norm[0]');
+        lines.push('    for _j in range(1, _n): _ema[_j] = _ema[_j-1] * 0.9 + _norm[_j] * 0.1');
+        lines.push('    ' + sigVar + '.append(_norm[-1] > _ema[-1] and _norm[-2] <= _ema[-2])');
+    } else if (signalType === 'golden_finger') {
+        // 金手指: MA20上穿MA120
+        lines.push('    _ma20 = np.convolve(_c, np.ones(20)/20, \'valid\')');
+        lines.push('    _ma120 = np.convolve(_c, np.ones(120)/120, \'valid\')');
+        lines.push('    _idx20 = _n - 20; _idx120 = _n - 120');
+        lines.push('    ' + sigVar + '.append(_idx20 >= 0 and _idx120 >= 0 and _ma20[_idx20] > _ma120[_idx120] and _ma20[_idx20-1] <= _ma120[_idx120-1])');
+    } else if (signalType === 'price_above_pressure') {
+        // 价格突破压力线（20日高点）
+        lines.push('    _high20 = np.array([np.max(_h[max(0,_j-19):_j+1]) for _j in range(_n)])');
+        lines.push('    ' + sigVar + '.append(_c[-1] > _high20[-1])');
+    } else if (signalType === 'price_below_support') {
+        // 价格跌破支撑线（20日低点）
+        lines.push('    _low20 = np.array([np.min(_l[max(0,_j-19):_j+1]) for _j in range(_n)])');
+        lines.push('    ' + sigVar + '.append(_c[-1] < _low20[-1])');
+    }
+    var reasonMap = { short_bottom: '趋势强度短底信号', golden_finger: '趋势强度金手指', price_above_pressure: '趋势强度突破压力', price_below_support: '趋势强度跌破支撑' };
+    var reason = (reasonMap[signalType] || '趋势强度') + (card.action === 'buy' ? '买入' : '卖出');
+    return { code: lines, cond: '', reason: reason };
+}
+
 // ---- Main code generation ----
 
 export function generateCode(cards) {

@@ -323,6 +323,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
 
     // 主图系列定义（初始全部可见）
     var candleSeries = {
+        id: 'klineMainSeries',
         name: 'K线',
         type: 'candlestick',
         data: values,
@@ -636,6 +637,11 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
     chart.setOption(option);
     console.log("图表设置完成");
 
+    // 保存主图实例和日期，供副图信号点击高亮使用
+    window.__mainChart = chart;
+    window.__mainChartDates = dates;
+    window.__mainChartValues = values;
+
     // 创建下拉指标选择器（买卖点成交图页）
     createDropdownControl(chart, allSeries, values);
 
@@ -745,6 +751,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         }
 
         var candleSeries = {
+            id: 'klineMainSeries',
             name: 'K线',
             type: 'candlestick',
             data: fixedValues,
@@ -968,6 +975,10 @@ export function renderStockKline(containerId, dates, values, retryCount) {
         };
         chart.setOption(option, true);
 
+        // 保存主图实例和日期，供副图信号点击高亮使用
+        window.__mainChart = chart;
+        window.__mainChartDates = dates;
+
         // 创建下拉指标选择器（个股详情页）
         createDropdownControl(chart, allSeries, values);
 
@@ -1167,3 +1178,65 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
     };
     chart.setOption(option);
 }
+
+// ─── 副图信号点击 → 主图K线高亮 ───
+var _highlightTimer = null;
+
+export function highlightKlineOnDate(date, color) {
+    var chart = window.__mainChart;
+    var dates = window.__mainChartDates;
+    var values = window.__mainChartValues;
+    if (!chart || chart.isDisposed() || !dates) return;
+
+    var idx = dates.indexOf(date);
+    if (idx === -1 || !values || !values[idx]) return;
+
+    // dataZoom 让目标日期居中
+    var total = dates.length;
+    var halfRange = 30;
+    var startIdx = Math.max(0, idx - halfRange);
+    var endIdx = Math.min(total - 1, idx + halfRange);
+    chart.dispatchAction({
+        type: 'dataZoom',
+        start: (startIdx / total) * 100,
+        end: (endIdx / total) * 100
+    });
+
+    // 取当日最高价作为标记Y坐标
+    var high = parseFloat(values[idx][3]) || 0;
+
+    // markPoint 高亮当前K线
+    chart.setOption({
+        series: [{
+            id: 'klineMainSeries',
+            markPoint: {
+                animation: false,
+                symbol: 'pin',
+                symbolSize: 50,
+                data: [{
+                    name: '信号',
+                    coord: [date, high],
+                    itemStyle: { color: color, borderColor: color }
+                }],
+                label: { show: false },
+                z: 100
+            }
+        }]
+    });
+
+    // 2 秒后清除
+    if (_highlightTimer) clearTimeout(_highlightTimer);
+    _highlightTimer = setTimeout(function() {
+        if (chart && !chart.isDisposed()) {
+            chart.setOption({
+                series: [{
+                    id: 'klineMainSeries',
+                    markPoint: { data: [], animation: false }
+                }]
+            });
+        }
+    }, 2000);
+}
+
+// 挂载到全局，供 SubChartManager 调用
+window.highlightKlineByDate = highlightKlineOnDate;
