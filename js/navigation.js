@@ -429,6 +429,8 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="obv">OBV</button>
                     <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
+                    <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
+                    <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart1Values"></div>
@@ -448,6 +450,8 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="obv">OBV</button>
                     <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
+                    <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
+                    <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart2Values"></div>
@@ -857,6 +861,8 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="obv">OBV</button>
                     <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
+                    <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
+                    <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart1Values"></div>
@@ -876,6 +882,8 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="obv">OBV</button>
                     <button class="subchart-type-btn" data-type="roc">ROC</button>
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
+                    <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
+                    <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart2Values"></div>
