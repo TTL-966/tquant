@@ -483,6 +483,28 @@ export var CARD_TYPE_META = {
             { key: 'min', label: '最小值(亿股)', type: 'number', min: 0, max: 10000, step: 1, default: 0 },
             { key: 'max', label: '最大值(亿股)', type: 'number', min: 0, max: 10000, step: 1, default: 100 }
         ]
+    },
+    fund_flow_single: {
+        type: 'fund_flow_single',
+        label: '单日资金流向',
+        icon: '💰',
+        description: '当日主力/超大单/大单/中单/小单净流入超过阈值',
+        defaultAction: 'buy',
+        defaultParams: { field: 'main_net', direction: 'gt', threshold: 5000 },
+        paramFields: [
+            { key: 'field', label: '资金类型', type: 'select', options: [
+                { value: 'main_net', label: '主力净流入' },
+                { value: 'super_net', label: '超大单净流入' },
+                { value: 'big_net', label: '大单净流入' },
+                { value: 'medium_net', label: '中单净流入' },
+                { value: 'small_net', label: '小单净流入' }
+            ], default: 'main_net' },
+            { key: 'direction', label: '方向', type: 'select', options: [
+                { value: 'gt', label: '大于' },
+                { value: 'lt', label: '小于' }
+            ], default: 'gt' },
+            { key: 'threshold', label: '阈值(万元)', type: 'number', min: 0, max: 100000, step: 100, default: 5000 }
+        ]
     }
 };
 
