@@ -274,7 +274,7 @@ class Database:
 
         def do_query():
             sql = text("""
-                SELECT trade_date, open, high, low, close, vol AS volume
+                SELECT trade_date, open, high, low, close, vol AS volume, amount
                 FROM index_daily
                 WHERE ts_code = :code
                   AND trade_date >= :start

@@ -24,6 +24,7 @@ from backend.multi_realtime_strategy_engine import MultiRealtimeStrategyEngine
 from backend.realtime_quote_fetcher import RealtimeQuoteFetcher
 from backend.fund_flow_fetcher import FundFlowFetcher
 from backend import realtime_config
+from backend.config_manager import load_config, save_config
 from sqlalchemy import text
 
 class WebBridge(QObject):
@@ -127,6 +128,7 @@ class WebBridge(QObject):
                 return json.dumps({"error": "无数据"})
             dates = df['trade_date'].tolist()
             values = []
+            amounts = []
             for _, row in df.iterrows():
                 values.append([
                     float(row['open']) if pd.notna(row['open']) else 0.0,
@@ -135,7 +137,8 @@ class WebBridge(QObject):
                     float(row['high']) if pd.notna(row['high']) else 0.0,
                     int(float(row['volume'])) if pd.notna(row['volume']) else 0
                 ])
-            return json.dumps({"dates": dates, "values": values})
+                amounts.append(float(row['amount']) if pd.notna(row['amount']) else 0.0)
+            return json.dumps({"dates": dates, "values": values, "amounts": amounts})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"error": str(e)})
@@ -1955,6 +1958,93 @@ class WebBridge(QObject):
             print(f"[Updater] 子进程退出，返回码: {proc.returncode}")
             self._update_process = None
         threading.Thread(target=read_output, daemon=True).start()
+
+    # ---------- 数据源配置 Slot ----------
+    @Slot(result=str)
+    def get_data_source_config(self):
+        """返回当前数据源配置（data_source, tushare_token）。"""
+        try:
+            config = load_config()
+            return json.dumps({
+                "success": True,
+                "data_source": config.get("data_source", "baostock"),
+                "tushare_token": config.get("tushare_token", ""),
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, str, result=str)
+    def set_data_source_config(self, source, token):
+        """保存数据源配置，并返回结果。
+        Args:
+            source: 'baostock' 或 'tushare'
+            token: Tushare Token 字符串
+        """
+        try:
+            config = load_config()
+            config["data_source"] = source
+            config["tushare_token"] = token
+            save_config(config)
+            return json.dumps({
+                "success": True,
+                "message": f"数据源已切换为 {source}",
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def check_tushare_integral(self, token):
+        try:
+            if not token or not token.strip():
+                return json.dumps({"success": False, "error": "Token 为空"})
+            import tushare as ts
+            ts.set_token(token.strip())
+            pro = ts.pro_api()
+            # 获取当前日期，尝试最近3个交易日的数据
+            from datetime import datetime, timedelta
+            today = datetime.now().strftime('%Y%m%d')
+            for i in range(1, 6):
+                test_date = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+                try:
+                    df = pro.daily(ts_code='000001.SZ', start_date=test_date, end_date=test_date, adj='qfq')
+                    if df is not None and not df.empty:
+                        # 成功获取到前复权数据，认为积分充足
+                        return json.dumps({
+                            "success": True,
+                            "integral": 200,
+                            "sufficient": True,
+                            "message": "Token 有效，可获取前复权数据（积分 ≥ 200）"
+                        })
+                except Exception:
+                    continue
+            # 所有尝试都失败，提示可能不足
+            return json.dumps({
+                "success": True,
+                "integral": 0,
+                "sufficient": False,
+                "message": "无法获取前复权数据，可能积分不足200或网络问题，建议直接保存配置尝试"
+            })
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_degradation_notice(self):
+        """检查是否有数据源降级通知（从子进程写入的文件读取）。"""
+        try:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            notice_path = os.path.join(base_dir, 'backend', 'degradation_notice.json')
+            if not os.path.exists(notice_path):
+                return json.dumps({"success": True, "notice": None})
+            with open(notice_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            os.remove(notice_path)  # 读取后清除，避免重复通知
+            return json.dumps({"success": True, "notice": data})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
 
     def _get_equity_curve(self, code):
         try:

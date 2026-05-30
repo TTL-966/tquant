@@ -13,6 +13,7 @@ import { CARD_TYPE_META } from './strategyTemplates.js';
 import { renderCompareView } from './compareView.js';
 import { renderScreenerPage } from './stockScreener.js';
 import { renderRealtimeSimPage, resumeUIIfEngineRunning } from './realtimeSim.js';
+import { renderSettingsPage } from './settings.js';
 
 var currentStockCode = "000001";
 var _syncingToSimulation = false;
@@ -680,6 +681,10 @@ function renderKchartPage(container) {
             if (loadStrategyBtn) loadStrategyBtn.style.display = '';
             if (loadRealtimeBtn) loadRealtimeBtn.style.display = '';
             if (kchartFundBtn) kchartFundBtn.style.display = '';
+            var indInfo = document.getElementById('stockIndustryInfo');
+            if (indInfo) indInfo.style.display = 'flex';
+            var ffCard = document.getElementById('fundFlowCard');
+            if (ffCard) ffCard.style.display = '';
         }
 
         function setModeIndex() {
@@ -692,6 +697,16 @@ function renderKchartPage(container) {
             if (loadStrategyBtn) loadStrategyBtn.style.display = 'none';
             if (loadRealtimeBtn) loadRealtimeBtn.style.display = 'none';
             if (kchartFundBtn) kchartFundBtn.style.display = 'none';
+            var indInfo = document.getElementById('stockIndustryInfo');
+            if (indInfo) indInfo.style.display = 'none';
+            var ffCard = document.getElementById('fundFlowCard');
+            if (ffCard) ffCard.style.display = 'none';
+            var indLabel = document.getElementById('stockIndustryLabel');
+            if (indLabel) indLabel.textContent = '行业：--';
+            var ffMain = document.getElementById('fundFlowMain');
+            if (ffMain) ffMain.innerHTML = '<span style="color:#9aa9cc;">--</span>';
+            var ffSugg = document.getElementById('fundFlowSuggestion');
+            if (ffSugg) ffSugg.textContent = '';
             // 清除买卖点
             buyPoints.length = 0;
             sellPoints.length = 0;
@@ -1449,6 +1464,11 @@ function renderStockPage(container) {
                 var fb = document.getElementById('stockFundamentalBtn');
                 if (fb) fb.style.display = '';
                 document.getElementById('stockSuggestionsContainer').style.display = 'none';
+                // 恢复行业和资金流向
+                var indInfo = document.getElementById('stockIndustryInfo');
+                if (indInfo) indInfo.style.display = 'flex';
+                var ffCard = document.getElementById('fundFlowCard');
+                if (ffCard) ffCard.style.display = '';
                 loadStock(currentStockCode);
             });
         }
@@ -1463,6 +1483,19 @@ function renderStockPage(container) {
                 var fb = document.getElementById('stockFundamentalBtn');
                 if (fb) fb.style.display = 'none';
                 document.getElementById('stockSuggestionsContainer').style.display = 'none';
+                // 隐藏行业和资金流向
+                var indInfo = document.getElementById('stockIndustryInfo');
+                if (indInfo) indInfo.style.display = 'none';
+                var ffCard = document.getElementById('fundFlowCard');
+                if (ffCard) ffCard.style.display = 'none';
+                var indLabel = document.getElementById('stockIndustryLabel');
+                if (indLabel) indLabel.textContent = '行业：--';
+                var ffMain = document.getElementById('fundFlowMain');
+                if (ffMain) ffMain.innerHTML = '<span style="color:#9aa9cc;">--</span>';
+                var ffSugg = document.getElementById('fundFlowSuggestion');
+                if (ffSugg) ffSugg.textContent = '';
+                // 停止个股行情轮询
+                if (_quotePollTimer) { clearInterval(_quotePollTimer); _quotePollTimer = null; }
                 var selCode = indexSelectorEl ? indexSelectorEl.getAttribute('data-value') : '';
                 if (selCode) {
                     var opt = indexOptions.find(function(o) { return o.value === selCode; });
@@ -1873,104 +1906,6 @@ function renderApiPage(container) {
     });
 }
 
-// ========== 设置页 ==========
-function renderSettingsPage(container) {
-    container.innerHTML = `
-        <div class="card">
-            <div class="card-title">${'⚙️'} 设置说明</div>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'🖼️'} 头像设置</h4>
-            <p style="color:#9aa9cc; margin-bottom:12px;">前往"个人中心"页面上传头像，支持 PNG/JPG 格式，自动保存到本地。</p>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'📅'} 日期选择</h4>
-            <p style="color:#9aa9cc; margin-bottom:12px;">所有日期输入框使用自定义日期选择器，点击输入框即可弹出日历面板。</p>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'📈'} K线图表</h4>
-            <p style="color:#9aa9cc; margin-bottom:12px;">基于 ECharts 渲染，支持缩放、拖拽。买卖点以标记点形式叠加显示。</p>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'💻'} 策略编辑器</h4>
-            <p style="color:#9aa9cc; margin-bottom:12px;">支持 Tab 缩进（转换为4空格），语法高亮。策略通过 JSON 文件持久化存储。</p>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'🔌'} Bridge 连接</h4>
-            <p style="color:#9aa9cc; margin-bottom:12px;">Python 后端通过 QWebChannel 与前端通信。右上角指示灯显示连接状态。无连接时自动降级为模拟数据。</p>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'💡'} 快捷键</h4>
-            <div class="code-area" style="margin-bottom:12px;">
-Tab (编辑器)     → 插入4个空格
-Enter (搜索框)   → 触发查询
-Esc (弹窗)       → 关闭弹窗
-Ctrl+Shift+D     → 切换调试面板（右下角浮窗）</div>
-
-            <h4 style="color:#4f7eff; margin-top:12px;">${'🐛'} 调试面板</h4>
-            <p style="color:#9aa9cc; margin-bottom:12px;">按 <b>Ctrl+Shift+D</b> 或访问 <b>?debug=1</b> 开启右下角调试面板。面板显示指标计算的原始日期、连续序列、非空值数量等关键信息，用于排查副图不连续问题。双击面板可清空内容。</p>
-
-            <!-- 数据管理区域 -->
-            <div style="margin-top: 20px; border-top: 1px solid #323d5a; padding-top: 16px;">
-                <h4 style="color:#4f7eff;">${'📊'} 数据管理</h4>
-                <button id="manualUpdateDataBtn" style="background:#4f7eff; border:none; padding:6px 18px; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">${'🔄'} 立即更新日线数据</button>
-                <span id="updateStatusMsg" style="margin-left: 12px; color:#9aa9cc; font-size:12px;"></span>
-                <p style="color:#9aa9cc; font-size:12px; margin-top:8px;">每天 18:00 自动增量更新日线数据，也可手动点击按钮立即更新。</p>
-                <button id="manualFinUpdateBtn" style="background:#4f7eff; border:none; padding:6px 18px; border-radius:30px; color:#fff; font-weight:600; cursor:pointer; margin-top:8px;">${'📊'} 手动更新财务数据</button>
-                <span id="finUpdateStatusMsg" style="margin-left: 12px; color:#9aa9cc; font-size:12px;"></span>
-                <p style="color:#9aa9cc; font-size:12px; margin-top:4px;">财务数据（PE/PB/ROE/市值/股本）需手动触发更新，建议每 3 个月更新一次，耗时约 3-10 分钟。</p>
-            </div>
-        </div>`;
-
-    // 绑定手动更新按钮
-    var updateBtn = document.getElementById('manualUpdateDataBtn');
-    if (updateBtn && bridge && typeof bridge.trigger_data_update === 'function') {
-        updateBtn.addEventListener('click', function() {
-            var statusSpan = document.getElementById('updateStatusMsg');
-            statusSpan.textContent = '正在更新...';
-            bridge.trigger_data_update().then(function(jsonStr) {
-                var res = JSON.parse(jsonStr);
-                if (res.success) {
-                    showToast(res.message, false);
-                    statusSpan.textContent = '已触发更新，请查看后端日志';
-                    setTimeout(function() { statusSpan.textContent = ''; }, 5000);
-                } else {
-                    showToast(res.message, true);
-                    statusSpan.textContent = '更新失败';
-                }
-            }).catch(function(err) {
-                showToast('触发更新失败: ' + err.message, true);
-                statusSpan.textContent = '';
-            });
-        });
-    }
-
-    // 绑定手动更新财务数据按钮
-    var finBtn = document.getElementById('manualFinUpdateBtn');
-    if (finBtn && bridge && typeof bridge.trigger_financial_update === 'function') {
-        finBtn.addEventListener('click', function() {
-            var statusSpan = document.getElementById('finUpdateStatusMsg');
-            finBtn.disabled = true;
-            finBtn.textContent = '⏳ 正在更新...';
-            statusSpan.textContent = '财务数据更新中，此过程需要 3-10 分钟...';
-            statusSpan.style.color = '#f2c94c';
-            bridge.trigger_financial_update().then(function(jsonStr) {
-                var res = JSON.parse(jsonStr);
-                if (res.success) {
-                    showToast(res.message, false);
-                    statusSpan.textContent = '已触发更新，请查看后端日志';
-                    statusSpan.style.color = '#4f7eff';
-                } else {
-                    showToast(res.message, true);
-                    statusSpan.textContent = '启动失败';
-                    statusSpan.style.color = '#ff4c4c';
-                }
-                finBtn.disabled = false;
-                finBtn.textContent = '📊 手动更新财务数据';
-                setTimeout(function() { statusSpan.textContent = ''; }, 8000);
-            }).catch(function(err) {
-                showToast('触发财务更新失败: ' + err.message, true);
-                statusSpan.textContent = '';
-                finBtn.disabled = false;
-                finBtn.textContent = '📊 手动更新财务数据';
-            });
-        });
-    }
-}
 
 // ========== 策略详情页（内部辅助） ==========
 function buildMetricCards(metrics) {

@@ -27,9 +27,76 @@ export function clearKlineCache() {
     log("K线缓存已清空");
 }
 
+function fmtVolume(vol) {
+    if (vol >= 1e8) return (vol / 1e8).toFixed(2) + '亿手';
+    if (vol >= 1e4) return (vol / 1e4).toFixed(1) + '万手';
+    return vol + '手';
+}
+
+function fmtAmount(amt) {
+    if (amt >= 1e8) return (amt / 1e8).toFixed(2) + '亿元';
+    if (amt >= 1e4) return (amt / 1e4).toFixed(1) + '万元';
+    return amt.toFixed(0) + '元';
+}
+
+function updateIndexQuoteBar(data, tsCode) {
+    if (!data || !data.values || data.values.length === 0) return;
+
+    var lastIdx = data.values.length - 1;
+    var last = data.values[lastIdx];
+    var openVal = last[0];
+    var closeVal = last[1];
+    var lowVal = last[2];
+    var highVal = last[3];
+    var volumeVal = last[4];
+    var amountVal = data.amounts ? data.amounts[lastIdx] : 0;
+
+    var changePct = 0;
+    if (lastIdx > 0) {
+        var prevClose = data.values[lastIdx - 1][1];
+        if (prevClose && prevClose !== 0) {
+            changePct = ((closeVal - prevClose) / prevClose) * 100;
+        }
+    }
+
+    var indexName = tsCode;
+    var idxSel = document.getElementById('indexSelector');
+    if (idxSel && idxSel.value && idxSel.value !== '') {
+        indexName = idxSel.value;
+    }
+
+    var nameDisplay = document.getElementById('stockNameDisplay');
+    var latestPriceSpan = document.getElementById('stockLatestPrice');
+    var openEl = document.getElementById('compactOpen');
+    var highEl = document.getElementById('compactHigh');
+    var lowEl = document.getElementById('compactLow');
+    var volEl = document.getElementById('compactVol');
+    var amtEl = document.getElementById('compactAmt');
+    var changePctEl = document.getElementById('compactChangePct');
+
+    if (nameDisplay) nameDisplay.textContent = indexName + ' (' + tsCode + ')';
+    if (latestPriceSpan) {
+        latestPriceSpan.textContent = closeVal.toFixed(2);
+        latestPriceSpan.className = 'stock-latest-price ' + (changePct >= 0 ? 'price-up' : 'price-down');
+    }
+    if (openEl) openEl.textContent = openVal.toFixed(2);
+    if (highEl) highEl.textContent = highVal.toFixed(2);
+    if (lowEl) lowEl.textContent = lowVal.toFixed(2);
+    if (volEl) volEl.textContent = fmtVolume(volumeVal);
+    if (amtEl) amtEl.textContent = fmtAmount(amountVal / 10000);
+    if (changePctEl) {
+        changePctEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+        changePctEl.className = changePct >= 0 ? 'price-up' : 'price-down';
+    }
+}
+
 function renderKlineFromData(data, code, isIndex, buyPts, sellPts) {
     currentKlineDates = data.dates;
     currentKlineValues = data.values;
+
+    if (isIndex) {
+        updateIndexQuoteBar(data, code);
+    }
 
     var mgr = window.subChartManager;
     if (mgr) {

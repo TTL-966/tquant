@@ -10,6 +10,9 @@ import { bridge, updateBridgeStatus } from './bridge.js';
 import { renderProfile } from './profile.js';
 import { loadPage as originalLoadPage, navigateToKline } from './navigation.js';
 import { debounceSuggestions } from './suggestions.js';
+import { clearKlineCache } from './kline.js';
+import { checkFirstLaunch, checkDegradationNotice, showNotification } from './settings.js';
+import { onBridgeReady } from './bridge.js';
 
 // ---- 股票名称显示辅助（纯名称）----
 export function formatStockNameOnly(code) {
@@ -306,6 +309,13 @@ function runBacktest(stockCode, strategyCode) {
 // ---- 首次加载及导航绑定 ----
 document.addEventListener('DOMContentLoaded', function() {
     initDatePicker();
+    // 每日首次加载时清空K线缓存（新交易日数据可能已更新）
+    var lastClearDate = localStorage.getItem('klineCacheDate');
+    var today = new Date().toISOString().slice(0, 10);
+    if (lastClearDate !== today) {
+        clearKlineCache();
+        localStorage.setItem('klineCacheDate', today);
+    }
     var saved = localStorage.getItem('user_avatar');
     if (saved) {
         var icon = document.getElementById('navAvatarIcon');
@@ -318,6 +328,20 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     loadPage('history');
+
+    // 首次启动检查 & 降级通知
+    onBridgeReady(() => {
+    checkFirstLaunch();
+    checkDegradationNotice();
+    });
+    setInterval(checkDegradationNotice, 30000);
+
+    // 监听来自 bridge 的降级通知事件
+    window.addEventListener('tquant:degradation', function(e) {
+        if (e.detail && e.detail.message) {
+            showNotification(e.detail.message, 'warning');
+        }
+    });
 
     // ---- 全屏切换 ----
     var fullscreenBtn = document.getElementById('fullscreenBtn');

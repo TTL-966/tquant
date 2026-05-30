@@ -634,8 +634,8 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         ]
     };
 
-    chart.setOption(option);
-    console.log("图表设置完成");
+    chart.setOption(option, true);
+    console.log("图表设置完成（完全替换模式）");
 
     // 保存主图实例和日期，供副图信号点击高亮使用
     window.__mainChart = chart;

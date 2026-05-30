@@ -900,6 +900,42 @@
         .subchart-current-values .val-item .value.up { color: #ef5350; }
         .subchart-current-values .val-item .value.down { color: #26a69a; }
 
+        /* ──────── 数据源设置模态框 ──────── */
+        .datasource-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 10000;
+            display: none; align-items: center; justify-content: center;
+        }
+        .datasource-modal-overlay.active { display: flex; }
+        .datasource-modal-content {
+            background: #1a2135; border: 1px solid #4f7eff; border-radius: 20px;
+            width: 500px; max-width: 90%; padding: 24px; color: #fff;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+        }
+        .datasource-modal-content h3 { margin-top: 0; font-size: 18px; }
+        .datasource-option {
+            display: flex; align-items: center; padding: 12px 14px;
+            background: #0e1220; border: 1px solid #323d5a; border-radius: 10px;
+            margin: 10px 0; cursor: pointer; transition: border-color 0.2s;
+        }
+        .datasource-option.selected { border-color: #4f7eff; }
+        .datasource-option input[type="radio"] { accent-color: #4f7eff; margin-right: 12px; }
+        .datasource-option .opt-title { color: #fff; font-weight: 600; }
+        .datasource-option .opt-desc { color: #9aa9cc; font-size: 11px; }
+        .datasource-token-group { margin: 12px 0; display: none; }
+        .datasource-token-group input {
+            width: 100%; background: #0e1220; border: 1px solid #323d5a;
+            border-radius: 8px; padding: 8px 12px; color: #fff; font-size: 13px;
+            box-sizing: border-box;
+        }
+        .datasource-warning {
+            background: #0e1220; border-radius: 8px; padding: 8px 12px;
+            margin: 15px 0; font-size: 13px; color: #9aa9cc;
+        }
+        .datasource-buttons {
+            display: flex; justify-content: flex-end; gap: 12px; margin-top: 4px;
+        }
+
     </style>
 </head>
 <body>
@@ -932,7 +968,7 @@
             <div class="nav-item" data-page="screener">🔎 条件选股</div>
             <div class="nav-item" data-page="api">📘 API文档</div>
             <div class="nav-item" data-page="troubleshoot">🩺 异常处理</div>
-            <div class="nav-item" data-page="settings">⚙️ 设置说明</div>
+            <div class="nav-item" data-page="settings">⚙️ 设置</div>
         </div>
 
         <div class="content-panel" id="dynamicContent">
@@ -971,6 +1007,50 @@
     <div style="margin-top:10px; display:flex; justify-content:flex-end;">
         <button id="dpClearBtn" style="background:#2d3a5e; border:none; border-radius:6px; padding:2px 10px; color:#fff; font-size:12px; cursor:pointer;">清除</button>
         <button id="dpTodayBtn" style="background:#2d3a5e; border:none; border-radius:6px; padding:2px 10px; color:#fff; font-size:12px; margin-left:6px; cursor:pointer;">今天</button>
+    </div>
+</div>
+
+<!-- 数据源设置模态框 -->
+<div id="dataSourceModal" class="datasource-modal-overlay">
+    <div class="datasource-modal-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <h3>⚙️ 数据源设置</h3>
+            <button id="dsModalCloseX" style="background:transparent;border:none;color:#9aa9cc;font-size:20px;cursor:pointer;">✕</button>
+        </div>
+
+        <label class="datasource-option selected" id="dsOptBaostock">
+            <input type="radio" name="dataSource" value="baostock" checked>
+            <div>
+                <div class="opt-title">Baostock（免费，无需注册）</div>
+                <div class="opt-desc">开源数据源，覆盖沪深全部股票日线数据</div>
+            </div>
+        </label>
+
+        <label class="datasource-option" id="dsOptTushare">
+            <input type="radio" name="dataSource" value="tushare">
+            <div>
+                <div class="opt-title">Tushare（需要 Token）</div>
+                <div class="opt-desc">专业数据接口，需注册获取 API Token，积分 ≥ 200 可用前复权</div>
+            </div>
+        </label>
+
+        <div class="datasource-token-group" id="tokenGroup">
+            <label style="color:#9aa9cc;font-size:13px;">Tushare Token：</label>
+            <input type="password" id="tushareTokenInput" placeholder="输入你的 Tushare Token" style="margin-top:6px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                <button id="checkTokenBtn" style="background:#2d3a5e;border:none;border-radius:8px;color:#fff;padding:8px 16px;cursor:pointer;font-size:13px;">验证积分</button>
+                <span id="integralResult" style="font-size:12px;color:#9aa9cc;"></span>
+            </div>
+        </div>
+
+        <div class="datasource-warning">
+            ⚠️ 提示：Tushare 积分小于 200 分时无法获取前复权数据，系统将自动降级为 Baostock 数据源。
+        </div>
+
+        <div class="datasource-buttons">
+            <button id="cancelModalBtn" style="background:#2d3a5e;border:none;border-radius:8px;color:#fff;padding:8px 20px;cursor:pointer;">取消</button>
+            <button id="saveDataSourceBtn" style="background:#4f7eff;border:none;border-radius:8px;color:#fff;padding:8px 20px;cursor:pointer;font-weight:600;">保存配置</button>
+        </div>
     </div>
 </div>
 

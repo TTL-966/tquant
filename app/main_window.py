@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
         self.web_view.page().fullScreenRequested.connect(self.on_fullscreen_requested)
         self.is_fullscreen = False
 
-        from backend.data_updater.daily_kline_updater import DailyKlineUpdater
+        from backend.data_updater.daily_kline_updater import StockDailyUpdater as DailyKlineUpdater
         QTimer.singleShot(2000, lambda: DailyKlineUpdater(self.bridge.db.engine).run())
 
         # 自动恢复上次未停止的实时策略

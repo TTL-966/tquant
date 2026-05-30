@@ -42,6 +42,24 @@ document.addEventListener("DOMContentLoaded", function() {
                 });
             }
 
+            // 启动时检查降级通知（延迟 1s 确保页面已加载）
+            setTimeout(function() {
+                if (typeof bridge.get_degradation_notice === 'function') {
+                    bridge.get_degradation_notice().then(function(jsonStr) {
+                        try {
+                            var res = JSON.parse(jsonStr);
+                            if (res.success && res.notice) {
+                                console.log('[Bridge] 降级通知:', res.notice.message);
+                                // 触发自定义事件，由 settings.js 处理
+                                window.dispatchEvent(new CustomEvent('tquant:degradation', {
+                                    detail: res.notice
+                                }));
+                            }
+                        } catch (e) {}
+                    }).catch(function() {});
+                }
+            }, 1000);
+
             if (typeof bridge.get_traded_stocks === 'function') {
                 bridge.get_traded_stocks().then(function(jsonStr) {
                     var data = JSON.parse(jsonStr);
