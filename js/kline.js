@@ -15,6 +15,43 @@ function calcMA(values, period) {
     return ma;
 }
 
+// ========== 数据缓存 ==========
+export var klineDataCache = new Map();
+
+function getCacheKey(type, code, startDate, endDate) {
+    return type + '_' + code + '_' + startDate + '_' + endDate;
+}
+
+export function clearKlineCache() {
+    klineDataCache.clear();
+    log("K线缓存已清空");
+}
+
+function renderKlineFromData(data, code, isIndex, buyPts, sellPts) {
+    currentKlineDates = data.dates;
+    currentKlineValues = data.values;
+
+    var mgr = window.subChartManager;
+    if (mgr) {
+        mgr._pendingSubs = [
+            { id: 'kchartSubChart1', type: 'volume' },
+            { id: 'kchartSubChart2', type: 'rsi' }
+        ];
+        mgr._stockCode = code;
+    }
+
+    setTimeout(function() {
+        var maData = {
+            dates: data.dates,
+            ma5: calcMA(data.values, 5),
+            ma10: calcMA(data.values, 10),
+            ma20: calcMA(data.values, 20),
+            ma30: calcMA(data.values, 30)
+        };
+        renderKlineWithSignals(data.dates, data.values, buyPts || [], sellPts || [], maData);
+    }, 10);
+}
+
 export var currentKlineDates = [];
 export var currentKlineValues = [];
 export var buyPoints = [];
@@ -36,7 +73,14 @@ export function fetchAndRenderKline(code, startDate, endDate, period) {
         return;
     }
     period = period || currentPeriod;
-    log("请求 K线数据: " + code + " 周期 " + period + " 范围 " + startDate + " ~ " + endDate);
+    var cacheKey = getCacheKey('stock', code, startDate, endDate);
+    if (klineDataCache.has(cacheKey)) {
+        log("使用缓存的个股数据: " + code);
+        renderKlineFromData(klineDataCache.get(cacheKey), code, false, buyPoints, sellPoints);
+        return;
+    }
+
+    log("请求个股K线数据: " + code + " 周期 " + period + " 范围 " + startDate + " ~ " + endDate);
     bridge.get_kline_data(code, startDate, endDate, 0, period).then(function(jsonStr) {
         var data = JSON.parse(jsonStr);
         if (data.error) {
@@ -61,30 +105,53 @@ export function fetchAndRenderKline(code, startDate, endDate, period) {
             }
             return;
         }
-        currentKlineDates = data.dates;
-        currentKlineValues = data.values;
-
-        // 预配置副图：供 renderKlineWithSignals 内部的 onMainChartReady 回调使用
-        var mgr = window.subChartManager;
-        if (mgr) {
-            mgr._pendingSubs = [
-                { id: 'kchartSubChart1', type: 'volume' },
-                { id: 'kchartSubChart2', type: 'rsi' }
-            ];
-            mgr._stockCode = code;
+        klineDataCache.set(cacheKey, data);
+        renderKlineFromData(data, code, false, buyPoints, sellPoints);
+    }).catch(function(err) {
+        log("请求失败: " + err);
+        var container = document.getElementById('klineMainChart');
+        if (container) {
+            container.innerHTML = '<div style="color:#ff6b6b;padding:20px;">请求失败: ' + err + '</div>';
         }
+    });
+}
 
-        setTimeout(function() {
-            var maData = {
-                dates: data.dates,
-                ma5: calcMA(data.values, 5),
-                ma10: calcMA(data.values, 10),
-                ma20: calcMA(data.values, 20),
-                ma30: calcMA(data.values, 30)
-            };
-            renderKlineWithSignals(data.dates, data.values, buyPoints, sellPoints, maData);
-            /* 原自动运行旧回测的代码已移除，改用自定义回测按钮触发 */
-        }, 10);
+export function fetchAndRenderIndexKline(code, startDate, endDate) {
+    if (!bridge) {
+        var container = document.getElementById('klineMainChart');
+        if (container) {
+            container.innerHTML = '<div style="color:#aaa; padding:20px;">Bridge 未连接，无法获取数据</div>';
+        }
+        return;
+    }
+    var cacheKey = getCacheKey('index', code, startDate, endDate);
+    if (klineDataCache.has(cacheKey)) {
+        log("使用缓存的指数数据: " + code);
+        renderKlineFromData(klineDataCache.get(cacheKey), code, true, [], []);
+        return;
+    }
+
+    log("请求指数K线数据: " + code + " 范围 " + startDate + " ~ " + endDate);
+    bridge.get_index_data(code, startDate, endDate).then(function(jsonStr) {
+        var data = JSON.parse(jsonStr);
+        if (data.error) {
+            log("后端错误: " + data.error);
+            var container = document.getElementById('klineMainChart');
+            if (container) {
+                container.innerHTML = '<div style="color:#ff6b6b;padding:20px;">错误: ' + data.error + '</div>';
+            }
+            return;
+        }
+        if (!data.dates || !data.values) {
+            log("数据格式错误");
+            var container = document.getElementById('klineMainChart');
+            if (container) {
+                container.innerHTML = '<div style="color:#ff6b6b;padding:20px;">数据格式错误</div>';
+            }
+            return;
+        }
+        klineDataCache.set(cacheKey, data);
+        renderKlineFromData(data, code, true, [], []);
     }).catch(function(err) {
         log("请求失败: " + err);
         var container = document.getElementById('klineMainChart');

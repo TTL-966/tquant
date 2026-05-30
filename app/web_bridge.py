@@ -119,6 +119,27 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return self._mock_kline_json(code)
 
+    @Slot(str, str, str, result=str)
+    def get_index_data(self, code, start_date="2010-01-01", end_date="2026-12-31"):
+        try:
+            df = self.db.get_index_kline(code, start_date, end_date)
+            if df is None or df.empty:
+                return json.dumps({"error": "无数据"})
+            dates = df['trade_date'].tolist()
+            values = []
+            for _, row in df.iterrows():
+                values.append([
+                    float(row['open']) if pd.notna(row['open']) else 0.0,
+                    float(row['close']) if pd.notna(row['close']) else 0.0,
+                    float(row['low']) if pd.notna(row['low']) else 0.0,
+                    float(row['high']) if pd.notna(row['high']) else 0.0,
+                    int(float(row['volume'])) if pd.notna(row['volume']) else 0
+                ])
+            return json.dumps({"dates": dates, "values": values})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"error": str(e)})
+
     def _mock_kline_json(self, code):
         n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='W')
         n = len(n_dates)

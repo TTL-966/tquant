@@ -266,6 +266,31 @@ class Database:
                     print("备用查询失败:", e)
         return self._generate_mock_data()
 
+    def get_index_kline(self, ts_code, start_date="2010-01-01", end_date="2026-12-31"):
+        if start_date is None:
+            start_date = "2010-01-01"
+        if end_date is None:
+            end_date = "2026-12-31"
+
+        def do_query():
+            sql = text("""
+                SELECT trade_date, open, high, low, close, vol AS volume
+                FROM index_daily
+                WHERE ts_code = :code
+                  AND trade_date >= :start
+                  AND trade_date <= :end
+                ORDER BY trade_date ASC
+            """)
+            with self.engine.connect() as conn:
+                df = pd.read_sql(sql, conn, params={"code": ts_code, "start": start_date, "end": end_date})
+            return df
+
+        try:
+            return do_query()
+        except OperationalError:
+            self.engine.dispose()
+            return do_query()
+
     def _generate_mock_data(self):
         n_dates = pd.date_range("2010-01-01", "2026-12-31", freq='B')
         n = len(n_dates)

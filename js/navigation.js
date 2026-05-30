@@ -1,5 +1,5 @@
 import { bridge } from './bridge.js';
-import { fetchAndRenderKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, currentKlineDates, currentKlineValues, currentPeriod, setPeriod } from './kline.js';
+import { fetchAndRenderKline, fetchAndRenderIndexKline, runBacktest, buyPoints, sellPoints, autoRunBacktest, autoBacktestScheduled, currentKlineDates, currentKlineValues, currentPeriod, setPeriod } from './kline.js';
 import { renderProfile } from './profile.js';
 import { renderStockKline, drawDetailCurve, formatStockDisplayHtml, drawEquityCurve, renderKlineWithSignals } from './chartRenderer.js';
 import { SubChartManager } from './SubChartManager.js';
@@ -23,6 +23,17 @@ var periodOptions = [
     { label: '日线', value: 'daily' },
     { label: '周线', value: 'weekly' },
     { label: '月线', value: 'monthly' }
+];
+
+var indexOptions = [
+    { label: '沪深300', value: '000300.SH' },
+    { label: '上证指数', value: '000001.SH' },
+    { label: '深证成指', value: '399001.SZ' },
+    { label: '中证500', value: '000905.SH' },
+    { label: '创业板指', value: '399006.SZ' },
+    { label: '上证50', value: '000016.SH' },
+    { label: '深证100', value: '399330.SZ' },
+    { label: '中证1000', value: '000852.SH' }
 ];
 
 function closeCustomDropdown(cls) {
@@ -397,6 +408,11 @@ function renderKchartPage(container) {
                     <span><i class="sell-point-compact"></i>S</span>
                 </div>
             </div>
+            <div class="mode-toggle-row" style="margin:4px 0; display:flex; align-items:center; gap:8px;">
+                <span style="color:#9aa9cc;">模式:</span>
+                <button id="modeStockBtn" class="mode-btn active" data-mode="stock" style="padding:4px 16px;border:1px solid #4f7eff;border-radius:30px;background:#3a4f8a;color:#fff;cursor:pointer;font-size:12px;">个股</button>
+                <button id="modeIndexBtn" class="mode-btn" data-mode="index" style="padding:4px 16px;border:1px solid #323d5a;border-radius:30px;background:#1e253b;color:#9aa9cc;cursor:pointer;font-size:12px;">指数</button>
+            </div>
             <div class="metric-row" style="margin:4px 0;">
                 <span>当前股票:</span>
                 <div style="position:relative;display:inline-block;">
@@ -409,6 +425,10 @@ function renderKchartPage(container) {
                 <button id="gotoStrategyBtn" style="padding:4px 12px;font-size:12px;">📝 跳转到策略页</button>
                 <button id="refreshKlineBtn" style="padding:4px 12px;font-size:12px;">刷新K线</button>
                 <button id="kchartFundamentalBtn" style="margin-left:4px;background:#2a3a5a;color:#fff;border:none;border-radius:30px;padding:4px 10px;cursor:pointer;font-size:12px;">📊 个股资料</button>
+                <div style="position:relative;display:none;" id="indexSelectorWrapper">
+                    <input type="text" id="indexSelector" readonly placeholder="--选择指数--" data-value="" style="width:140px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
+                    <span id="indexSelectorArrow" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:auto;font-size:10px;cursor:pointer;">▼</span>
+                </div>
                 <div style="position:relative;display:inline-block;">
                     <input type="text" id="periodInput" readonly value="日线" data-value="daily" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 28px 6px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
                     <span id="periodArrow" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>
@@ -637,6 +657,89 @@ function renderKchartPage(container) {
             });
         }
 
+        // === 个股/指数模式切换 ===
+        var modeStockBtn = document.getElementById('modeStockBtn');
+        var modeIndexBtn = document.getElementById('modeIndexBtn');
+        var indexSelectorWrap = document.getElementById('indexSelectorWrapper');
+        var indexSelector = document.getElementById('indexSelector');
+        var indexSelectorArrow = document.getElementById('indexSelectorArrow');
+        var stockSelectorContainer = document.getElementById('stockSelectorKline');
+        var stockArrow = document.getElementById('stockSelectorArrow');
+        var searchBtnEl = document.getElementById('searchStockBtn');
+        var loadStrategyBtn = document.getElementById('loadStrategySignalsBtn');
+        var loadRealtimeBtn = document.getElementById('loadRealtimeSignalsBtn');
+        var kchartFundBtn = document.getElementById('kchartFundamentalBtn');
+
+        function setModeStock() {
+            if (modeStockBtn) { modeStockBtn.style.background = '#3a4f8a'; modeStockBtn.style.color = '#fff'; modeStockBtn.style.borderColor = '#4f7eff'; }
+            if (modeIndexBtn) { modeIndexBtn.style.background = '#1e253b'; modeIndexBtn.style.color = '#9aa9cc'; modeIndexBtn.style.borderColor = '#323d5a'; }
+            if (indexSelectorWrap) indexSelectorWrap.style.display = 'none';
+            if (stockSelectorContainer) stockSelectorContainer.parentElement.style.display = '';
+            if (stockArrow) stockArrow.style.display = '';
+            if (searchBtnEl) searchBtnEl.style.display = '';
+            if (loadStrategyBtn) loadStrategyBtn.style.display = '';
+            if (loadRealtimeBtn) loadRealtimeBtn.style.display = '';
+            if (kchartFundBtn) kchartFundBtn.style.display = '';
+        }
+
+        function setModeIndex() {
+            if (modeStockBtn) { modeStockBtn.style.background = '#1e253b'; modeStockBtn.style.color = '#9aa9cc'; modeStockBtn.style.borderColor = '#323d5a'; }
+            if (modeIndexBtn) { modeIndexBtn.style.background = '#3a4f8a'; modeIndexBtn.style.color = '#fff'; modeIndexBtn.style.borderColor = '#4f7eff'; }
+            if (indexSelectorWrap) indexSelectorWrap.style.display = '';
+            if (stockSelectorContainer) stockSelectorContainer.parentElement.style.display = 'none';
+            if (stockArrow) stockArrow.style.display = 'none';
+            if (searchBtnEl) searchBtnEl.style.display = 'none';
+            if (loadStrategyBtn) loadStrategyBtn.style.display = 'none';
+            if (loadRealtimeBtn) loadRealtimeBtn.style.display = 'none';
+            if (kchartFundBtn) kchartFundBtn.style.display = 'none';
+            // 清除买卖点
+            buyPoints.length = 0;
+            sellPoints.length = 0;
+        }
+
+        if (modeStockBtn) {
+            modeStockBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                setModeStock();
+                buyPoints.length = 0;
+                sellPoints.length = 0;
+                fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd);
+            });
+        }
+        if (modeIndexBtn) {
+            modeIndexBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                setModeIndex();
+                var selCode = indexSelector ? indexSelector.getAttribute('data-value') : '';
+                if (selCode) {
+                    fetchAndRenderIndexKline(selCode, backtestStart, backtestEnd);
+                }
+            });
+        }
+        if (indexSelector) {
+            var indexDebounceTimer = null;
+            indexSelector.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomDropdown(indexSelector, indexOptions, function(selCode) {
+                    indexSelector.setAttribute('data-value', selCode);
+                    var opt = indexOptions.find(function(o) { return o.value === selCode; });
+                    if (opt) indexSelector.value = opt.label;
+                    buyPoints.length = 0;
+                    sellPoints.length = 0;
+                    if (indexDebounceTimer) clearTimeout(indexDebounceTimer);
+                    indexDebounceTimer = setTimeout(function() {
+                        fetchAndRenderIndexKline(selCode, backtestStart, backtestEnd);
+                    }, 50);
+                });
+            });
+        }
+        if (indexSelectorArrow) {
+            indexSelectorArrow.addEventListener('click', function(e) {
+                e.stopPropagation();
+                indexSelector.click();
+            });
+        }
+
         // 搜索按钮：按关键词搜索，通过下拉面板展示结果
         var searchBtn = document.getElementById('searchStockBtn');
         if (searchBtn) {
@@ -803,6 +906,15 @@ function renderKchartPage(container) {
 function renderStockPage(container) {
     container.innerHTML = `
         <div class="card" id="stockCard">
+            <div class="mode-toggle-row" style="margin:4px 0; display:flex; align-items:center; gap:8px;">
+                <span style="color:#9aa9cc;">模式:</span>
+                <button id="stockModeStockBtn" class="mode-btn active" data-mode="stock" style="padding:4px 16px;border:1px solid #4f7eff;border-radius:30px;background:#3a4f8a;color:#fff;cursor:pointer;font-size:12px;">个股</button>
+                <button id="stockModeIndexBtn" class="mode-btn" data-mode="index" style="padding:4px 16px;border:1px solid #323d5a;border-radius:30px;background:#1e253b;color:#9aa9cc;cursor:pointer;font-size:12px;">指数</button>
+                <div style="position:relative;display:none;" id="stockIndexSelectorWrapper">
+                    <input type="text" id="stockIndexSelector" readonly placeholder="--选择指数--" data-value="" style="width:140px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:4px 28px 4px 10px;font-size:13px;cursor:pointer;box-sizing:border-box;">
+                    <span id="stockIndexSelectorArrow" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:auto;font-size:10px;cursor:pointer;">▼</span>
+                </div>
+            </div>
             <div class="stock-search-row" style="display:flex; justify-content:space-between; align-items:center;">
                 <div style="display:flex; gap:10px; align-items:center; flex:1; position:relative;">
                     <input type="text" id="stockCodeInput" placeholder="输入股票代码或名称搜索" style="flex:1; background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; font-size:13px;">
@@ -1287,6 +1399,98 @@ function renderStockPage(container) {
         }
 
         window._loadStockRef = loadStock;
+
+        // === 个股详情页模式切换 ===
+        function loadIndexOnStockPage(tsCode, idxLabel) {
+            if (!bridge) return;
+            var today = new Date().toISOString().slice(0, 10);
+            var periodEl = document.getElementById('stockPeriodInput');
+            var reqPeriod = periodEl ? (periodEl.getAttribute('data-value') || 'daily') : 'daily';
+            bridge.get_index_data(tsCode, '2010-01-01', today).then(function(jsonStr) {
+                var data = JSON.parse(jsonStr);
+                if (data.error) {
+                    var chartDom = document.getElementById('stockKlineChart');
+                    if (chartDom) chartDom.innerHTML = '<div style="color:#ff6b6b;padding:20px;">' + data.error + '</div>';
+                    return;
+                }
+                if (data.dates && data.values) {
+                    var mgr = window.subChartManager;
+                    if (mgr) {
+                        mgr._pendingSubs = [
+                            { id: 'stockSubChart1', type: 'volume' },
+                            { id: 'stockSubChart2', type: 'rsi' }
+                        ];
+                        mgr._stockCode = tsCode;
+                    }
+                    document.getElementById('stockNameDisplay').textContent = idxLabel || tsCode;
+                    document.getElementById('stockLatestPrice').textContent = '--';
+                    renderStockKline('stockKlineChart', data.dates, data.values, 0);
+                }
+            }).catch(function(err) {
+                var chartDom = document.getElementById('stockKlineChart');
+                if (chartDom) chartDom.innerHTML = '<div style="color:#ff6b6b;padding:20px;">加载失败: ' + err.message + '</div>';
+            });
+        }
+
+        var stockModeStockBtn = document.getElementById('stockModeStockBtn');
+        var stockModeIndexBtn = document.getElementById('stockModeIndexBtn');
+        var indexSelectorWrapEl = document.getElementById('stockIndexSelectorWrapper');
+        var indexSelectorEl = document.getElementById('stockIndexSelector');
+        var indexSelectorArrowEl = document.getElementById('stockIndexSelectorArrow');
+
+        if (stockModeStockBtn) {
+            stockModeStockBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                stockModeStockBtn.style.background = '#3a4f8a'; stockModeStockBtn.style.color = '#fff'; stockModeStockBtn.style.borderColor = '#4f7eff';
+                stockModeIndexBtn.style.background = '#1e253b'; stockModeIndexBtn.style.color = '#9aa9cc'; stockModeIndexBtn.style.borderColor = '#323d5a';
+                if (indexSelectorWrapEl) indexSelectorWrapEl.style.display = 'none';
+                codeInput.style.display = '';
+                searchBtn.style.display = '';
+                var fb = document.getElementById('stockFundamentalBtn');
+                if (fb) fb.style.display = '';
+                document.getElementById('stockSuggestionsContainer').style.display = 'none';
+                loadStock(currentStockCode);
+            });
+        }
+        if (stockModeIndexBtn) {
+            stockModeIndexBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                stockModeIndexBtn.style.background = '#3a4f8a'; stockModeIndexBtn.style.color = '#fff'; stockModeIndexBtn.style.borderColor = '#4f7eff';
+                stockModeStockBtn.style.background = '#1e253b'; stockModeStockBtn.style.color = '#9aa9cc'; stockModeStockBtn.style.borderColor = '#323d5a';
+                if (indexSelectorWrapEl) indexSelectorWrapEl.style.display = '';
+                codeInput.style.display = 'none';
+                searchBtn.style.display = 'none';
+                var fb = document.getElementById('stockFundamentalBtn');
+                if (fb) fb.style.display = 'none';
+                document.getElementById('stockSuggestionsContainer').style.display = 'none';
+                var selCode = indexSelectorEl ? indexSelectorEl.getAttribute('data-value') : '';
+                if (selCode) {
+                    var opt = indexOptions.find(function(o) { return o.value === selCode; });
+                    loadIndexOnStockPage(selCode, opt ? opt.label : selCode);
+                }
+            });
+        }
+        if (indexSelectorEl) {
+            var stockIndexDebounceTimer = null;
+            indexSelectorEl.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showCustomDropdown(indexSelectorEl, indexOptions, function(selCode) {
+                    indexSelectorEl.setAttribute('data-value', selCode);
+                    var opt = indexOptions.find(function(o) { return o.value === selCode; });
+                    if (opt) indexSelectorEl.value = opt.label;
+                    if (stockIndexDebounceTimer) clearTimeout(stockIndexDebounceTimer);
+                    stockIndexDebounceTimer = setTimeout(function() {
+                        loadIndexOnStockPage(selCode, opt ? opt.label : selCode);
+                    }, 50);
+                });
+            });
+        }
+        if (indexSelectorArrowEl) {
+            indexSelectorArrowEl.addEventListener('click', function(e) {
+                e.stopPropagation();
+                indexSelectorEl.click();
+            });
+        }
 
         if (searchBtn) {
             searchBtn.addEventListener('click', function() {
