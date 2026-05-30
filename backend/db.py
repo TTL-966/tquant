@@ -11,6 +11,10 @@ class Database:
         db_path = os.path.join(base_dir, 'tquant.db')
         self.db_path = db_path
         self.engine = create_engine(f'sqlite:///{db_path}?check_same_thread=False', echo=False)
+        # WAL 模式提升并发读性能
+        with self.engine.connect() as conn:
+            conn.execute(text("PRAGMA journal_mode=WAL"))
+            conn.commit()
         self._init_tables()
 
     def _init_tables(self):

@@ -343,6 +343,48 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // ---- 空闲检测（30分钟无操作 → 启动后台静默更新）----
+    var IDLE_TIMEOUT = 30 * 60 * 1000;  // 30 分钟
+    var idleTimer = null;
+    var idleUpdateStarted = false;
+
+    function resetIdleTimer() {
+        if (idleTimer) clearTimeout(idleTimer);
+        // 如果之前空闲过，通知后端用户回来了
+        if (idleUpdateStarted && bridge && typeof bridge.set_user_active === 'function') {
+            bridge.set_user_active(true).catch(function() {});
+            idleUpdateStarted = false;
+            console.log('[Idle] 用户恢复活动，暂停后台更新');
+        }
+        idleTimer = setTimeout(onUserIdle, IDLE_TIMEOUT);
+    }
+
+    function onUserIdle() {
+        console.log('[Idle] 用户空闲 ' + (IDLE_TIMEOUT / 60000) + ' 分钟，启动后台静默更新');
+        idleUpdateStarted = true;
+        if (bridge && typeof bridge.set_user_active === 'function') {
+            bridge.set_user_active(false).then(function() {
+                if (bridge && typeof bridge.start_idle_update === 'function') {
+                    bridge.start_idle_update().then(function(jsonStr) {
+                        try {
+                            var res = JSON.parse(jsonStr);
+                            if (res.success) {
+                                console.log('[Idle] 后台更新:', res.message);
+                            }
+                        } catch (e) {}
+                    }).catch(function() {});
+                }
+            }).catch(function() {});
+        }
+    }
+
+    // 监听用户活动事件
+    ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(function(evt) {
+        document.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+    resetIdleTimer();  // 启动首次计时
+    console.log('[Idle] 空闲检测已启用，超时: ' + (IDLE_TIMEOUT / 60000) + ' 分钟');
+
     // ---- 全屏切换 ----
     var fullscreenBtn = document.getElementById('fullscreenBtn');
     if (fullscreenBtn) {

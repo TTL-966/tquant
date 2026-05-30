@@ -381,3 +381,32 @@ class DataFeed:
         if idx <= 0 or idx >= len(values):
             return None
         return values[idx - 1][1]
+
+    def get_benchmark_kline(self, benchmark_code, start_date=None, end_date=None):
+        """获取基准指数的日线收盘价序列。
+
+        :param benchmark_code: 指数 ts_code，如 '000300.SH'
+        :param start_date: 'YYYY-MM-DD' 或 None（不限制）
+        :param end_date: 'YYYY-MM-DD' 或 None（不限制）
+        :return: DataFrame，包含 trade_date 和 close 列，按日期升序
+        """
+        try:
+            from sqlalchemy import text
+            params = {"code": benchmark_code}
+            sql = "SELECT trade_date, close FROM index_daily WHERE ts_code = :code"
+            if start_date:
+                sql += " AND trade_date >= :start"
+                params["start"] = start_date
+            if end_date:
+                sql += " AND trade_date <= :end"
+                params["end"] = end_date
+            sql += " ORDER BY trade_date ASC"
+            with self.db.engine.connect() as conn:
+                df = pd.read_sql(text(sql), conn, params=params)
+            if df.empty:
+                print(f"[DataFeed] 基准 {benchmark_code} 无数据")
+                return pd.DataFrame(columns=['trade_date', 'close'])
+            return df
+        except Exception as e:
+            print(f"[DataFeed] 获取基准数据失败 ({benchmark_code}): {e}")
+            return pd.DataFrame(columns=['trade_date', 'close'])

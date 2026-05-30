@@ -908,6 +908,10 @@ function renderKchartPage(container) {
             });
         }
 
+        // 按需更新
+        if (bridge && typeof bridge.ensure_stock_updated === 'function') {
+            bridge.ensure_stock_updated(currentStockCode).catch(function() {});
+        }
         // 初始加载K线
         buyPoints.length = 0;
         sellPoints.length = 0;
@@ -1328,6 +1332,10 @@ function renderStockPage(container) {
 
             // 预填实时行情栏中的股票代码
             updatePriceBarName(formatStockNameOnly(code), code);
+            // 按需更新：触发后端拉取该股票最新数据（火后不理）
+            if (bridge && typeof bridge.ensure_stock_updated === 'function') {
+                bridge.ensure_stock_updated(code).catch(function() {});
+            }
             // 获取行业信息
             if (bridge && industryLabel) {
                 bridge.get_industry(code).then(function(jsonStr) {

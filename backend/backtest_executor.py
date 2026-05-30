@@ -6,6 +6,76 @@ import traceback
 import numpy as np
 import pandas as pd
 
+
+def calculate_benchmark_metrics(strategy_nav_series, benchmark_close_series, risk_free_rate=0.03):
+    """计算相对于基准的各项指标。
+
+    Args:
+        strategy_nav_series: Series，策略每日净值（index为日期，值为净值）
+        benchmark_close_series: Series，基准每日收盘价（index为日期，值为收盘价）
+        risk_free_rate: 年化无风险利率
+
+    Returns:
+        dict: {benchmark_return, excess_return, alpha, beta, information_ratio, outperform}
+    """
+    try:
+        # 计算基准净值（从1开始）
+        if benchmark_close_series.empty or len(benchmark_close_series) < 2:
+            return {}
+        bm_nav = benchmark_close_series / benchmark_close_series.iloc[0]
+
+        # 对齐日期
+        aligned = pd.DataFrame({'strategy_nav': strategy_nav_series, 'bm_nav': bm_nav}).dropna()
+        if len(aligned) < 2:
+            return {}
+
+        # 总收益率
+        strategy_total_ret = (aligned['strategy_nav'].iloc[-1] / aligned['strategy_nav'].iloc[0] - 1) * 100
+        bm_total_ret = (aligned['bm_nav'].iloc[-1] / aligned['bm_nav'].iloc[0] - 1) * 100
+        excess_return = strategy_total_ret - bm_total_ret
+
+        # 日收益率（用于 Beta/Alpha/IR 计算）
+        strategy_daily = aligned['strategy_nav'].pct_change().fillna(0)
+        bm_daily = aligned['bm_nav'].pct_change().fillna(0)
+
+        if len(strategy_daily) < 2:
+            return {
+                'benchmark_return': round(bm_total_ret, 2),
+                'excess_return': round(excess_return, 2),
+                'outperform': excess_return > 0,
+            }
+
+        # Beta
+        cov = np.cov(strategy_daily[1:], bm_daily[1:])[0, 1] if len(strategy_daily) > 1 else 0
+        var = np.var(bm_daily[1:]) if len(bm_daily) > 1 else 0
+        beta = round(cov / var, 2) if var > 0 else 1.0
+
+        # 年化收益
+        n_days = len(strategy_daily)
+        strategy_annual = ((1 + strategy_total_ret / 100) ** (252 / n_days) - 1) if n_days > 0 else 0
+        bm_annual = ((1 + bm_total_ret / 100) ** (252 / n_days) - 1) if n_days > 0 else 0
+
+        # Alpha = (策略年化 - 无风险) - Beta * (基准年化 - 无风险)
+        alpha = round(strategy_annual - risk_free_rate - beta * (bm_annual - risk_free_rate), 4)
+
+        # 信息比率
+        excess_daily = strategy_daily - bm_daily
+        mean_excess = np.mean(excess_daily[1:]) if len(excess_daily) > 1 else 0
+        std_excess = np.std(excess_daily[1:], ddof=1) if len(excess_daily) > 1 else 0
+        information_ratio = round(mean_excess / std_excess * np.sqrt(252), 4) if std_excess > 0 else 0.0
+
+        return {
+            'benchmark_return': round(bm_total_ret, 2),
+            'excess_return': round(excess_return, 2),
+            'alpha': alpha,
+            'beta': beta,
+            'information_ratio': information_ratio,
+            'outperform': excess_return > 0,
+        }
+    except Exception as e:
+        print(f"[Benchmark] 指标计算异常: {e}")
+        return {}
+
 class Logger:
     """简单的日志输出器，同时支持 log(msg) 和 log.info(msg) 调用。"""
     def __init__(self, executor):
@@ -253,7 +323,8 @@ class BacktestExecutor:
 
     # ---------- 主执行方法 ----------
     def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000, slippage="close",
-            commission_rate=0.0003, stamp_tax_rate=0.001, slippage_cost_type="percent", slippage_cost_value=0.1):
+            commission_rate=0.0003, stamp_tax_rate=0.001, slippage_cost_type="percent", slippage_cost_value=0.1,
+            benchmark_code=None):
         """
         :param user_code: 用户策略代码字符串
         :param stock_code: 股票代码，如 "000001"
@@ -461,7 +532,36 @@ class BacktestExecutor:
             'metrics': metrics,
             'logs': logs
         }
-        # 在 return result 之前
+
+        # 10. 基准对比处理
+        if benchmark_code and hasattr(self.data_source, 'get_benchmark_kline'):
+            bm_df = self.data_source.get_benchmark_kline(benchmark_code, start_date, end_date)
+            if not bm_df.empty and len(bm_df) >= 2:
+                bm_df['trade_date'] = pd.to_datetime(bm_df['trade_date'])
+                bm_df = bm_df.set_index('trade_date')
+
+                # 生成基准净值曲线
+                bm_nav = bm_df['close'] / bm_df['close'].iloc[0]
+                benchmark_equity_curve = [
+                    {'date': d.strftime('%Y-%m-%d'), 'value': round(v, 4)}
+                    for d, v in bm_nav.items()
+                ]
+                result['benchmark_equity_curve'] = benchmark_equity_curve
+                result['benchmark_code'] = benchmark_code
+
+                # 构建策略净值 Series 并计算指标
+                eq_df = pd.DataFrame(equity_curve)
+                eq_df['date'] = pd.to_datetime(eq_df['date'])
+                eq_df = eq_df.set_index('date')
+                strategy_nav = eq_df['value'] / initial_cash
+
+                bm_metrics = calculate_benchmark_metrics(strategy_nav, bm_df['close'])
+                if bm_metrics:
+                    metrics.update(bm_metrics)
+                    result['metrics'] = metrics
+            else:
+                self.logs.append(f"[WARN] 基准 {benchmark_code} 数据不足，无法对比")
+
         print("DEBUG metrics:", metrics)
         return result
 

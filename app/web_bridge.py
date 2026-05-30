@@ -25,6 +25,7 @@ from backend.realtime_quote_fetcher import RealtimeQuoteFetcher
 from backend.fund_flow_fetcher import FundFlowFetcher
 from backend import realtime_config
 from backend.config_manager import load_config, save_config
+from backend.stock_updater import update_stock_if_needed, IdleUpdater
 from sqlalchemy import text
 
 class WebBridge(QObject):
@@ -44,6 +45,8 @@ class WebBridge(QObject):
         self._all_realtime_signals = []   # 所有实时信号历史
         self._update_process = None   # 日线数据更新子进程句柄
         self._financial_update_process = None  # 财务数据更新子进程句柄
+        self._idle_updater = None     # 空闲后台更新器
+        self._user_active = True      # 用户活动标志
 
         df = DataFeed()
 
@@ -1960,6 +1963,19 @@ class WebBridge(QObject):
         threading.Thread(target=read_output, daemon=True).start()
 
     # ---------- 数据源配置 Slot ----------
+    @Slot(bool, int, result=str)
+    def save_idle_update_settings(self, enabled, days):
+        """保存空闲后台更新设置。"""
+        try:
+            config = load_config()
+            config["idle_update_enabled"] = enabled
+            config["idle_update_days"] = days
+            save_config(config)
+            return json.dumps({"success": True, "message": "空闲更新设置已保存"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
     @Slot(result=str)
     def get_data_source_config(self):
         """返回当前数据源配置（data_source, tushare_token）。"""
@@ -2042,6 +2058,75 @@ class WebBridge(QObject):
                 data = json.load(f)
             os.remove(notice_path)  # 读取后清除，避免重复通知
             return json.dumps({"success": True, "notice": data})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    # ---------- 按需更新 & 空闲后台更新 Slot ----------
+    @Slot(str, result=str)
+    def ensure_stock_updated(self, code):
+        """按需更新单只股票日线数据（后台线程执行，立即返回）。"""
+        try:
+            if not code or not code.strip():
+                return json.dumps({"success": False, "error": "代码为空"})
+            threading.Thread(
+                target=lambda: update_stock_if_needed(code.strip(), self.db.engine),
+                daemon=True
+            ).start()
+            return json.dumps({"success": True, "message": "更新任务已启动"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def start_idle_update(self):
+        """启动后台空闲更新（低优先级，有用户活动时自动暂停）。"""
+        try:
+            if self._idle_updater and self._idle_updater._running:
+                self._idle_updater.resume()
+                return json.dumps({"success": True, "message": "后台更新已恢复"})
+
+            config = load_config()
+            days = int(config.get('idle_update_days', 3) or 3)
+            enabled = config.get('idle_update_enabled', True)
+            if not enabled:
+                return json.dumps({"success": False, "message": "后台更新已禁用"})
+
+            self._idle_updater = IdleUpdater(
+                self.db.engine, days_threshold=days, batch_size=50, interval=2.0
+            )
+            self._idle_updater.start()
+            return json.dumps({"success": True, "message": "后台空闲更新已启动"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(bool, result=str)
+    def set_user_active(self, active):
+        """前端通知后端用户活动状态变化。active=False 表示用户空闲。"""
+        try:
+            self._user_active = active
+            if active and self._idle_updater and self._idle_updater._running:
+                self._idle_updater.pause()
+            elif not active and self._idle_updater and self._idle_updater._paused:
+                self._idle_updater.resume()
+            return json.dumps({"success": True})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_idle_update_status(self):
+        """返回后台空闲更新的状态。"""
+        try:
+            running = self._idle_updater is not None and self._idle_updater._running
+            paused = self._idle_updater._paused if self._idle_updater else False
+            return json.dumps({
+                "success": True,
+                "running": running,
+                "paused": paused,
+                "user_active": self._user_active,
+            })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
