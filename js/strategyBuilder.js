@@ -960,7 +960,10 @@ function showBacktestModal() {
                     });
 
                     var firstMetrics = (results.length > 0 && results[0] && results[0].metrics) ? results[0].metrics : {};
-                    var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: firstMetrics, stock_performance: null};
+                    var firstBenchmarkCurve = (results.length > 0 && results[0] && results[0].benchmark_equity_curve) ? results[0].benchmark_equity_curve : null;
+                    var firstBenchmarkCode = (results.length > 0 && results[0] && results[0].benchmark_code) ? results[0].benchmark_code : null;
+                    var mergedResult = { success: true, signals: mergedSignals, equity_curve: mergedEquityCurve, metrics: firstMetrics, stock_performance: null,
+                        benchmark_equity_curve: firstBenchmarkCurve, benchmark_code: firstBenchmarkCode };
                     for (var i = 0; i < results.length; i++) {
                         if (results[i] && results[i].stock_performance) { mergedResult.stock_performance = results[i].stock_performance; break; }
                     }
@@ -1015,9 +1018,12 @@ function showBacktestModal() {
                 var stampTax = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
                 var slippageCostTypeVal = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
                 var slippageCostValueVal = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+                var benchmarkEl2 = document.getElementById('benchmarkSelect');
+                var benchmarkCode2 = benchmarkEl2 ? (benchmarkEl2.getAttribute('data-value') || '') : '';
                 var multiParams = { code: userCode, stocks: stockCodes, start: start, end: end, cash: cashVal, slippage: slippageType,
                     commission_rate: commission, stamp_tax_rate: stampTax,
-                    slippage_cost_type: slippageCostTypeVal, slippage_cost_value: slippageCostValueVal };
+                    slippage_cost_type: slippageCostTypeVal, slippage_cost_value: slippageCostValueVal,
+                    benchmark_code: benchmarkCode2 || null };
                 bridge.run_multi_backtest(JSON.stringify(multiParams)).then(function(jsonStr) {
                     var res = JSON.parse(jsonStr);
                     var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1048,7 +1054,9 @@ function showBacktestModal() {
                         signals: signals,
                         equity_curve: equityCurve,
                         metrics: metrics,
-                        stock_performance: stockPerformance
+                        stock_performance: stockPerformance,
+                        benchmark_equity_curve: res.benchmark_equity_curve || null,
+                        benchmark_code: res.benchmark_code || null
                     };
                     window._lastBacktestResult = finalResult;
                     window.strategySignals = signals;
@@ -1108,9 +1116,12 @@ function showBacktestModal() {
                 var stampTax2 = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
                 var slippageCostTypeVal2 = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
                 var slippageCostValueVal2 = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
+                var benchmarkEl = document.getElementById('benchmarkSelect');
+                var benchmarkCode = benchmarkEl ? (benchmarkEl.getAttribute('data-value') || '') : '';
                 var params = { code: cleanCode, stock: stock, start: start, end: end, cash: cashVal, slippage: slippageType,
                     commission_rate: commission2, stamp_tax_rate: stampTax2,
-                    slippage_cost_type: slippageCostTypeVal2, slippage_cost_value: slippageCostValueVal2 };
+                    slippage_cost_type: slippageCostTypeVal2, slippage_cost_value: slippageCostValueVal2,
+                    benchmark_code: benchmarkCode || null };
                 bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
                     var res = JSON.parse(jsonStr);
                     var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1533,6 +1544,13 @@ export function renderStrategyPage(container) {
         'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center;">' +
         '<span>滑点值:</span>' +
         '<input type="number" id="slippageCostValue" value="0.1" step="0.01" min="0" style="width:80px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
+        '<span style="margin-left:12px;">对比基准:</span>' +
+        '<div style="position:relative;display:inline-block;">' +
+        '<input type="text" id="benchmarkSelect" value="沪深300" readonly data-value="000300.SH" ' +
+        'style="width:140px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 28px 6px 10px; font-size:13px; cursor:pointer; ' +
+        'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center; box-sizing:border-box;">' +
+        '<span id="benchmarkArrow" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9aa9cc;pointer-events:none;font-size:10px;">▼</span>' +
+        '</div>' +
         '<span style="font-size:12px; color:#9aa9cc;">(买入增加成本，卖出减少收入，卖出额外加印花税)</span>' +
         '</div></div>' +
 
@@ -1614,8 +1632,28 @@ export function renderStrategyPage(container) {
             showCustomSelect(slippageCostTypeInput, [
                 { value: 'percent', label: '百分比' },
                 { value: 'fixed', label: '固定点数(元)' }
-            ], function(selectedValue) {
-                // value and data-value are already set by showCustomSelect
+            ], function(selectedValue) {});
+        });
+    }
+
+    // Benchmark dropdown — custom select panel
+    var staticBenchmarkOptions = [
+        { value: '000300.SH', label: '沪深300' },
+        { value: '000001.SH', label: '上证指数' },
+        { value: '399001.SZ', label: '深证成指' },
+        { value: '000905.SH', label: '中证500' },
+        { value: '399006.SZ', label: '创业板指' },
+        { value: '', label: '无（不对比）' }
+    ];
+    var benchmarkSelect = document.getElementById('benchmarkSelect');
+    if (benchmarkSelect) {
+        benchmarkSelect.addEventListener('click', function() {
+            showCustomSelect(benchmarkSelect, staticBenchmarkOptions, function(val) {
+                var opt = staticBenchmarkOptions.find(function(o) { return o.value === val; });
+                if (opt) {
+                    benchmarkSelect.value = opt.label;
+                    benchmarkSelect.setAttribute('data-value', opt.value);
+                }
             });
         });
     }

@@ -51,6 +51,30 @@ class WebBridge(QObject):
         df = DataFeed()
 
 
+
+    @staticmethod
+    def _to_json_safe(obj):
+        """递归转换 numpy 类型为 Python 原生类型，确保 JSON 可序列化。"""
+        if isinstance(obj, dict):
+            return {k: WebBridge._to_json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [WebBridge._to_json_safe(v) for v in obj]
+        if isinstance(obj, (bool,)):
+            return bool(obj)
+        try:
+            import numpy as _np
+            if isinstance(obj, (_np.integer,)):
+                return int(obj)
+            if isinstance(obj, (_np.floating,)):
+                return float(obj)
+            if isinstance(obj, (_np.bool_,)):
+                return bool(obj)
+            if isinstance(obj, _np.ndarray):
+                return obj.tolist()
+        except ImportError:
+            pass
+        return obj
+
     @Slot(result=str)
     def ping(self):
         return "pong"
@@ -524,6 +548,19 @@ class WebBridge(QObject):
             traceback.print_exc()
             return json.dumps([])
 
+    # ---- 基准指数列表 ----
+    @Slot(result=str)
+    def get_benchmark_list(self):
+        """返回可用的基准指数列表。"""
+        benchmarks = [
+            {"code": "000300.SH", "name": "沪深300"},
+            {"code": "000001.SH", "name": "上证指数"},
+            {"code": "399001.SZ", "name": "深证成指"},
+            {"code": "000905.SH", "name": "中证500"},
+            {"code": "399006.SZ", "name": "创业板指"},
+        ]
+        return json.dumps(benchmarks, ensure_ascii=False)
+
     # ---- 新增自定义策略回测槽 ----
     @Slot(str, result=str)
     def run_custom_backtest(self, params_json):
@@ -534,14 +571,8 @@ class WebBridge(QObject):
             "stock": "000001",     # 股票代码
             "start": "2010-01-01",
             "end": "2026-12-31",
-            "cash": 1000000
-        }
-        返回 JSON:
-        {
-            "success": True,
-            "signals": [...],
-            "equity_curve": [...],
-            "metrics": {...}
+            "cash": 1000000,
+            "benchmark_code": "000300.SH"  # 可选：基准指数代码
         }
         """
         try:
@@ -556,26 +587,26 @@ class WebBridge(QObject):
             stamp_tax = params.get("stamp_tax_rate", 0.001)
             slippage_cost_type = params.get("slippage_cost_type", "percent")
             slippage_cost_value = params.get("slippage_cost_value", 0.1)
-
-            # 调试日志：输出接收到的策略代码信息
-
+            benchmark_code = params.get("benchmark_code", None)
 
             result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash, slippage=slippage,
                                                 commission_rate=commission, stamp_tax_rate=stamp_tax,
-                                                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value)
+                                                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value,
+                                                benchmark_code=benchmark_code)
 
-            # 输出后端日志最后5条
             print(f"[Bridge] 后端日志(最后5条): {result.get('logs', [])[-5:]}", flush=True)
 
             if "error" in result:
                 return json.dumps({"success": False, "error": result["error"]})
-            return json.dumps({
+            return json.dumps(WebBridge._to_json_safe({
                 "success": True,
                 "signals": result.get("signals", []),
                 "equity_curve": result.get("equity_curve", []),
                 "metrics": result.get("metrics", {}),
-                "logs": result.get("logs", [])
-            })
+                "logs": result.get("logs", []),
+                "benchmark_equity_curve": result.get("benchmark_equity_curve"),
+                "benchmark_code": result.get("benchmark_code"),
+            }))
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
@@ -615,6 +646,7 @@ class WebBridge(QObject):
             stamp_tax = params.get("stamp_tax_rate", 0.001)
             slippage_cost_type = params.get("slippage_cost_type", "percent")
             slippage_cost_value = params.get("slippage_cost_value", 0.1)
+            benchmark_code = params.get("benchmark_code", None)
 
             if not user_code:
                 return json.dumps({"success": False, "error": "策略代码为空"})
@@ -628,7 +660,8 @@ class WebBridge(QObject):
                 user_code, stocks, start, end,
                 initial_cash=cash, slippage=slippage,
                 commission_rate=commission, stamp_tax_rate=stamp_tax,
-                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value
+                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value,
+                benchmark_code=benchmark_code
             )
 
             print(f"[Bridge] 多股回测完成: {len(stocks)}只股票, 信号{len(result.get('signals',[]))}个", flush=True)
@@ -636,15 +669,17 @@ class WebBridge(QObject):
             if not result.get("success"):
                 return json.dumps({"success": False, "error": result.get("error", "回测失败")})
 
-            return json.dumps({
+            return json.dumps(WebBridge._to_json_safe({
                 "success": True,
                 "signals": result.get("signals", []),
                 "equity_curve": result.get("equity_curve", []),
                 "metrics": result.get("metrics", {}),
                 "logs": result.get("logs", []),
                 "errors": result.get("errors", []),
-                "stock_performance": result.get("stock_performance", [])
-            })
+                "stock_performance": result.get("stock_performance", []),
+                "benchmark_equity_curve": result.get("benchmark_equity_curve"),
+                "benchmark_code": result.get("benchmark_code"),
+            }))
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
@@ -691,6 +726,7 @@ class WebBridge(QObject):
             slippage_cost_type = params.get("slippage_cost_type", "percent")
             slippage_cost_value = params.get("slippage_cost_value", 0.1)
             variations = params.get("variations", [])
+            benchmark_code = params.get("benchmark_code", None)
 
             if not variations or len(variations) == 0:
                 return json.dumps({"success": False, "error": "变体列表为空"})
@@ -725,7 +761,8 @@ class WebBridge(QObject):
                             initial_cash=cash, slippage=slippage,
                             commission_rate=commission, stamp_tax_rate=stamp_tax,
                             slippage_cost_type=slippage_cost_type,
-                            slippage_cost_value=slippage_cost_value
+                            slippage_cost_value=slippage_cost_value,
+                            benchmark_code=benchmark_code
                         )
                     else:
                         from backend.backtest_executor import BacktestExecutor
@@ -735,7 +772,8 @@ class WebBridge(QObject):
                             initial_cash=cash, slippage=slippage,
                             commission_rate=commission, stamp_tax_rate=stamp_tax,
                             slippage_cost_type=slippage_cost_type,
-                            slippage_cost_value=slippage_cost_value
+                            slippage_cost_value=slippage_cost_value,
+                            benchmark_code=benchmark_code
                         )
 
                     if not result.get("success") and "error" in result:
@@ -747,7 +785,9 @@ class WebBridge(QObject):
                         "metrics": result.get("metrics", {}),
                         "signals": result.get("signals", []),
                         "logs": result.get("logs", []),
-                        "stock_performance": result.get("stock_performance", [])
+                        "stock_performance": result.get("stock_performance", []),
+                        "benchmark_equity_curve": result.get("benchmark_equity_curve"),
+                        "benchmark_code": result.get("benchmark_code"),
                     }, None)
                 except Exception as e:
                     traceback.print_exc(file=sys.stderr)
@@ -767,11 +807,11 @@ class WebBridge(QObject):
             results.sort(key=lambda r: [v.get("name", "") for v in variations].index(r["name"])
                          if r["name"] in [v.get("name", "") for v in variations] else 999)
 
-            return json.dumps({
+            return json.dumps(WebBridge._to_json_safe({
                 "success": True,
                 "results": results,
                 "errors": errors
-            })
+            }))
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})

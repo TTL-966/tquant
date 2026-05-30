@@ -1958,7 +1958,45 @@ function buildMetricCards(metrics) {
     if (ir != null) add('信息比率', ir.toFixed(2), getColor(ir));
     var mdd_dur = metrics.max_drawdown_duration;
     if (mdd_dur != null) add('最长回撤期', mdd_dur + '天', '#9aa9cc');
-    return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">' + cards.join('') + '</div>';
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">' + cards.join('') + '</div>';
+
+    // 基准对比区块
+    if (metrics.benchmark_return !== undefined || metrics.excess_return !== undefined) {
+	    var bmRet = metrics.benchmark_return;
+	    var exRet = metrics.excess_return;
+	    var alpha = metrics.alpha;
+	    var beta = metrics.beta;
+	    var ir2 = metrics.information_ratio;
+	    var outperform = metrics.outperform;
+	    var bmFmt = function(v) { return v !== undefined && v !== null ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '--'; };
+	    var exColor = exRet > 0 ? '#ef5350' : (exRet < 0 ? '#26a69a' : '#9aa9cc');
+	    var outText = outperform ? '<span style="color:#27ae60;">✅ 跑赢大盘</span>' : '<span style="color:#e74c3c;">❌ 跑输大盘</span>';
+	    
+	    // 基准对比主区域（基准收益率、超额收益、跑赢大盘）
+	    html += '<div class="benchmark-comparison" style="margin-top:16px;padding:10px 14px;background:#0e1220;border-radius:12px;border-left:3px solid #f1c40f;">' +
+	        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+	        '<div><span style="color:#9aa9cc;">基准收益率</span><br><span style="font-weight:600;font-size:16px;">' + bmFmt(bmRet) + '</span></div>' +
+	        '<div><span style="color:#9aa9cc;">超额收益</span><br><span style="font-weight:600;font-size:16px;color:' + exColor + ';">' + bmFmt(exRet) + '</span></div>' +
+	        '<div><span style="color:#9aa9cc;">跑赢大盘</span><br><span style="font-weight:600;">' + outText + '</span></div>' +
+	        '</div>' +
+	        // 新增：Alpha、Beta、信息比率 独立卡片式布局
+	        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;background:#1a2135;border-radius:8px;padding:8px;">' +
+	        '  <div style="text-align:center;">' +
+	        '    <div style="font-size:11px;color:#9aa9cc;">Alpha</div>' +
+	        '    <div style="font-size:18px;font-weight:700;color:#ffffff;">' + (alpha !== undefined ? alpha.toFixed(4) : '--') + '</div>' +
+	        '  </div>' +
+	        '  <div style="text-align:center;">' +
+	        '    <div style="font-size:11px;color:#9aa9cc;">Beta</div>' +
+	        '    <div style="font-size:18px;font-weight:700;color:#ffffff;">' + (beta !== undefined ? beta.toFixed(2) : '--') + '</div>' +
+	        '  </div>' +
+	        '  <div style="text-align:center;">' +
+	        '    <div style="font-size:11px;color:#9aa9cc;">信息比率</div>' +
+	        '    <div style="font-size:18px;font-weight:700;color:#ffffff;">' + (ir2 !== undefined ? ir2.toFixed(2) : '--') + '</div>' +
+	        '  </div>' +
+	        '</div>' +
+	        '</div>';
+	}
+    return html;
 }
 
 function buildSignalRows(signals, stockCode) {

@@ -42,7 +42,7 @@ def calculate_benchmark_metrics(strategy_nav_series, benchmark_close_series, ris
             return {
                 'benchmark_return': round(bm_total_ret, 2),
                 'excess_return': round(excess_return, 2),
-                'outperform': excess_return > 0,
+                'outperform': bool(excess_return > 0),
             }
 
         # Beta
@@ -70,7 +70,7 @@ def calculate_benchmark_metrics(strategy_nav_series, benchmark_close_series, ris
             'alpha': alpha,
             'beta': beta,
             'information_ratio': information_ratio,
-            'outperform': excess_return > 0,
+            'outperform': bool(excess_return > 0),
         }
     except Exception as e:
         print(f"[Benchmark] 指标计算异常: {e}")

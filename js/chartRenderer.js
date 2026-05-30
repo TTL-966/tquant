@@ -1042,9 +1042,17 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
     }
     var chart = echarts.init(dom);
     var dates = equityCurve.map(function(item) { return item.date; });
-    var values = equityCurve.map(function(item) { return item.value; });
+    var rawValues = equityCurve.map(function(item) { return item.value; });
+
+    // 初始资金：优先从 result 获取，否则取权益曲线首个值
+    var initialCash = (result && result.initial_cash) || (equityCurve.length > 0 ? equityCurve[0].value : 1000000);
+    if (initialCash <= 0) initialCash = 1000000;
+
+    // 转换为累计收益率 (%)
+    var values = rawValues.map(function(v) { return (v / initialCash - 1) * 100; });
 
     var hasResult = result && result.signals;
+    var benchmarkCurve = (result && result.benchmark_equity_curve) || null;
 
     // 构建信号日期索引集合（用于散点标记）
     var signalDatesSet = new Set();
@@ -1056,12 +1064,12 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
             }
         });
     }
-    // 生成散点数据：权益曲线上对应日期的 value
+    // 生成散点数据：使用收益率值
     var scatterData = [];
     for (var i = 0; i < equityCurve.length; i++) {
         var datePure = String(equityCurve[i].date).split(' ')[0].split('T')[0];
         if (signalDatesSet.has(datePure)) {
-            scatterData.push([i, equityCurve[i].value]);
+            scatterData.push([i, values[i]]);
         }
     }
 
@@ -1074,36 +1082,20 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
                 var equityItem = equityCurve[idx];
                 if (!equityItem) return '';
                 var date = equityItem.date;
-                var value = equityItem.value;
-                var prevValue = idx > 0 ? equityCurve[idx - 1].value : value;
-                var dayChange = value - prevValue;
-                var dayChangePct = prevValue !== 0 ? (dayChange / prevValue * 100) : 0;
+                var rawValue = equityItem.value;
+                var cumRet = values[idx];  // 累计收益率 %
+                var prevRaw = idx > 0 ? equityCurve[idx - 1].value : rawValue;
+                var dayChange = rawValue - prevRaw;
+                var dayChangePct = prevRaw !== 0 ? (dayChange / prevRaw * 100) : 0;
 
-                // 规范化权益曲线日期
                 var pureDate = String(date).split(' ')[0].split('T')[0];
-                
-                var signals = result.signals || [];
-                // 调试输出：检查信号数量和格式
-                if (idx === 0) {
-                    console.log('[drawEquityCurve] 权益曲线首日:', pureDate);
-                    console.log('[drawEquityCurve] 信号样本:', signals.slice(0, 3).map(s => ({ date: s.date, type: s.type })));
-                }
 
+                var signals = result.signals || [];
                 var daySignals = signals.filter(function(s) {
                     if (!s.date) return false;
                     var signalDate = String(s.date).split(' ')[0].split('T')[0];
                     return signalDate === pureDate;
                 });
-
-                // 调试信息
-                var debugInfo = '';
-                if (daySignals.length === 0 && signals.length > 0) {
-                    var sampleSignal = signals[0];
-                    var sampleDate = sampleSignal.date ? String(sampleSignal.date).split(' ')[0].split('T')[0] : '无日期';
-                    debugInfo = '<div style="color:#f2c94c; font-size:10px; margin-bottom:4px;">⚠️ 未匹配到信号 (曲线日期: ' + pureDate + ', 信号样本: ' + sampleDate + ')</div>';
-                } else if (daySignals.length > 0) {
-                    debugInfo = '<div style="color:#4cff4c; font-size:10px; margin-bottom:4px;">✓ 匹配到 ' + daySignals.length + ' 个信号</div>';
-                }
 
                 var buySignals = daySignals.filter(function(s) { return s.type === 'buy'; });
                 var sellSignals = daySignals.filter(function(s) { return s.type === 'sell'; });
@@ -1114,6 +1106,8 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
                 var dayProfit = dayChange > 0 ? dayChange : 0;
                 var dayLoss = dayChange < 0 ? -dayChange : 0;
 
+                var retColor = cumRet >= 0 ? '#ef5350' : '#26a69a';
+                var retSign = cumRet >= 0 ? '+' : '';
                 var changeColor = dayChange >= 0 ? '#ef5350' : '#26a69a';
                 var changeSymbol = dayChange >= 0 ? '▲' : '▼';
                 var changeSign = dayChange >= 0 ? '+' : '';
@@ -1121,8 +1115,12 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
                 return '<div style="background:#151c2c;border:1px solid #4f7eff;border-radius:12px;padding:10px 14px;min-width:260px;">' +
                     '<div style="color:#fff;font-weight:600;margin-bottom:6px;">' + pureDate + '</div>' +
                     '<div style="margin-bottom:6px;">' +
+                    '<span style="color:#9aa9cc;">累计收益率 </span>' +
+                    '<span style="color:' + retColor + ';font-weight:bold;">' + retSign + cumRet.toFixed(2) + '%</span>' +
+                    '</div>' +
+                    '<div style="margin-bottom:6px;">' +
                     '<span style="color:#9aa9cc;">账户价值 </span>' +
-                    '<span style="color:#fff;font-weight:bold;">' + value.toFixed(2) + '</span>' +
+                    '<span style="color:#fff;">¥' + rawValue.toFixed(2) + '</span>' +
                     '</div>' +
                     '<div style="margin-bottom:6px;">' +
                     '<span style="color:#9aa9cc;">当日盈亏 </span>' +
@@ -1137,7 +1135,14 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
             } : undefined
         },
         xAxis: { type: 'category', data: dates, axisLabel: { color: '#9aa9cc' } },
-        yAxis: { type: 'value', name: '账户价值 (元)', axisLabel: { color: '#9aa9cc' } },
+        yAxis: {
+            type: 'value',
+            name: '累计收益率 (%)',
+            axisLabel: {
+                color: '#9aa9cc',
+                formatter: function(v) { return v.toFixed(1) + '%'; }
+            }
+        },
         series: [{
             type: 'line',
             data: values,
@@ -1176,6 +1181,31 @@ export function drawEquityCurve(containerId, equityCurve, result, retry) {
         }],
         grid: { containLabel: true, backgroundColor: '#0e1220' }
     };
+
+    // 叠加基准曲线（转换为收益率 %）
+    if (benchmarkCurve && benchmarkCurve.length > 0) {
+        var bmDates = benchmarkCurve.map(function(item) { return item.date; });
+        var bmValuesPct = benchmarkCurve.map(function(item) { return (item.value - 1) * 100; });
+        var alignedBm = dates.map(function(d) {
+            var idx = bmDates.indexOf(d);
+            if (idx >= 0) return bmValuesPct[idx];
+            for (var j = bmDates.length - 1; j >= 0; j--) {
+                if (bmDates[j] <= d) return bmValuesPct[j];
+            }
+            return null;
+        });
+        var benchmarkName = '基准(' + ((result && result.benchmark_code) || '').replace('.SH', '').replace('.SZ', '') + ')';
+        option.series.push({
+            name: benchmarkName,
+            type: 'line',
+            data: alignedBm,
+            lineStyle: { color: '#f1c40f', width: 1.5, type: 'dashed' },
+            symbol: 'none',
+            smooth: false,
+            z: 5
+        });
+    }
+
     chart.setOption(option);
 }
 
