@@ -1,8 +1,8 @@
 import os
+import sys
 os.environ["QT_QPA_PLATFORM"] = "windows:software"
 os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 
-import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QMenu
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -11,6 +11,32 @@ from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtCore import QUrl, Qt, QTimer
 from app.web_bridge import WebBridge
 from backend.data_updater import DataUpdateScheduler
+
+
+def resource_path(relative_path):
+    """获取资源文件路径，兼容 PyInstaller 打包和开发模式。
+
+    打包模式策略：
+      - 静态资源（Tquant.html, js/, img/, config.json 等）复制到 exe 同级目录
+      - Python 模块（backend/, app/）在 _MEIPASS 内部
+      - 优先检查 exe 同级目录（用户可修改的静态资源），再回退到 _MEIPASS
+    """
+    if getattr(sys, 'frozen', False):
+        # 打包模式：先查找 exe 同级目录
+        exe_dir = os.path.dirname(sys.executable)
+        exe_path = os.path.join(exe_dir, relative_path)
+        if os.path.exists(exe_path):
+            return exe_path
+        # 回退到 _MEIPASS（PyInstaller 临时解压目录）
+        meipass_path = os.path.join(sys._MEIPASS, relative_path)
+        if os.path.exists(meipass_path):
+            return meipass_path
+        # 都不存在时返回 exe 同级路径（让上层处理文件不存在的情况）
+        return exe_path
+    else:
+        # 开发模式：项目根目录
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base, relative_path)
 
 
 
@@ -37,13 +63,13 @@ class MainWindow(QMainWindow):
         self.channel = QWebChannel()
         self.bridge = WebBridge()
         self.bridge.main_window = self
+        self.bridge.web_view = self.web_view
         self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
         print("数据库连接：", self.bridge.db.engine.url)
 
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        html_path = os.path.join(base_dir, "..", "Tquant.html")  # 注意路径
+        html_path = resource_path("Tquant.html")
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
 
         # 数据更新调度器（QObject + QTimer，自动启动定时器）
@@ -59,11 +85,15 @@ class MainWindow(QMainWindow):
         self.web_view.page().fullScreenRequested.connect(self.on_fullscreen_requested)
         self.is_fullscreen = False
 
-        from backend.data_updater.daily_kline_updater import StockDailyUpdater as DailyKlineUpdater
-        QTimer.singleShot(2000, lambda: DailyKlineUpdater(self.bridge.db.engine).run())
+        # 已禁用：启动时不再自动全量更新日线数据，改为按需更新
+        # from backend.data_updater.daily_kline_updater import StockDailyUpdater as DailyKlineUpdater
+        # QTimer.singleShot(2000, lambda: DailyKlineUpdater(self.bridge.db.engine).run())
 
         # 自动恢复上次未停止的实时策略
         QTimer.singleShot(3000, lambda: self.bridge.auto_restore_realtime_strategy())
+
+        # 预加载常用股票K线缓存（后台线程，不阻塞UI）
+        QTimer.singleShot(5000, lambda: self.bridge._prewarm_kline_cache())
 
     def on_fullscreen_requested(self, request):
         request.accept()

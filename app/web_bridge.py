@@ -122,6 +122,19 @@ class WebBridge(QObject):
 
         df = DataFeed()
 
+    def _prewarm_kline_cache(self):
+        """Pre-load common stock data into DataFeed cache (background thread, non-blocking)."""
+        from concurrent.futures import ThreadPoolExecutor
+        common = ['000001', '000858', '600519', '300750', '000333',
+                  '601318', '000651', '002415', '600036', '601012']
+        def _load():
+            for code in common:
+                try:
+                    self.data_feed.get_kline_json(code)
+                except Exception:
+                    pass
+        ThreadPoolExecutor(max_workers=1).submit(_load)
+
     @Slot()
     def start_capture_window_title(self):
         """启动窗口标题捕获模式（监听全局鼠标点击）。"""
