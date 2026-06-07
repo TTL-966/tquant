@@ -1,5 +1,6 @@
-// js/codeEditor.js
+// js/codeEditor.js  v20260607 (async backtest with progress polling)
 // 策略代码编辑器：允许用户直接编写 Python 策略代码并运行回测
+console.log('[codeEditor.js] v20260607 async loaded');
 
 import { bridge, bridgeReady } from './bridge.js';
 import { bindDatePicker } from './datepicker.js';

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, Q
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import QWebEnginePage
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtCore import QUrl, Qt, QTimer
 from app.web_bridge import WebBridge
 from backend.data_updater import DataUpdateScheduler
@@ -68,6 +68,11 @@ class MainWindow(QMainWindow):
         self.web_view.page().setWebChannel(self.channel)
 
         print("数据库连接：", self.bridge.db.engine.url)
+
+        # 禁用 QWebEngine 磁盘缓存，确保每次启动加载最新 JS/HTML
+        profile = QWebEngineProfile.defaultProfile()
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        profile.clearHttpCache()
 
         html_path = resource_path("Tquant.html")
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
