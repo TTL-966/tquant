@@ -115,6 +115,8 @@ class BacktestExecutor:
         self.trade_signals = []       # 交易信号列表
         self.logs = []                # 日志列表
         self.daily_functions = []     # run_daily 注册的函数列表
+        self._index_cache = {}        # 指数数据缓存: {index_code: DataFrame}
+        self._cancelled = False       # 取消标志
 
     # ---------- 沙箱构建 ----------
     def _build_sandbox(self, context, logger):
@@ -133,6 +135,7 @@ class BacktestExecutor:
             'order_target_percent': self._order_target_percent_wrapper,
             'get_current_data': self._get_current_data_wrapper,
             'run_daily': self._run_daily_wrapper,
+            'get_index_history': self._get_index_history,
         }
         return sandbox
 
@@ -241,8 +244,10 @@ class BacktestExecutor:
 
     def _order_target_percent_wrapper(self, security, percent):
         """
-        目标仓位百分比下单。percent: 0~1 之间的数值。
-        计算总资产时包含所有持仓市值。
+        目标仓位下单。支持两种模式：
+        - percentage: percent 为 0~1 的仓位比例，按总资产百分比计算目标市值
+        - fixed_quantity: 使用 context._position_value 指定的固定股数，
+          percent > 0 表示买入，percent == 0 表示清仓
         """
         code = self._normalize_security(security)
         if self.df is None or self.current_idx < 0:
@@ -254,7 +259,28 @@ class BacktestExecutor:
         for h_shares in holdings.values():
             total_holding_value += h_shares * current_price
         total_assets = cash + total_holding_value
-        target_value = total_assets * percent
+
+        pos_mode = getattr(self._context, '_position_mode', 'percentage')
+        pos_value = getattr(self._context, '_position_value', 100)
+
+        if abs(percent) < 0.001:
+            # 清仓信号：所有持仓市值归零
+            target_value = 0
+        elif pos_mode == 'fixed_quantity':
+            # 固定数量模式：按指定股数下单，不超过可用资金
+            target_shares = min(int(pos_value), int(cash // current_price))
+            target_shares = (target_shares // 100) * 100  # A股100股整数倍
+            if target_shares <= 0:
+                self.logs.append(
+                    f"[WARN] 固定数量下单失败：资金不足 "
+                    f"(可用资金={cash:.2f}, 股价={current_price:.2f}, 请求数量={pos_value})"
+                )
+                return
+            target_value = target_shares * current_price
+        else:
+            # 比例模式：按总资产百分比计算目标市值
+            target_value = total_assets * percent
+
         reason = getattr(self._context, '_last_signal_reason', '')
         self._order_target_value_wrapper(code, target_value, reason)
 
@@ -280,6 +306,85 @@ class BacktestExecutor:
         参数 time 当前未使用，保留做扩展。
         """
         self.daily_functions.append(func)
+
+    def _get_index_history(self, index_code, count, field, strict=True):
+        """
+        获取指数最近 count 根K线的 field 值（numpy array）。
+        用于指数情绪条件判断，strict 模式下排除当前交易日数据以避免未来函数。
+
+        :param index_code: 指数代码，如 '000300.SH'
+        :param count: 需要的历史K线数量
+        :param field: 字段名，如 'close', 'open', 'volume'
+        :param strict: 是否使用严格模式（排除当日数据）
+        :return: numpy array
+        """
+        # 懒加载指数数据
+        if index_code not in self._index_cache:
+            try:
+                if hasattr(self.data_source, 'get_benchmark_kline'):
+                    # 获取完整区间数据
+                    start = self._context._start_date if hasattr(self._context, '_start_date') else '2010-01-01'
+                    end = self._context._end_date if hasattr(self._context, '_end_date') else '2099-12-31'
+                    bm_df = self.data_source.get_benchmark_kline(index_code, start, end)
+                    if bm_df.empty:
+                        self._index_cache[index_code] = None
+                        return np.array([])
+                    bm_df['trade_date'] = pd.to_datetime(bm_df['trade_date'])
+                    bm_df = bm_df.set_index('trade_date')
+                    # 计算 volume 字段（如果缺失，用默认值填充）
+                    if field == 'volume' and 'volume' not in bm_df.columns:
+                        bm_df['volume'] = 0
+                    self._index_cache[index_code] = bm_df
+                else:
+                    self._index_cache[index_code] = None
+                    return np.array([])
+            except Exception as e:
+                self.logs.append(f"[WARN] 加载指数 {index_code} 数据失败: {str(e)}")
+                self._index_cache[index_code] = None
+                return np.array([])
+
+        df = self._index_cache.get(index_code)
+        if df is None:
+            return np.array([])
+
+        current_date = self._context.current_dt
+        if current_date is None:
+            return np.array([])
+
+        current_date = pd.Timestamp(current_date)
+
+        # 找到当前日期在指数数据中的位置
+        date_was_adjusted = False
+        if current_date not in df.index:
+            # 尝试找到最近的已存在日期（向前查找）
+            available_dates = df.index[df.index <= current_date]
+            if len(available_dates) == 0:
+                return np.array([])
+            current_date = available_dates[-1]
+            date_was_adjusted = True
+
+        idx = df.index.get_loc(current_date)
+        if isinstance(idx, slice):
+            idx = idx.start
+        elif hasattr(idx, '__len__') and len(idx) > 0:
+            idx = idx[0]
+
+        if strict and not date_was_adjusted:
+            # 严格模式：排除当日数据，只取到前一日
+            end = idx  # 不包含当日
+        else:
+            end = idx + 1  # 包含当前数据点
+
+        start = max(0, end - count)
+        if start >= end:
+            return np.array([])
+
+        sub_df = df.iloc[start:end]
+        if field not in sub_df.columns:
+            return np.array([])
+        vals = sub_df[field].values.astype(float)
+
+        return vals
 
     # ---------- 持仓/现金 操作封装 ----------
     def _get_portfolio_cash(self):
@@ -324,7 +429,7 @@ class BacktestExecutor:
     # ---------- 主执行方法 ----------
     def run(self, user_code, stock_code, start_date="2010-01-01", end_date="2026-12-31", initial_cash=1000000, slippage="close",
             commission_rate=0.0003, stamp_tax_rate=0.001, slippage_cost_type="percent", slippage_cost_value=0.1,
-            benchmark_code=None):
+            benchmark_code=None, progress_callback=None):
         """
         :param user_code: 用户策略代码字符串
         :param stock_code: 股票代码，如 "000001"
@@ -358,7 +463,10 @@ class BacktestExecutor:
             if not dates or not values:
                 return self._error_result("K线数据为空")
             # values 格式：[[open, close, low, high], ...]
-            df = pd.DataFrame(values, columns=['open', 'close', 'low', 'high', 'volume'])
+            cols = ['open', 'close', 'low', 'high', 'volume']
+            if values and len(values[0]) >= 6:
+                cols.append('turnover_rate_f')
+            df = pd.DataFrame(values, columns=cols)
             df.index = pd.to_datetime(dates)
             df.index.name = 'date'
 
@@ -433,7 +541,10 @@ class BacktestExecutor:
         }
         context.current_dt = None
         context.stock = stock_code
+        context._start_date = start_date
+        context._end_date = end_date
         self._context = context   # 给内部方法访问
+        self._index_cache = {}    # 每次回测重置指数缓存
 
         # 3. 日志模块
         logger = Logger(self)
@@ -484,6 +595,16 @@ class BacktestExecutor:
             bar = df.iloc[idx]
             context.current_dt = df.index[idx]
             self.current_idx = idx
+
+            if progress_callback:
+                try:
+                    progress_callback(idx, total_rows)
+                except Exception:
+                    pass
+            if self._cancelled:
+                logs.append("[INFO] 回测已被用户取消")
+                break
+
             bar_dict = {
                 'open': bar['open'],
                 'high': bar['high'],
@@ -491,6 +612,14 @@ class BacktestExecutor:
                 'close': bar['close'],
                 'volume': bar.get('volume', 0)
             }
+
+            # 先执行 run_daily 注册的函数（如更新指数条件，确保 handle_bar 可使用）
+            for dfunc in self.daily_functions:
+                try:
+                    dfunc(context)
+                except Exception as e:
+                    logs.append(f"第 {idx} 根K线 run_daily 函数出错: {str(e)}")
+
             try:
                 handle_bar(context, bar_dict)
             except NameError as e:
@@ -500,13 +629,6 @@ class BacktestExecutor:
             except Exception as e:
                 logs.append(f"第 {idx} 根K线 handle_bar 出错: {str(e)}\n{traceback.format_exc()}")
                 # 继续，不中断
-
-            # 执行 run_daily 注册的函数
-            for dfunc in self.daily_functions:
-                try:
-                    dfunc(context)
-                except Exception as e:
-                    logs.append(f"第 {idx} 根K线 run_daily 函数出错: {str(e)}")
 
             # 计算当前总资产 = 现金 + 持仓市值
             cash = context.portfolio['cash']
