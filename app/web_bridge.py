@@ -4,13 +4,12 @@ import os
 import re
 import time
 import shutil
-import subprocess
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import QObject, Slot, Signal
 from backend.data_feed import DataFeed
 from backend.strategy_engine import StrategyEngine
 from backend.trade_simulation import TradeSimulation
@@ -24,11 +23,69 @@ from backend.multi_realtime_strategy_engine import MultiRealtimeStrategyEngine
 from backend.realtime_quote_fetcher import RealtimeQuoteFetcher
 from backend.fund_flow_fetcher import FundFlowFetcher
 from backend import realtime_config
-from backend.config_manager import load_config, save_config
+from backend.config_manager import load_config, save_config, get_progress_path
 from backend.stock_updater import update_stock_if_needed, IdleUpdater
+from backend.auto_trader import create_auto_trader
+from backend.auto_trade_config import load_auto_trade_config, save_auto_trade_config
+from backend.backtest_worker import BacktestWorker
+from backend.backtest_job_manager import BacktestJobManager
 from sqlalchemy import text
+import threading
+import time
+from PySide6.QtCore import Slot, Signal
+
+try:
+    import win32gui
+    import win32con
+    from pynput import mouse
+    MOUSE_LISTENER_AVAILABLE = True
+except ImportError:
+    MOUSE_LISTENER_AVAILABLE = False
+    print("警告: pynput 或 pywin32 未安装，窗口标题捕获功能不可用")
+
+from PySide6.QtCore import QThread
+
+
+class DataUpdateWorker(QThread):
+    """后台线程：执行日线数据更新，不阻塞 UI。"""
+
+    def __init__(self, db_engine, fetcher, options, parent=None):
+        super().__init__(parent)
+        self.db_engine = db_engine
+        self.fetcher = fetcher
+        self.options = options
+
+    def run(self):
+        from backend.data_updater.daily_kline_updater import StockDailyUpdater
+        try:
+            updater = StockDailyUpdater(self.db_engine, fetcher=self.fetcher)
+            updater._update_options = self.options
+            success, msg = updater._safe_run()
+            print(f"[DataUpdateWorker] 更新完成: success={success}, msg={msg}")
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            print(f"[DataUpdateWorker] 更新异常: {e}")
+
+
+class FinancialUpdateWorker(QThread):
+    """后台线程：执行财务数据更新，不阻塞 UI。"""
+
+    def __init__(self, updater, parent=None):
+        super().__init__(parent)
+        self.updater = updater
+
+    def run(self):
+        try:
+            success, msg = self.updater._safe_run()
+            print(f"[FinancialUpdateWorker] 更新完成: success={success}, msg={msg}")
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            print(f"[FinancialUpdateWorker] 更新异常: {e}")
+
 
 class WebBridge(QObject):
+    coordinate_captured = Signal(int, int, str)
+    window_title_captured = Signal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.data_feed = DataFeed()
@@ -43,14 +100,94 @@ class WebBridge(QObject):
         self._multi_realtime_engine = None  # 多股实时策略引擎
         self._quote_fetcher = RealtimeQuoteFetcher()  # 批量行情获取器
         self._all_realtime_signals = []   # 所有实时信号历史
-        self._update_process = None   # 日线数据更新子进程句柄
-        self._financial_update_process = None  # 财务数据更新子进程句柄
+        self._update_thread = None   # 日线数据更新后台线程
+        self._fin_update_thread = None  # 财务数据更新后台线程
         self._idle_updater = None     # 空闲后台更新器
         self._user_active = True      # 用户活动标志
 
+        self.auto_trader = create_auto_trader(self.db.engine)
+        self.auto_trader.notification.connect(self._on_auto_trade_notification)
+        self.auto_trader.request_confirm.connect(self._on_auto_trade_confirm_request)
+
+        self._backtest_job_manager = BacktestJobManager(self)
+
+        self._capturing_coordinate = False
+        self._capture_target = ''
+        self._capture_thread = None
+        self.coordinate_captured.connect(self._on_coordinate_captured)
+
+        self._capturing_title = False
+        self._mouse_listener = None
+        self.window_title_captured.connect(self._on_window_title_captured)
+
         df = DataFeed()
 
+    @Slot()
+    def start_capture_window_title(self):
+        """启动窗口标题捕获模式（监听全局鼠标点击）。"""
+        if not MOUSE_LISTENER_AVAILABLE:
+            self.window_title_captured.emit("")
+            return
 
+        if self._capturing_title:
+            return
+
+        self._capturing_title = True
+
+        def on_click(x, y, button, pressed):
+            if not self._capturing_title:
+                return False
+            if pressed and button == mouse.Button.left:
+                # 获取点击位置的窗口句柄
+                hwnd = win32gui.WindowFromPoint((x, y))
+                # 获取窗口标题
+                title = win32gui.GetWindowText(hwnd)
+                if title:
+                    self.window_title_captured.emit(title)
+                else:
+                    self.window_title_captured.emit("")
+                self._stop_capture()
+                return False  # 停止监听
+            return True
+
+        # 在后台线程启动监听器
+        def run_listener():
+            with mouse.Listener(on_click=on_click) as listener:
+                self._mouse_listener = listener
+                listener.join()
+            self._mouse_listener = None
+
+        threading.Thread(target=run_listener, daemon=True).start()
+
+        # 设置超时自动取消（如10秒）
+        def auto_timeout():
+            time.sleep(10)
+            if self._capturing_title:
+                self._stop_capture()
+                self.window_title_captured.emit("")  # 超时返回空
+
+        threading.Thread(target=auto_timeout, daemon=True).start()
+
+    def _stop_capture(self):
+        self._capturing_title = False
+        if self._mouse_listener:
+            self._mouse_listener.stop()
+            self._mouse_listener = None
+
+    @Slot()
+    def cancel_capture_window_title(self):
+        """取消捕获（前端可调用）。"""
+        self._stop_capture()
+        self.window_title_captured.emit("")
+
+    def _on_window_title_captured(self, title):
+        """窗口标题捕获结果 → 推送到前端。"""
+        try:
+            safe = json.dumps(title) if title else '""'
+            js = f"if(window.onWindowTitleCaptured)window.onWindowTitleCaptured({safe})"
+            self.web_view.page().runJavaScript(js)
+        except Exception:
+            pass
 
     @staticmethod
     def _to_json_safe(obj):
@@ -561,259 +698,103 @@ class WebBridge(QObject):
         ]
         return json.dumps(benchmarks, ensure_ascii=False)
 
-    # ---- 新增自定义策略回测槽 ----
+    # ---- 新增自定义策略回测槽（异步：立即返回 job_id，后台执行） ----
     @Slot(str, result=str)
     def run_custom_backtest(self, params_json):
-        """
-        接收 JSON 字符串，格式:
-        {
-            "code": "...",          # 策略代码
-            "stock": "000001",     # 股票代码
-            "start": "2010-01-01",
-            "end": "2026-12-31",
-            "cash": 1000000,
-            "benchmark_code": "000300.SH"  # 可选：基准指数代码
-        }
-        """
+        """Start single-stock backtest in background QThread. Returns {success, job_id} immediately."""
         try:
             params = json.loads(params_json)
-            user_code = params.get("code", "")
-            stock_code = params.get("stock", "000001")
-            start = params.get("start", "2010-01-01")
-            end = params.get("end", "2026-12-31")
-            cash = params.get("cash", 1000000)
-            slippage = params.get("slippage", "close")
-            commission = params.get("commission_rate", 0.0003)
-            stamp_tax = params.get("stamp_tax_rate", 0.001)
-            slippage_cost_type = params.get("slippage_cost_type", "percent")
-            slippage_cost_value = params.get("slippage_cost_value", 0.1)
-            benchmark_code = params.get("benchmark_code", None)
-
-            result = self.backtest_executor.run(user_code, stock_code, start, end, initial_cash=cash, slippage=slippage,
-                                                commission_rate=commission, stamp_tax_rate=stamp_tax,
-                                                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value,
-                                                benchmark_code=benchmark_code)
-
-            print(f"[Bridge] 后端日志(最后5条): {result.get('logs', [])[-5:]}", flush=True)
-
-            if "error" in result:
-                return json.dumps({"success": False, "error": result["error"]})
-            return json.dumps(WebBridge._to_json_safe({
-                "success": True,
-                "signals": result.get("signals", []),
-                "equity_curve": result.get("equity_curve", []),
-                "metrics": result.get("metrics", {}),
-                "logs": result.get("logs", []),
-                "benchmark_equity_curve": result.get("benchmark_equity_curve"),
-                "benchmark_code": result.get("benchmark_code"),
-            }))
+            params["mode"] = "single"
+            worker = BacktestWorker(params)
+            job_id = self._backtest_job_manager.start_job(worker)
+            return json.dumps({"success": True, "job_id": job_id, "message": "回测已启动"})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
-    # ---- 多股组合回测槽 ----
+    # ---- 多股组合回测槽（异步） ----
     @Slot(str, result=str)
     def run_multi_backtest(self, params_json):
-        """
-        接收 JSON 字符串，格式:
-        {
-            "code": "...",              # 策略代码（含 STOCK_CODE_PLACEHOLDER 占位符）
-            "stocks": ["000001","000858","300750"],
-            "start": "2020-01-01",
-            "end": "2025-12-31",
-            "cash": 1000000,
-            "slippage": "close"
-        }
-        返回 JSON:
-        {
-            "success": true,
-            "signals": [{"date":"...","code":"000001","type":"buy","price":12.35,"shares":800}, ...],
-            "equity_curve": [{"date":"...","value":1000000}, ...],
-            "metrics": {...},
-            "logs": [...],
-            "errors": []
-        }
-        """
+        """Start multi-stock backtest in background QThread. Returns {success, job_id} immediately."""
         try:
             params = json.loads(params_json)
-            user_code = params.get("code", "")
-            stocks = params.get("stocks", [])
-            start = params.get("start", "2010-01-01")
-            end = params.get("end", "2026-12-31")
-            cash = params.get("cash", 1000000)
-            slippage = params.get("slippage", "close")
-            commission = params.get("commission_rate", 0.0003)
-            stamp_tax = params.get("stamp_tax_rate", 0.001)
-            slippage_cost_type = params.get("slippage_cost_type", "percent")
-            slippage_cost_value = params.get("slippage_cost_value", 0.1)
-            benchmark_code = params.get("benchmark_code", None)
-
-            if not user_code:
-                return json.dumps({"success": False, "error": "策略代码为空"})
-            if not stocks or len(stocks) == 0:
-                return json.dumps({"success": False, "error": "股票列表为空"})
-
-            # 去重并清理股票代码
-            stocks = list(dict.fromkeys([s.split('.')[0] for s in stocks]))
-
-            result = self.multi_backtest_executor.run(
-                user_code, stocks, start, end,
-                initial_cash=cash, slippage=slippage,
-                commission_rate=commission, stamp_tax_rate=stamp_tax,
-                slippage_cost_type=slippage_cost_type, slippage_cost_value=slippage_cost_value,
-                benchmark_code=benchmark_code
-            )
-
-            print(f"[Bridge] 多股回测完成: {len(stocks)}只股票, 信号{len(result.get('signals',[]))}个", flush=True)
-
-            if not result.get("success"):
-                return json.dumps({"success": False, "error": result.get("error", "回测失败")})
-
-            return json.dumps(WebBridge._to_json_safe({
-                "success": True,
-                "signals": result.get("signals", []),
-                "equity_curve": result.get("equity_curve", []),
-                "metrics": result.get("metrics", {}),
-                "logs": result.get("logs", []),
-                "errors": result.get("errors", []),
-                "stock_performance": result.get("stock_performance", []),
-                "benchmark_equity_curve": result.get("benchmark_equity_curve"),
-                "benchmark_code": result.get("benchmark_code"),
-            }))
+            params["mode"] = "multi"
+            worker = BacktestWorker(params)
+            job_id = self._backtest_job_manager.start_job(worker)
+            return json.dumps({"success": True, "job_id": job_id, "message": "多股回测已启动"})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
-    # ---- 多策略对比回测 ----
+    # ---- 多策略对比回测（异步） ----
 
     @Slot(str, result=str)
     def run_compare_backtest(self, params_json):
-        """
-        接收 JSON 字符串，格式:
-        {
-            "stock_pool": ["000001","000858"],   # 多股模式（优先）
-            "stock_code": "000001",              # 单股模式（兼容旧版）
-            "start": "2020-01-01",
-            "end": "2025-12-31",
-            "cash": 1000000,
-            "slippage": "close",
-            "commission_rate": 0.0003,
-            "stamp_tax_rate": 0.001,
-            "slippage_cost_type": "percent",
-            "slippage_cost_value": 0.1,
-            "variations": [
-                { "name": "MA5-MA20", "code": "import numpy as np\\n..." },
-                { "name": "MA10-MA30", "code": "import numpy as np\\n..." }
-            ]
-        }
-        返回 JSON:
-        {
-            "success": true,
-            "results": [{ name, equity_curve, metrics, signals, stock_performance }],
-            "errors": []
-        }
-        """
+        """Start compare backtest in background QThread. Returns {success, job_id} immediately."""
         try:
             params = json.loads(params_json)
             stock_pool = params.get("stock_pool", None)
             stock_code = params.get("stock_code", "000001")
-            start = params.get("start", "2010-01-01")
-            end = params.get("end", "2026-12-31")
-            cash = params.get("cash", 1000000)
-            slippage = params.get("slippage", "close")
-            commission = params.get("commission_rate", 0.0003)
-            stamp_tax = params.get("stamp_tax_rate", 0.001)
-            slippage_cost_type = params.get("slippage_cost_type", "percent")
-            slippage_cost_value = params.get("slippage_cost_value", 0.1)
-            variations = params.get("variations", [])
-            benchmark_code = params.get("benchmark_code", None)
 
-            if not variations or len(variations) == 0:
+            variations = params.get("variations", [])
+            if not variations:
                 return json.dumps({"success": False, "error": "变体列表为空"})
 
-            # 判断回测模式：stock_pool 存在且长度 > 1 使用多股组合回测
             if stock_pool and isinstance(stock_pool, list) and len(stock_pool) > 0:
                 stock_pool = list(dict.fromkeys([s.split('.')[0] for s in stock_pool]))
-                use_multi = len(stock_pool) > 1
             else:
                 stock_pool = [stock_code.split('.')[0]]
-                use_multi = False
 
-            results = []
-            errors = []
+            params["mode"] = "compare"
+            params["stock_pool"] = stock_pool
+            params["use_multi"] = len(stock_pool) > 1
 
-            def run_single_variation(variation):
-                """执行单个变体回测，返回 (name, result_dict, error_str)。"""
-                name = variation.get("name", "未命名")
-                code = variation.get("code", "")
-                try:
-                    if not code:
-                        return (name, None, "变体代码为空")
-
-                    from backend.data_feed import DataFeed
-                    data_feed = DataFeed()
-
-                    if use_multi:
-                        from backend.multi_backtest_executor import MultiBacktestExecutor
-                        executor = MultiBacktestExecutor(data_feed)
-                        result = executor.run(
-                            code, stock_pool, start, end,
-                            initial_cash=cash, slippage=slippage,
-                            commission_rate=commission, stamp_tax_rate=stamp_tax,
-                            slippage_cost_type=slippage_cost_type,
-                            slippage_cost_value=slippage_cost_value,
-                            benchmark_code=benchmark_code
-                        )
-                    else:
-                        from backend.backtest_executor import BacktestExecutor
-                        executor = BacktestExecutor(data_feed)
-                        result = executor.run(
-                            code, stock_pool[0], start, end,
-                            initial_cash=cash, slippage=slippage,
-                            commission_rate=commission, stamp_tax_rate=stamp_tax,
-                            slippage_cost_type=slippage_cost_type,
-                            slippage_cost_value=slippage_cost_value,
-                            benchmark_code=benchmark_code
-                        )
-
-                    if not result.get("success") and "error" in result:
-                        return (name, None, result["error"])
-
-                    return (name, {
-                        "name": name,
-                        "equity_curve": result.get("equity_curve", []),
-                        "metrics": result.get("metrics", {}),
-                        "signals": result.get("signals", []),
-                        "logs": result.get("logs", []),
-                        "stock_performance": result.get("stock_performance", []),
-                        "benchmark_equity_curve": result.get("benchmark_equity_curve"),
-                        "benchmark_code": result.get("benchmark_code"),
-                    }, None)
-                except Exception as e:
-                    traceback.print_exc(file=sys.stderr)
-                    return (name, None, str(e))
-
-            # 并行执行（最多5个线程）
-            with ThreadPoolExecutor(max_workers=min(len(variations), 5)) as executor:
-                futures = {executor.submit(run_single_variation, v): v for v in variations}
-                for future in as_completed(futures):
-                    name, result_dict, error_str = future.result()
-                    if result_dict is not None:
-                        results.append(result_dict)
-                    if error_str is not None:
-                        errors.append({"name": name, "error": error_str})
-
-            # 保持变体原始顺序
-            results.sort(key=lambda r: [v.get("name", "") for v in variations].index(r["name"])
-                         if r["name"] in [v.get("name", "") for v in variations] else 999)
-
-            return json.dumps(WebBridge._to_json_safe({
-                "success": True,
-                "results": results,
-                "errors": errors
-            }))
+            worker = BacktestWorker(params)
+            job_id = self._backtest_job_manager.start_job(worker)
+            return json.dumps({"success": True, "job_id": job_id, "message": "对比回测已启动"})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    # ── 异步回测进度/结果/取消 ──
+
+    @Slot(str, result=str)
+    def get_backtest_progress(self, job_id):
+        """Poll progress of a running backtest job. Returns {status, current, total}."""
+        try:
+            progress = self._backtest_job_manager.get_progress(job_id)
+            return json.dumps(progress)
+        except Exception as e:
+            return json.dumps({"status": "error", "error": str(e)})
+
+    @Slot(str, result=str)
+    def get_backtest_result(self, job_id):
+        """Get the completed backtest result. Returns {ready: false} if still running."""
+        try:
+            result = self._backtest_job_manager.get_result(job_id)
+            if result is None:
+                return json.dumps({"ready": False})
+            return json.dumps({"ready": True, "result": WebBridge._to_json_safe(result)})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"ready": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def cancel_backtest(self, job_id):
+        """Cancel a running backtest job."""
+        try:
+            self._backtest_job_manager.cancel_job(job_id)
+            return json.dumps({"success": True})
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def cleanup_backtest(self, job_id):
+        """Remove a finished job from memory."""
+        try:
+            self._backtest_job_manager.cleanup_job(job_id)
+            return json.dumps({"success": True})
+        except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
     @Slot(str, result=str)
@@ -1418,6 +1399,7 @@ class WebBridge(QObject):
                 quote_interval=interval,
                 on_signal=self._on_realtime_signal,
                 on_log=None,
+                auto_trader=self.auto_trader,
             )
             self._realtime_engine.start()
             return json.dumps({"success": True, "message": "实时策略已启动"})
@@ -1519,6 +1501,7 @@ class WebBridge(QObject):
                 stamp_tax_rate=stamp_tax_rate,
                 slippage_cost_type=slippage_cost_type,
                 slippage_cost_value=slippage_cost_value,
+                auto_trader=self.auto_trader,
             )
             self._multi_realtime_engine.start()
 
@@ -1688,6 +1671,7 @@ class WebBridge(QObject):
                     stamp_tax_rate=stamp_tax_rate,
                     slippage_cost_type=slippage_cost_type,
                     slippage_cost_value=slippage_cost_value,
+                    auto_trader=self.auto_trader,
                 )
                 self._multi_realtime_engine.start()
                 print(f"[WebBridge] 已恢复实时策略 ({len(stock_codes)} 只股票)")
@@ -1838,78 +1822,66 @@ class WebBridge(QObject):
             return json.dumps({"success": False, "error": str(e)})
     # ----------------------------------------
 
-    @Slot(result=str)
-    def trigger_data_update(self):
-        """手动触发数据更新（独立子进程，避免 Baostock 与 QtWebEngine 冲突）"""
-        if self._update_process is not None and self._update_process.poll() is None:
+    @Slot(str, result=str)
+    def trigger_data_update(self, options_json=""):
+        """手动触发数据更新（使用 QThread 后台运行，不阻塞 UI）。"""
+        if self._update_thread is not None and self._update_thread.isRunning():
             return json.dumps({"success": False, "message": "已有更新进程正在运行，请稍后再试"})
 
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        script_path = os.path.join(base_dir, 'backend', 'standalone_updater.py')
-        if not os.path.exists(script_path):
-            return json.dumps({"success": False, "message": f"更新脚本不存在: {script_path}"})
-
         try:
-            startupinfo = None
-            if sys.platform == 'win32':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-            self._update_process = subprocess.Popen(
-                [sys.executable, script_path, '--quiet'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                startupinfo=startupinfo
-            )
-            self._read_update_output()
-            return json.dumps({"success": True, "message": "数据更新已在后台启动，请稍后查看后端日志"})
+            options = {}
+            if options_json and options_json.strip():
+                try:
+                    options = json.loads(options_json) if isinstance(options_json, str) else options_json
+                except Exception:
+                    pass
+
+            # 清理旧进度文件
+            try:
+                progress_path = get_progress_path()
+                if os.path.exists(progress_path):
+                    os.remove(progress_path)
+            except Exception:
+                pass
+
+            # 创建 QThread worker
+            from backend.data_updater.daily_kline_updater import StockDailyUpdater, create_fetcher
+            from backend.config_manager import load_config as _load_cfg
+            cfg = _load_cfg()
+            fetcher = create_fetcher(source=cfg.get('data_source', 'baostock'),
+                                     token=cfg.get('tushare_token', ''))
+            worker = DataUpdateWorker(self.db.engine, fetcher, options)
+            worker.finished.connect(lambda: self._on_data_update_done())
+            self._update_thread = worker
+            worker.start()
+
+            return json.dumps({"success": True, "message": "数据更新已在后台启动"})
         except Exception as e:
+            traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "message": f"启动更新失败: {str(e)}"})
+
+    def _on_data_update_done(self):
+        """数据更新线程完成后的回调。"""
+        print("[WebBridge] 数据更新线程结束")
 
     @Slot(result=str)
     def trigger_financial_update(self):
-        """手动触发财务数据更新（独立子进程，更新 PE/PB/ROE/总市值/流通股本等）。"""
-        if self._financial_update_process is not None and self._financial_update_process.poll() is None:
+        """手动触发财务数据更新（后台线程，更新 PE/PB/ROE/总市值/流通股本等）。"""
+        if self._fin_update_thread is not None and self._fin_update_thread.isRunning():
             return json.dumps({"success": False, "message": "财务数据更新已在运行中，请稍后再试"})
 
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        script_path = os.path.join(base_dir, 'backend', 'standalone_updater.py')
-        if not os.path.exists(script_path):
-            return json.dumps({"success": False, "message": f"更新脚本不存在: {script_path}"})
-
         try:
-            startupinfo = None
-            if sys.platform == 'win32':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-            self._financial_update_process = subprocess.Popen(
-                [sys.executable, script_path, '--type', 'financial', '--quiet'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                startupinfo=startupinfo
-            )
-            # 异步读取输出，完成后自动清空进程句柄
-            threading.Thread(target=self._read_financial_update_output, daemon=True).start()
-            return json.dumps({"success": True, "message": "财务数据更新已在后台启动（预计 3-10 分钟），请稍后查看后端日志"})
+            from backend.data_updater.financial_updater import FinancialUpdater
+            fin_updater = FinancialUpdater(self.db.engine)
+            worker = FinancialUpdateWorker(fin_updater)
+            worker.finished.connect(lambda: print("[WebBridge] 财务更新线程结束"))
+            self._fin_update_thread = worker
+            worker.start()
+
+            return json.dumps({"success": True, "message": "财务数据更新已在后台启动（预计 3-10 分钟）"})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "message": f"启动财务更新失败: {str(e)}"})
-
-    def _read_financial_update_output(self):
-        """后台线程读取财务更新子进程输出"""
-        proc = self._financial_update_process
-        if proc is None:
-            return
-        for line in proc.stdout:
-            print(f"[FinancialUpdater] {line.decode('utf-8', errors='replace').strip()}")
-        for line in proc.stderr:
-            print(f"[FinancialUpdater Error] {line.decode('utf-8', errors='replace').strip()}")
-        proc.wait()
-        success = (proc.returncode == 0)
-        msg = "财务数据更新成功" if success else f"财务数据更新失败 (返回码: {proc.returncode})"
-        print(f"[WebBridge] 财务更新子进程退出，{msg}")
-        self._financial_update_process = None
 
     # ---------- 报告导出 ----------
     @Slot(str, result=str)
@@ -1987,21 +1959,6 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
-    def _read_update_output(self):
-        """读取子进程输出并打印到控制台（后台线程，不阻塞 UI）"""
-        def read_output():
-            proc = self._update_process
-            if proc is None:
-                return
-            for line in proc.stdout:
-                print(f"[Updater] {line.decode('utf-8').strip()}")
-            for line in proc.stderr:
-                print(f"[Updater Error] {line.decode('utf-8').strip()}")
-            proc.wait()
-            print(f"[Updater] 子进程退出，返回码: {proc.returncode}")
-            self._update_process = None
-        threading.Thread(target=read_output, daemon=True).start()
-
     # ---------- 数据源配置 Slot ----------
     @Slot(bool, int, result=str)
     def save_idle_update_settings(self, enabled, days):
@@ -2016,15 +1973,52 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
+    @Slot(str, result=str)
+    def save_update_options(self, options_json):
+        """保存更新选项到 config.json。
+        options_json: {"update_kline":true,"update_turnover":false,"max_days_back":5}
+        """
+        try:
+            options = json.loads(options_json) if isinstance(options_json, str) else options_json
+            config = load_config()
+            config["update_options"] = {
+                "update_kline": options.get("update_kline", True),
+                "update_turnover": options.get("update_turnover", False),
+                "max_days_back": int(options.get("max_days_back", 0))
+            }
+            save_config(config)
+            return json.dumps({"success": True, "message": "更新选项已保存"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_update_progress(self):
+        """读取 update_progress.json，返回进度信息。"""
+        try:
+            progress_path = get_progress_path()
+            if not os.path.exists(progress_path):
+                return json.dumps({"status": "idle", "percent": 0, "message": ""})
+            with open(progress_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return json.dumps(data)
+        except Exception as e:
+            return json.dumps({"status": "error", "percent": 0, "message": str(e)})
+
     @Slot(result=str)
     def get_data_source_config(self):
-        """返回当前数据源配置（data_source, tushare_token）。"""
+        """返回当前数据源配置（data_source, tushare_token, update_options）。"""
         try:
             config = load_config()
             return json.dumps({
                 "success": True,
                 "data_source": config.get("data_source", "baostock"),
                 "tushare_token": config.get("tushare_token", ""),
+                "update_options": config.get("update_options", {
+                    "update_kline": True,
+                    "update_turnover": False,
+                    "max_days_back": 0
+                }),
             })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
@@ -2105,17 +2099,29 @@ class WebBridge(QObject):
     # ---------- 按需更新 & 空闲后台更新 Slot ----------
     @Slot(str, result=str)
     def ensure_stock_updated(self, code):
-        """按需更新单只股票日线数据（后台线程执行，立即返回）。"""
         try:
             if not code or not code.strip():
                 return json.dumps({"success": False, "error": "代码为空"})
-            threading.Thread(
-                target=lambda: update_stock_if_needed(code.strip(), self.db.engine),
-                daemon=True
-            ).start()
+
+            def do_update():
+                try:
+                    from backend.stock_updater import update_stock_if_needed
+                    print(f"[StockUpdater] 开始更新 {code}")
+                    updated = update_stock_if_needed(code.strip(), self.db.engine)
+                    print(f"[StockUpdater] {code} 更新了 {updated} 条数据")
+
+                    # ========= 关键：清除 DataFeed 的缓存 =========
+                    code_pure = code.strip().split('.')[0]
+                    if code_pure in self.data_feed._kline_cache:
+                        del self.data_feed._kline_cache[code_pure]
+                        print(f"[WebBridge] 已清除 {code_pure} 的 K 线缓存")
+                except Exception as e:
+                    print(f"[StockUpdater] {code} 更新失败: {e}")
+                    traceback.print_exc()
+
+            threading.Thread(target=do_update, daemon=True).start()
             return json.dumps({"success": True, "message": "更新任务已启动"})
         except Exception as e:
-            traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
 
     @Slot(result=str)
@@ -2187,3 +2193,224 @@ class WebBridge(QObject):
             return curve
         except Exception:
             return []
+
+    # ---------- 自动下单 Slot ----------
+    @Slot(bool)
+    def set_auto_trade_enabled(self, enabled):
+        """启用/禁用自动真实下单。"""
+        self.auto_trader.enabled = enabled
+        save_auto_trade_config({"enabled": enabled})
+        self.auto_trader.config['enabled'] = enabled
+
+    @Slot(str)
+    def set_auto_trade_mode(self, mode):
+        """切换自动下单模式 (pyautogui / easytrader)，重新创建 trader 实例。"""
+        if mode not in ('pyautogui', 'easytrader'):
+            return
+        save_auto_trade_config({"mode": mode})
+        old_trader = self.auto_trader
+        self.auto_trader = create_auto_trader(self.db.engine)
+        self.auto_trader.notification.connect(self._on_auto_trade_notification)
+        self.auto_trader.request_confirm.connect(self._on_auto_trade_confirm_request)
+        self.auto_trader.enabled = old_trader.enabled
+        old_trader.notification.disconnect()
+        old_trader.request_confirm.disconnect()
+
+    @Slot(str)
+    def update_auto_trade_config(self, config_json):
+        """更新 config.json 的 auto_trader 节并重新初始化。"""
+        try:
+            updates = json.loads(config_json)
+            save_auto_trade_config(updates)
+            old_trader = self.auto_trader
+            self.auto_trader = create_auto_trader(self.db.engine)
+            self.auto_trader.notification.connect(self._on_auto_trade_notification)
+            self.auto_trader.request_confirm.connect(self._on_auto_trade_confirm_request)
+            self.auto_trader.enabled = old_trader.enabled
+            old_trader.notification.disconnect()
+            old_trader.request_confirm.disconnect()
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+
+    @Slot(str)
+    def auto_trade_confirm_response(self, response_json):
+        """处理前端确认对话框的响应。"""
+        try:
+            response = json.loads(response_json)
+            order_id = response.get('order_id', '')
+            confirmed = response.get('confirmed', False)
+            dont_ask_again = response.get('dont_ask_again_30d', False)
+            self.auto_trader.confirm_response(order_id, confirmed, dont_ask_again)
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+
+    @Slot()
+    def emergency_stop_auto_trade(self):
+        """紧急停止：禁用所有真实下单。"""
+        self.auto_trader.emergency_stop = True
+        self.auto_trader.enabled = False
+        save_auto_trade_config({"emergency_stop": True, "enabled": False})
+
+    @Slot()
+    def reset_emergency_stop(self):
+        """重置紧急停止状态。"""
+        self.auto_trader.emergency_stop = False
+        save_auto_trade_config({"emergency_stop": False})
+
+    @Slot(str, str, float, int)
+    def manual_test_auto_order(self, stock_code, action, price, volume):
+        """手动测试下单（不依赖策略信号）。"""
+        threading.Thread(
+            target=self.auto_trader.execute_order,
+            args=(stock_code, action, price, volume),
+            daemon=True
+        ).start()
+
+    @Slot(result=str)
+    def get_auto_trade_config(self):
+        """返回当前自动下单配置。"""
+        try:
+            config = load_auto_trade_config()
+            return json.dumps({"success": True, "config": config})
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_auto_trade_logs(self):
+        """返回最近100条下单记录。"""
+        try:
+            from backend.auto_trade_logger import get_order_logs
+            logs = get_order_logs(self.db.engine, limit=100)
+            return json.dumps({"success": True, "logs": logs})
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    def _on_auto_trade_notification(self, data):
+        """自动下单通知 → 推送到前端。"""
+        try:
+            js = f"if(window.onAutoTradeNotification)window.onAutoTradeNotification({json.dumps(data, ensure_ascii=False)})"
+            self.web_view.page().runJavaScript(js)
+        except Exception:
+            pass
+
+    def _on_auto_trade_confirm_request(self, data):
+        """确认请求 → 推送到前端弹窗。"""
+        try:
+            js = f"if(window.onAutoTradeConfirmRequest)window.onAutoTradeConfirmRequest({json.dumps(data, ensure_ascii=False)})"
+            self.web_view.page().runJavaScript(js)
+        except Exception:
+            pass
+
+    # ---------- 鼠标坐标捕获 ----------
+    @Slot(str)
+    def start_coordinate_capture(self, target_field):
+        """启动坐标捕获模式。target_field: 'code' | 'price' | 'volume'"""
+        if self._capturing_coordinate:
+            self._stop_capture()
+        self._capturing_coordinate = True
+        self._capture_target = target_field
+        self._capture_thread = threading.Thread(target=self._coordinate_listener, daemon=True)
+        self._capture_thread.start()
+
+    @Slot()
+    def cancel_coordinate_capture(self):
+        """取消坐标捕获。"""
+        self._stop_capture()
+        self.coordinate_captured.emit(-1, -1, 'cancelled')
+
+    def _stop_capture(self):
+        self._capturing_coordinate = False
+        self._capture_target = ''
+
+    def _coordinate_listener(self):
+        """后台线程：监听 Ctrl+左键 组合获取坐标，30 秒超时自动退出。"""
+        try:
+            from pynput import mouse
+        except ImportError:
+            self.coordinate_captured.emit(-2, -2, 'error')
+            self._stop_capture()
+            return
+
+        captured = [False]
+        result = [None, None]
+
+        def on_click(x, y, button, pressed):
+            if captured[0]:
+                return False
+            if pressed and button == mouse.Button.left:
+                try:
+                    import keyboard
+                    if keyboard.is_pressed('ctrl'):
+                        captured[0] = True
+                        result[0], result[1] = x, y
+                        return False
+                except ImportError:
+                    pass
+            return True
+
+        listener = None
+        try:
+            listener = mouse.Listener(on_click=on_click)
+            listener.start()
+            start = time.time()
+            timeout = 30
+            while self._capturing_coordinate and not captured[0] and (time.time() - start) < timeout:
+                time.sleep(0.1)
+        except Exception as e:
+            print(f"[WebBridge] 坐标捕获监听异常: {e}", flush=True)
+        finally:
+            self._capturing_coordinate = False
+            if listener and listener.is_alive():
+                listener.stop()
+
+        if captured[0] and result[0] is not None:
+            self.coordinate_captured.emit(result[0], result[1], self._capture_target)
+        else:
+            self.coordinate_captured.emit(-1, -1, 'timeout')
+
+    def _on_coordinate_captured(self, x, y, target):
+        """坐标捕获结果 → 推送到前端。"""
+        try:
+            data = json.dumps({"x": x, "y": y, "target": target})
+            js = f"if(window.onCoordinateCaptured)window.onCoordinateCaptured({data})"
+            self.web_view.page().runJavaScript(js)
+        except Exception:
+            pass
+
+    # ---------- 获取活动窗口标题 ----------
+    @Slot(result=str)
+    def get_active_window_title(self):
+        """获取当前活动窗口的标题，用于自动填充 pyautogui 的 window_title 配置。"""
+        title = _get_active_window_title_pygetwindow()
+        if title:
+            return title
+        title = _get_active_window_title_win32()
+        return title if title else ""
+
+
+def _get_active_window_title_pygetwindow():
+    try:
+        import pygetwindow as gw
+        active = gw.getActiveWindow()
+        if active and active.title:
+            return active.title
+    except Exception:
+        pass
+    return ""
+
+
+def _get_active_window_title_win32():
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length == 0:
+            return ""
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value
+    except Exception:
+        pass
+    return ""
