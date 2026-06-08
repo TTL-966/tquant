@@ -1,0 +1,67 @@
+● Tquant 量化工作站 — 文件说明
+  ================================
+
+  入口
+    main.py                    Qt 桌面壳（简化版，仅加载 HTML）
+    app/main_window.py         Qt 桌面壳（完整版，含调度器/快捷键/策略恢复）
+
+  核心桥接
+    app/web_bridge.py (86K)    Python ↔ JS 桥接层（含异步回测 API + 实时策略）
+
+  数据库
+    backend/db.py              SQLite 封装：建表、K线查询、股票基础信息
+
+  数据获取（落库）
+    backend/data_updater/daily_kline_updater.py   日K线增量更新（Tushare Pro）
+    backend/data_updater/financial_updater.py     财务数据更新（PE/PB/ROE 等）
+    backend/data_updater/concept_updater.py       概念板块更新
+    backend/data_updater/index_updater_akshare.py 指数成分股更新
+    backend/data_updater/scheduler.py             定时调度器
+    backend/base_updater.py                       更新器基类（日志/异常包装）
+    backend/standalone_updater.py                 命令行独立更新入口
+
+  数据获取（在线，不落库）
+    backend/data_feed.py           K线读取+进程级缓存+周期聚合（日/周/月）
+    backend/realtime_quote_fetcher.py  实时行情（腾讯财经 → 新浪备用）
+    backend/fund_flow_fetcher.py       资金流向（东方财富 API → 同花顺备用）
+
+  策略引擎
+    backend/backtest_executor.py        单股回测引擎
+    backend/multi_backtest_executor.py  多股组合回测引擎
+    backend/backtest_worker.py          QThread 回测工作线程（异步，进度+取消）NEW
+    backend/backtest_job_manager.py     回测任务管理器（追踪/缓存/取消）NEW
+    backend/realtime_strategy_engine.py 实时策略引擎-单股（asyncio+aiohttp）v1.5重写
+    backend/multi_realtime_strategy_engine.py 实时策略引擎-多股（asyncio+aiohttp）v1.5重写
+    backend/async_quote_fetcher.py      异步行情获取器（aiohttp）NEW
+    backend/trade_simulation.py         交易模拟
+
+  业务功能
+    backend/stock_screener.py (91K)  选股器（最大单文件）
+    backend/report_exporter.py       回测/实盘报告导出
+    backend/everydaystock.py         每日选股
+    backend/industry.py              行业分类查询
+    backend/sync_new_stocks.py       新股同步
+
+  前端 JS（加载于 Tquant.html）
+    js/main.js                前端主入口
+    js/navigation.js (129K)   导航/UI 交互
+    js/chartRenderer.js       ECharts K线图渲染
+    js/strategyBuilder.js     策略构建器
+    js/strategyUtils.js       策略工具函数
+    js/strategyTemplates.js   策略模板
+    js/stockScreener.js       选股器前端
+    js/realtimeSim.js         实时策略模拟
+    js/compareView.js         策略对比视图
+    js/compareStrategy.js     策略对比逻辑
+    js/indicators.js          技术指标计算
+    js/SubChartManager.js     副图管理
+    js/bridge.js              JS 端桥接初始化
+    js/logger.js              日志模块
+
+  其他
+    scripts/migrate_mysql_to_sqlite.py   MySQL → SQLite 迁移
+    strategies/strategies.json           策略配置存储
+    tests/                               测试用例
+    API/                                 API 文档
+    Tquant.html                          SPA 前端页面
+    tquant.db (2.1GB)                    SQLite 数据库
