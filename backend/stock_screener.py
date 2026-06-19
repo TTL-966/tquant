@@ -133,14 +133,17 @@ class StockScreener:
             concept_match = pre_filters.get('concept_match', 'any')
             concept_set = set(concepts)
             try:
-                sql = text("""
+                # Build dynamic placeholders: IN (:c0, :c1, ...)
+                placeholders = ', '.join([f':c{i}' for i in range(len(concepts))])
+                params = {f'c{i}': concepts[i] for i in range(len(concepts))}
+                sql = text(f"""
                     SELECT sc.ts_code, c.concept_name
                     FROM stock_concept sc
                     JOIN concept c ON sc.concept_id = c.concept_id
-                    WHERE c.concept_name IN :concept_list
+                    WHERE c.concept_name IN ({placeholders})
                 """)
                 with db_engine.connect() as conn:
-                    rows = conn.execute(sql, {"concept_list": tuple(concepts)}).fetchall()
+                    rows = conn.execute(sql, params).fetchall()
                 # Group matched concept names per pure code
                 code_matches = {}
                 for r in rows:
