@@ -84,6 +84,8 @@ class StockScreener:
             'turnover_ratio': self._batch_turnover_ratio,
         }
 
+        print("StockScreener 初始化成功")
+
     @staticmethod
     def _apply_pre_filters(input_codes, db_engine, pre_filters):
         """Apply DB-sourced pre-filters sequentially.
@@ -131,15 +133,14 @@ class StockScreener:
             concept_match = pre_filters.get('concept_match', 'any')
             concept_set = set(concepts)
             try:
-                placeholders = ','.join([f"'{c}'" for c in concepts])
-                sql = text(f"""
+                sql = text("""
                     SELECT sc.ts_code, c.concept_name
                     FROM stock_concept sc
                     JOIN concept c ON sc.concept_id = c.concept_id
-                    WHERE c.concept_name IN ({placeholders})
+                    WHERE c.concept_name IN :concept_list
                 """)
                 with db_engine.connect() as conn:
-                    rows = conn.execute(sql).fetchall()
+                    rows = conn.execute(sql, {"concept_list": tuple(concepts)}).fetchall()
                 # Group matched concept names per pure code
                 code_matches = {}
                 for r in rows:
@@ -161,76 +162,51 @@ class StockScreener:
             except Exception as e:
                 print(f"[PreFilter] 概念筛选失败: {e}")
 
-        # 3. Market cap filter
+        # 3-4. Market cap and float shares filter (combined query)
         mc_min = pre_filters.get('market_cap_min')
         mc_max = pre_filters.get('market_cap_max')
-        if mc_min is not None or mc_max is not None:
-            try:
-                fin_df = pd.read_sql("SELECT ts_code, total_mv FROM stock_financial", db_engine)
-                # Parse numeric values
-                mc_min_v = float(mc_min) if mc_min not in (None, '') else None
-                mc_max_v = float(mc_max) if mc_max not in (None, '') else None
-                fin_df['code'] = fin_df['ts_code'].str.replace(
-                    r'\.(SZ|SH|BJ)$', '', regex=True
-                )
-                valid_codes = set()
-                for _, row in fin_df.iterrows():
-                    mv = row['total_mv']
-                    if mv is None:
-                        continue
-                    ok = True
-                    if mc_min_v is not None and mv < mc_min_v:
-                        ok = False
-                    if mc_max_v is not None and mv > mc_max_v:
-                        ok = False
-                    if ok:
-                        valid_codes.add(row['code'])
-                if codes is None:
-                    codes = list(valid_codes)
-                else:
-                    codes = [c for c in codes if c in valid_codes]
-                print(f"[PreFilter] 市值 {mc_min_v}~{mc_max_v}亿: {len(codes)} 只")
-                if not codes:
-                    return []
-            except Exception as e:
-                print(f"[PreFilter] 市值筛选失败: {e}")
-
-        # 4. Float shares filter
         fs_min = pre_filters.get('float_shares_min')
         fs_max = pre_filters.get('float_shares_max')
-        if fs_min is not None or fs_max is not None:
+
+        if mc_min is not None or mc_max is not None or fs_min is not None or fs_max is not None:
             try:
-                fin_df = pd.read_sql("SELECT ts_code, float_shares FROM stock_financial", db_engine)
+                mc_min_v = float(mc_min) if mc_min not in (None, '') else None
+                mc_max_v = float(mc_max) if mc_max not in (None, '') else None
                 fs_min_v = float(fs_min) if fs_min not in (None, '') else None
                 fs_max_v = float(fs_max) if fs_max not in (None, '') else None
+
+                fin_df = pd.read_sql(
+                    "SELECT ts_code, total_mv, float_shares FROM stock_financial",
+                    db_engine
+                )
                 fin_df['code'] = fin_df['ts_code'].str.replace(
                     r'\.(SZ|SH|BJ)$', '', regex=True
                 )
-                valid_codes = set()
-                for _, row in fin_df.iterrows():
-                    fs = row['float_shares']
-                    if fs is None:
-                        continue
-                    ok = True
-                    if fs_min_v is not None and fs < fs_min_v:
-                        ok = False
-                    if fs_max_v is not None and fs > fs_max_v:
-                        ok = False
-                    if ok:
-                        valid_codes.add(row['code'])
+
+                # Vectorized boolean mask
+                mask = pd.Series(True, index=fin_df.index)
+                mask &= fin_df['total_mv'].notna() & fin_df['float_shares'].notna()
+                if mc_min_v is not None:
+                    mask &= fin_df['total_mv'] >= mc_min_v
+                if mc_max_v is not None:
+                    mask &= fin_df['total_mv'] <= mc_max_v
+                if fs_min_v is not None:
+                    mask &= fin_df['float_shares'] >= fs_min_v
+                if fs_max_v is not None:
+                    mask &= fin_df['float_shares'] <= fs_max_v
+
+                valid_codes = set(fin_df.loc[mask, 'code'])
                 if codes is None:
                     codes = list(valid_codes)
                 else:
                     codes = [c for c in codes if c in valid_codes]
-                print(f"[PreFilter] 股本 {fs_min_v}~{fs_max_v}亿股: {len(codes)} 只")
+                print(f"[PreFilter] 市值{mc_min_v}~{mc_max_v}亿 股本{fs_min_v}~{fs_max_v}亿股: {len(codes)} 只")
                 if not codes:
                     return []
             except Exception as e:
-                print(f"[PreFilter] 股本筛选失败: {e}")
+                print(f"[PreFilter] 市值/股本筛选失败: {e}")
 
         return codes if codes else []
-
-        print("StockScreener 初始化成功")
 
     # ── 单股 public API ──────────────────────────────────────────
 
