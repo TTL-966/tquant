@@ -238,7 +238,8 @@ class StockScreener:
 
     def screen_stocks_batch(self, cards: list, stock_pool: list = None,
                             start_date: str = None, end_date: str = None,
-                            logic: str = "AND") -> list:
+                            logic: str = "AND",
+                            pre_filters: dict = None) -> list:
         """批量选股：对全市场（或指定股票池）执行卡片条件筛选。
 
         Args:
@@ -252,6 +253,16 @@ class StockScreener:
             [{ "code": "000001", "name": "平安银行", "trigger_date": "2024-01-15",
                "details": {"ma_cross": true, "ma5": 12.34, "ma20": 12.10, ...} }, ...]
         """
+        # Apply pre-filters to narrow stock pool before data loading
+        if pre_filters and any(pre_filters.values()):
+            print(f"[Screener] 预筛选参数: {pre_filters}")
+            filtered = self._apply_pre_filters(stock_pool, self.db.engine, pre_filters)
+            print(f"[Screener] 预筛选后股票池: {len(filtered) if filtered else 0} 只")
+            if filtered is not None and len(filtered) == 0:
+                print("[Screener] 预筛选后股票池为空，直接返回")
+                return []
+            stock_pool = filtered
+
         print(f"[Screener] 股票池: {len(stock_pool) if stock_pool else '全市场'} 只")
         print(f"[Screener] 卡片数: {len(cards)}, 逻辑: {logic}")
 
