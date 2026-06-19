@@ -96,6 +96,10 @@ class WebBridge(QObject):
         self.backtest_executor = BacktestExecutor(self.data_feed)   # 初始化
         self.multi_backtest_executor = MultiBacktestExecutor(self.data_feed)   # 多股回测
         self.stock_screener = StockScreener(self.data_feed)
+        # In-memory caches for fast page-load (avoid DB queries on every nav click)
+        self._concept_list_cache = None
+        self._industry_list_cache = None
+        self._latest_trade_date_cache = None
         self._realtime_engine = None   # 实时策略引擎实例
         self._multi_realtime_engine = None  # 多股实时策略引擎
         self._quote_fetcher = RealtimeQuoteFetcher()  # 批量行情获取器
@@ -285,16 +289,21 @@ class WebBridge(QObject):
 
     @Slot(result=str)
     def get_latest_trading_date(self):
-        """返回数据库中全局最新交易日期。"""
+        """返回数据库中全局最新交易日期（带缓存，索引加速）"""
+        if self._latest_trade_date_cache is not None:
+            return self._latest_trade_date_cache
         try:
             with self.db.engine.connect() as conn:
                 row = conn.execute(
                     text("SELECT MAX(trade_date) FROM stock_daily_qfq_with_name")
                 ).scalar()
-            return json.dumps({"success": True, "date": str(row) if row else None})
+            self._latest_trade_date_cache = json.dumps(
+                {"success": True, "date": str(row) if row else None}
+            )
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
-            return json.dumps({"success": False, "error": str(e)})
+            self._latest_trade_date_cache = json.dumps({"success": False, "error": str(e)})
+        return self._latest_trade_date_cache
 
     @Slot(str, str, str, int, str, result=str)
     def get_kline_data(self, code, start_date="2010-01-01", end_date="2026-12-31", limit=0, period="daily"):
@@ -847,16 +856,21 @@ class WebBridge(QObject):
 
     @Slot(result=str)
     def get_concept_list(self):
-        """返回所有概念名称列表，用于前端下拉框"""
+        """返回所有概念名称列表，用于前端下拉框（带缓存）"""
+        if self._concept_list_cache is not None:
+            return self._concept_list_cache
         try:
             df = pd.read_sql("SELECT concept_name FROM concept ORDER BY concept_name", self.db.engine)
-            return json.dumps(df['concept_name'].tolist(), ensure_ascii=False)
+            self._concept_list_cache = json.dumps(df['concept_name'].tolist(), ensure_ascii=False)
         except Exception as e:
-            return json.dumps([])
+            self._concept_list_cache = json.dumps([])
+        return self._concept_list_cache
 
     @Slot(result=str)
     def get_industry_list(self):
-        """返回所有一级行业列表"""
+        """返回所有一级行业列表（带缓存）"""
+        if self._industry_list_cache is not None:
+            return self._industry_list_cache
         try:
             df = pd.read_sql(
                 "SELECT DISTINCT industry_level1 FROM stock_industry_detail "
@@ -864,9 +878,10 @@ class WebBridge(QObject):
                 "ORDER BY industry_level1",
                 self.db.engine
             )
-            return json.dumps(df['industry_level1'].tolist(), ensure_ascii=False)
+            self._industry_list_cache = json.dumps(df['industry_level1'].tolist(), ensure_ascii=False)
         except Exception as e:
-            return json.dumps([])
+            self._industry_list_cache = json.dumps([])
+        return self._industry_list_cache
 
     @Slot(str, str, str, result=str)
     def filter_stocks_by_concepts(self, codes_json, concepts_json, match_mode="any"):
