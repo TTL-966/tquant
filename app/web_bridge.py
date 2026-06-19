@@ -258,12 +258,13 @@ class WebBridge(QObject):
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"code": "", "result": False, "reason": str(e)})
 
-    @Slot(str, str, str, str, result=str)
-    def screen_stocks(self, cards_json, stock_pool_json, start_date, end_date):
-        """批量选股接口：接收卡片列表JSON、股票池JSON、起止日期，返回筛选结果"""
+    @Slot(str, str, str, str, str, result=str)
+    def screen_stocks(self, cards_json, stock_pool_json, start_date, end_date, pre_filters_json=""):
+        """批量选股接口：接收卡片列表JSON、股票池JSON、起止日期、预筛选JSON，返回筛选结果"""
         try:
             cards = json.loads(cards_json) if isinstance(cards_json, str) else cards_json
             stock_pool = json.loads(stock_pool_json) if isinstance(stock_pool_json, str) and stock_pool_json else None
+            pre_filters = json.loads(pre_filters_json) if isinstance(pre_filters_json, str) and pre_filters_json else None
             if not start_date or start_date.strip() == '':
                 start_date = None
             if not end_date or end_date.strip() == '':
@@ -274,7 +275,8 @@ class WebBridge(QObject):
                 stock_pool=stock_pool if stock_pool else None,
                 start_date=start_date,
                 end_date=end_date,
-                logic="AND"
+                logic="AND",
+                pre_filters=pre_filters
             )
 
             return json.dumps({
