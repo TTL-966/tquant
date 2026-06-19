@@ -162,28 +162,65 @@ export function renderScreenerPage(container) {
                 设置技术指标条件，从全市场或指定股票池中筛选符合条件的股票。可按条件模板保存和加载。
             </p>
 
-            <!-- 股票池 / 日期 / 逻辑 -->
+            <!-- ── 股票池预筛选（折叠面板） ── -->
+            <div class="card" style="margin-bottom:12px;background:#0e1220;border:1px solid #323d5a;border-radius:12px;padding:12px 16px;">
+            <div id="screenerPrefilterHeader" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+            <span style="color:#fff;font-weight:600;font-size:14px;">📦 股票池预筛选</span>
+            <span id="screenerPrefilterToggle" style="color:#9aa9cc;font-size:12px;">▲ 折叠</span>
+            </div>
+            <div id="screenerPrefilterBody">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 8px;">
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="all"' + (poolSource === 'all' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 全市场</label>
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="hs300"' + (poolSource === 'hs300' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 沪深300</label>
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="zz500"' + (poolSource === 'zz500' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 中证500</label>
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="zz1000"' + (poolSource === 'zz1000' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 中证1000</label>
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="cyb"' + (poolSource === 'cyb' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 创业板</label>
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="kc50"' + (poolSource === 'kc50' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 科创50</label>
+            <label style="color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;padding:4px 10px;"><input type="radio" name="screenerPoolSource" value="custom"' + (poolSource === 'custom' ? ' checked' : '') + ' style="accent-color:#4f7eff;"> 自定义</label>
+            </div>
+            <textarea id="poolCustomCodes" rows="2" placeholder="输入股票代码，每行一个或用逗号分隔"
+            style="display:' + (poolSource === 'custom' ? 'block' : 'none') + ';width:100%;background:#1e253b;border:1px solid #323d5a;border-radius:12px;color:#fff;padding:6px 10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;margin-bottom:8px;">' + escapeHtml(poolCustomCodes) + '</textarea>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span style="color:#9aa9cc;font-size:11px;">筛选:</span>
+            <span style="color:#7a8ba8;font-size:10px;">总市值(亿)</span>
+            <input id="poolMarketCapMin" type="number" min="0" step="1" placeholder="最小" value="' + escapeHtml(poolMarketCapMin) + '"
+            style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">
+            <span style="color:#7a8ba8;font-size:10px;">-</span>
+            <input id="poolMarketCapMax" type="number" min="0" step="1" placeholder="最大" value="' + escapeHtml(poolMarketCapMax) + '"
+            style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">
+            <span style="color:#7a8ba8;font-size:10px;">股本(亿股)</span>
+            <input id="poolFloatSharesMin" type="number" min="0" step="0.1" placeholder="最小" value="' + escapeHtml(poolFloatSharesMin) + '"
+            style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">
+            <span style="color:#7a8ba8;font-size:10px;">-</span>
+            <input id="poolFloatSharesMax" type="number" min="0" step="0.1" placeholder="最大" value="' + escapeHtml(poolFloatSharesMax) + '"
+            style="width:60px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;">
+            <select id="poolIndustryFilter" style="display:none;">
+            <option value="">-- 行业(可选) --</option>
+            </select>
+            <input id="poolIndustryFilterInput" type="text" readonly placeholder="-- 行业(可选) --"
+            style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;max-width:160px;cursor:pointer;">
+            <input id="poolConceptSearch" type="text" placeholder="搜索概念..."
+            style="width:110px;background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 10px;font-size:11px;">
+            <select id="poolConceptFilter" multiple size="3"
+            style="min-width:160px;max-width:240px;background:#1e253b;border:1px solid #323d5a;border-radius:8px;color:#fff;font-size:11px;padding:2px;"></select>
+            <select id="poolConceptMatchMode" style="display:none;">
+            <option value="any"' + (poolConceptMatchMode === 'any' ? ' selected' : '') + '>任一</option>
+            <option value="all"' + (poolConceptMatchMode === 'all' ? ' selected' : '') + '>全部</option>
+            </select>
+            <input id="poolConceptMatchModeInput" type="text" readonly
+            value="' + (poolConceptMatchMode === 'all' ? '全部' : '任一') + '"
+            style="background:#1e253b;border:1px solid #323d5a;border-radius:20px;color:#fff;padding:4px 8px;font-size:11px;cursor:pointer;">
+            <span id="poolConceptCount" style="color:#9aa9cc;font-size:11px;"></span>
+            <button id="poolResetFiltersBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:3px 10px;border-radius:20px;font-size:11px;cursor:pointer;">重置</button>
+            </div>
+            <div style="margin-top:4px;color:#9aa9cc;font-size:11px;">
+            <span id="poolPreviewText" style="color:#7a8ba8;">--</span>
+            </div>
+            </div>
+            </div>
+
+            <!-- 日期 / 逻辑 -->
             <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
-
-                <div style="min-width:180px;">
-                    <label style="color:#9aa9cc;font-size:12px;display:block;margin-bottom:4px;">股票池</label>
-                    <select id="screenerPool" style="display:none;">
-                        <option value="all">全市场 A 股</option>
-                        <option value="hs300">沪深 300</option>
-                        <option value="zz500">中证 500</option>
-                        <option value="custom">自定义代码</option>
-                    </select>
-                    <input id="screenerPoolInput" type="text" readonly value="全市场 A 股"
-                        style="width:100%;background:#1e253b;border:1px solid #323d5a;
-                        border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;box-sizing:border-box;cursor:pointer;">
-                </div>
-
-                <div id="screenerCustomArea" style="display:none;flex:2;min-width:260px;">
-                    <label style="color:#9aa9cc;font-size:12px;display:block;margin-bottom:4px;">自定义代码（逗号分隔）</label>
-                    <input id="screenerCustomCodes" type="text" placeholder="000001,600519,300750"
-                        style="width:100%;background:#1e253b;border:1px solid #323d5a;border-radius:8px;
-                        color:#fff;padding:8px 10px;font-size:13px;box-sizing:border-box;">
-                </div>
 
                 <div style="min-width:150px;">
                     <label style="color:#9aa9cc;font-size:12px;display:block;margin-bottom:4px;">起始日期</label>
