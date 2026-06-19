@@ -1,0 +1,19 @@
+# GUI
+pyside6>=6.5
+pyside6-webengine>=6.5
+
+# Data
+tushare
+baostock
+pandas
+numpy
+sqlalchemy
+
+# HTTP / Web
+aiohttp
+requests
+beautifulsoup4
+
+# Automation
+pyautogui
+pygetwindow

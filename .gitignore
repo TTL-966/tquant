@@ -1,1 +1,29 @@
+# Secrets
+config.json
+
+# Database (large files)
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.spec
+
+# IDE
+.idea/
+
+# AI coding tools
+.codegraph/
 .aider*
+
+# User data
+feedback/
+temp_reports/
+
+# OS
+.DS_Store
+Thumbs.db

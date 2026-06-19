@@ -1,0 +1,44 @@
+{
+  "data_source": "tushare",
+  "tushare_token": "YOUR_TUSHARE_TOKEN_HERE",
+  "idle_update_enabled": true,
+  "idle_update_days": 3,
+  "auto_trader": {
+    "enabled": false,
+    "mode": "pyautogui",
+    "emergency_stop": false,
+    "auto_confirm_until": null,
+    "risk": {
+      "max_amount_per_order": 50000,
+      "max_volume_per_order": 10000,
+      "trading_hours_only": true,
+      "allowed_actions": [
+        "buy",
+        "sell"
+      ]
+    },
+    "pyautogui": {
+      "window_title": "网上股票交易系统5.0",
+      "use_image_recognition": false,
+      "buy_button_pos": [492, 666],
+      "sell_button_pos": [508, 653],
+      "confirm_yes_pos": [1043, 863],
+      "confirm_no_pos": [1167, 857],
+      "error_ok_pos": [962, 794],
+      "code_input_pos": [480, 384],
+      "price_input_pos": [458, 477],
+      "volume_input_pos": [485, 605],
+      "confidence": 0.8
+    },
+    "easytrader": {
+      "broker": "ht_client",
+      "config_path": "ht.json",
+      "account_type": "stock"
+    }
+  },
+  "update_options": {
+    "update_kline": true,
+    "update_turnover": false,
+    "max_days_back": 0
+  }
+}
