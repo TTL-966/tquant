@@ -62,9 +62,43 @@ function loadDynamicOptions() {
                     if (CARD_TYPE_META.industry_contains) {
                         CARD_TYPE_META.industry_contains.paramFields[0].options = industryListCache;
                     }
+                    // Populate screener industry select
+                    var indSel = document.getElementById('poolIndustryFilter');
+                    if (indSel) {
+                        indSel.innerHTML = '<option value="">-- 行业(可选) --</option>';
+                        list.forEach(function(v) {
+                            indSel.innerHTML += '<option value="' + v + '">' + v + '</option>';
+                        });
+                        if (poolIndustryFilter) indSel.value = poolIndustryFilter;
+                    }
                 }
             } catch (e) { console.warn('[Screener] 加载行业列表失败', e); }
         }).catch(function (e) { console.warn('[Screener] 加载行业列表失败', e); });
+    }
+}
+
+function populatePoolConceptSelect(filterText) {
+    var sel = document.getElementById('poolConceptFilter');
+    if (!sel) return;
+    var lowerFilter = (filterText || '').toLowerCase();
+    var currentSelected = poolConceptFilter.slice();
+    sel.innerHTML = '';
+    (conceptListCache || []).forEach(function(opt) {
+        if (!filterText || opt.label.toLowerCase().indexOf(lowerFilter) !== -1) {
+            var option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (currentSelected.indexOf(opt.value) !== -1) option.selected = true;
+            sel.appendChild(option);
+        }
+    });
+}
+
+function updatePoolConceptCount() {
+    var countEl = document.getElementById('poolConceptCount');
+    if (countEl) {
+        var n = poolConceptFilter.length;
+        countEl.textContent = n > 0 ? '(' + n + '个)' : '';
     }
 }
 
@@ -373,54 +407,173 @@ export function renderScreenerPage(container) {
 // ── Events ──────────────────────────────────────────────────────
 
 function bindScreenerEvents() {
-    // 股票池切换
-    var poolSelect = document.getElementById('screenerPool');
-    var poolInput = document.getElementById('screenerPoolInput');
-    var POOL_OPTIONS = [
-        { value: 'all', label: '全市场 A 股' },
-        { value: 'hs300', label: '沪深 300' },
-        { value: 'zz500', label: '中证 500' },
-        { value: 'custom', label: '自定义代码' }
-    ];
+    // ── Pre-filter events ──
 
-    function syncPoolInput() {
-        if (poolSelect && poolInput) {
-            var selOpt = poolSelect.options[poolSelect.selectedIndex];
-            if (selOpt) poolInput.value = selOpt.textContent;
-        }
-    }
+    // Pool source radio buttons
+    var poolSourceRadios = document.querySelectorAll('input[name="screenerPoolSource"]');
+    poolSourceRadios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            if (this.checked) {
+                poolSource = this.value;
+                var customArea = document.getElementById('poolCustomCodes');
+                if (customArea) customArea.style.display = (poolSource === 'custom') ? 'block' : 'none';
+                saveScreenerState();
+            }
+        });
+    });
 
-    if (poolSelect) {
-        poolSelect.value = selectedPool;
-        poolSelect.addEventListener('change', function () {
-            selectedPool = this.value;
-            syncPoolInput();
-            var customArea = document.getElementById('screenerCustomArea');
-            if (customArea) customArea.style.display = (selectedPool === 'custom') ? 'block' : 'none';
+    var poolCustomCodesEl = document.getElementById('poolCustomCodes');
+    if (poolCustomCodesEl) {
+        poolCustomCodesEl.addEventListener('input', function() {
+            poolCustomCodes = this.value;
             saveScreenerState();
         });
-        var customArea = document.getElementById('screenerCustomArea');
-        if (customArea) customArea.style.display = (selectedPool === 'custom') ? 'block' : 'none';
     }
 
-    if (poolInput) {
-        poolInput.addEventListener('click', function (e) {
+    // Industry filter
+    var poolIndustryFilterEl = document.getElementById('poolIndustryFilter');
+    if (poolIndustryFilterEl) {
+        poolIndustryFilterEl.addEventListener('change', function() {
+            poolIndustryFilter = this.value;
+            var inp = document.getElementById('poolIndustryFilterInput');
+            if (inp) {
+                var found = (industryListCache || []).find(function(o) { return o.value === poolIndustryFilter; });
+                inp.value = found ? found.label : (poolIndustryFilter || '');
+                if (!poolIndustryFilter) inp.placeholder = '-- 行业(可选) --';
+            }
+            saveScreenerState();
+        });
+    }
+    var poolIndustryInput = document.getElementById('poolIndustryFilterInput');
+    if (poolIndustryInput) {
+        poolIndustryInput.addEventListener('click', function(e) {
             e.stopPropagation();
-            showCustomSelect(poolInput, POOL_OPTIONS, function (value) {
-                if (poolSelect) {
-                    poolSelect.value = value;
-                    poolSelect.dispatchEvent(new Event('change'));
-                }
+            var sel = document.getElementById('poolIndustryFilter');
+            if (!sel) return;
+            var opts = [];
+            for (var k = 0; k < sel.options.length; k++) {
+                opts.push({ value: sel.options[k].value, label: sel.options[k].textContent });
+            }
+            showCustomSelect(this, opts, function(val) {
+                if (sel) { sel.value = val; sel.dispatchEvent(new Event('change')); }
             });
         });
-        syncPoolInput();
     }
 
-    // 自定义代码
-    var customInput = document.getElementById('screenerCustomCodes');
-    if (customInput) {
-        customInput.value = customCodes;
-        customInput.addEventListener('input', function () { customCodes = this.value.trim(); saveScreenerState(); });
+    // Market cap inputs
+    var mcMinEl = document.getElementById('poolMarketCapMin');
+    if (mcMinEl) {
+        mcMinEl.addEventListener('input', function() {
+            poolMarketCapMin = this.value;
+            saveScreenerState();
+        });
+    }
+    var mcMaxEl = document.getElementById('poolMarketCapMax');
+    if (mcMaxEl) {
+        mcMaxEl.addEventListener('input', function() {
+            poolMarketCapMax = this.value;
+            saveScreenerState();
+        });
+    }
+
+    // Float shares inputs
+    var fsMinEl = document.getElementById('poolFloatSharesMin');
+    if (fsMinEl) {
+        fsMinEl.addEventListener('input', function() {
+            poolFloatSharesMin = this.value;
+            saveScreenerState();
+        });
+    }
+    var fsMaxEl = document.getElementById('poolFloatSharesMax');
+    if (fsMaxEl) {
+        fsMaxEl.addEventListener('input', function() {
+            poolFloatSharesMax = this.value;
+            saveScreenerState();
+        });
+    }
+
+    // Concept search
+    var poolConceptSearchEl = document.getElementById('poolConceptSearch');
+    if (poolConceptSearchEl) {
+        poolConceptSearchEl.addEventListener('input', function() {
+            populatePoolConceptSelect(this.value);
+        });
+    }
+
+    // Concept multi-select
+    var poolConceptFilterEl = document.getElementById('poolConceptFilter');
+    if (poolConceptFilterEl) {
+        poolConceptFilterEl.addEventListener('change', function() {
+            poolConceptFilter = Array.from(this.selectedOptions).map(function(o) { return o.value; });
+            updatePoolConceptCount();
+            saveScreenerState();
+        });
+    }
+
+    // Concept match mode
+    var poolConceptMatchModeEl = document.getElementById('poolConceptMatchMode');
+    if (poolConceptMatchModeEl) {
+        poolConceptMatchModeEl.addEventListener('change', function() {
+            poolConceptMatchMode = this.value;
+            var inp = document.getElementById('poolConceptMatchModeInput');
+            if (inp) inp.value = poolConceptMatchMode === 'all' ? '全部' : '任一';
+            saveScreenerState();
+        });
+    }
+    var poolConceptMatchModeInput = document.getElementById('poolConceptMatchModeInput');
+    if (poolConceptMatchModeInput) {
+        poolConceptMatchModeInput.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showCustomSelect(this, [
+                { value: 'any', label: '任一' },
+                { value: 'all', label: '全部' }
+            ], function(val) {
+                var sel = document.getElementById('poolConceptMatchMode');
+                if (sel) { sel.value = val; sel.dispatchEvent(new Event('change')); }
+            });
+        });
+    }
+
+    // Reset filters button
+    var resetFiltersBtn = document.getElementById('poolResetFiltersBtn');
+    if (resetFiltersBtn) {
+        resetFiltersBtn.addEventListener('click', function() {
+            poolMarketCapMin = '';
+            poolMarketCapMax = '';
+            poolFloatSharesMin = '';
+            poolFloatSharesMax = '';
+            poolIndustryFilter = '';
+            poolConceptFilter = [];
+            poolConceptMatchMode = 'any';
+            document.getElementById('poolMarketCapMin').value = '';
+            document.getElementById('poolMarketCapMax').value = '';
+            document.getElementById('poolFloatSharesMin').value = '';
+            document.getElementById('poolFloatSharesMax').value = '';
+            var indSel = document.getElementById('poolIndustryFilter');
+            if (indSel) indSel.value = '';
+            var indInp = document.getElementById('poolIndustryFilterInput');
+            if (indInp) { indInp.value = ''; indInp.placeholder = '-- 行业(可选) --'; }
+            var conSel = document.getElementById('poolConceptFilter');
+            if (conSel) conSel.querySelectorAll('option').forEach(function(o) { o.selected = false; });
+            var mmInp = document.getElementById('poolConceptMatchModeInput');
+            if (mmInp) mmInp.value = '任一';
+            updatePoolConceptCount();
+            saveScreenerState();
+        });
+    }
+
+    // Collapse/expand toggle
+    var prefilterHeader = document.getElementById('screenerPrefilterHeader');
+    if (prefilterHeader) {
+        prefilterHeader.addEventListener('click', function() {
+            var body = document.getElementById('screenerPrefilterBody');
+            var toggle = document.getElementById('screenerPrefilterToggle');
+            if (body) {
+                var hidden = body.style.display === 'none';
+                body.style.display = hidden ? '' : 'none';
+                if (toggle) toggle.textContent = hidden ? '折叠' : '展开';
+            }
+        });
     }
 
     // 逻辑单选
@@ -680,13 +833,6 @@ function loadTemplate(key) {
     selectedPool = tpl.poolType || 'all';
     customCodes = tpl.customCodes || '';
     logicMode = tpl.logicMode || 'AND';
-
-    // 同步 UI
-    var poolSelect = document.getElementById('screenerPool');
-    if (poolSelect) { poolSelect.value = selectedPool; poolSelect.dispatchEvent(new Event('change')); }
-
-    var customInput = document.getElementById('screenerCustomCodes');
-    if (customInput) customInput.value = customCodes;
 
     var radios = document.getElementsByName('screenerLogic');
     radios.forEach(function (r) { r.checked = (r.value === logicMode); });
