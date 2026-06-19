@@ -830,8 +830,18 @@ function loadTemplate(key) {
     if (cards.length > 0 && !confirm('加载模板将覆盖当前筛选条件，确定继续？')) return;
 
     cards = JSON.parse(JSON.stringify(tpl.cards));
-    selectedPool = tpl.poolType || 'all';
-    customCodes = tpl.customCodes || '';
+    // Sync new pre-filter state
+    poolSource = tpl.poolType || 'all';
+    poolCustomCodes = tpl.customCodes || '';
+    // Sync pool source radio
+    var poolRadio = document.querySelector('input[name="screenerPoolSource"][value="' + poolSource + '"]');
+    if (poolRadio) poolRadio.checked = true;
+    // Sync custom codes textarea visibility
+    var customCodesArea = document.getElementById('poolCustomCodes');
+    if (customCodesArea) {
+        customCodesArea.style.display = (poolSource === 'custom') ? 'block' : 'none';
+        customCodesArea.value = poolCustomCodes;
+    }
     logicMode = tpl.logicMode || 'AND';
 
     var radios = document.getElementsByName('screenerLogic');
@@ -1704,31 +1714,35 @@ function runScreening() {
 
     // 收集股票池并执行筛选
     function proceedWithScreening() {
-        var indexMap = { hs300: '000300.XSHG', zz500: '000905.XSHG' };
-        var indexCode = indexMap[selectedPool];
+        var indexMap = {
+            hs300: '000300.XSHG', zz500: '000905.XSHG',
+            zz1000: '000852.XSHG', cyb: '399006.XSHE', kc50: '000688.XSHG'
+        };
+        var indexCode = indexMap[poolSource];
 
-        if (indexCode && bridge && typeof bridge.get_index_stocks === 'function') {
+        if (poolSource === 'custom') {
+            var raw = poolCustomCodes || '';
+            var pool = raw.split(/[,，\s]+/).filter(function (s) { return s.length > 0; });
+            if (pool.length === 0) { showToast('请输入自定义股票代码', true); return; }
+            console.log("[Screener] 自定义股票池:", pool.length + " 只");
+            doRunScreening(startDate, endDate, pool);
+        } else if (indexCode && bridge && typeof bridge.get_index_stocks === 'function') {
             bridge.get_index_stocks(indexCode).then(function (jsonStr) {
                 var pool = JSON.parse(jsonStr);
                 if (!Array.isArray(pool) || pool.length === 0) {
-                    showToast('获取 ' + selectedPool + ' 成分股失败', true);
+                    showToast('获取 ' + poolSource + ' 成分股失败', true);
                     if (startBtn) { startBtn.disabled = false; startBtn.textContent = '🔍 开始选股'; }
                     return;
                 }
-                console.log("[Screener] " + selectedPool + " 成分股:", pool.length + " 只");
+                console.log("[Screener] " + poolSource + " 成分股:", pool.length + " 只");
                 doRunScreening(startDate, endDate, pool);
             }).catch(function (err) {
                 console.error('[Screener] 获取成分股失败:', err);
                 showToast('获取成分股失败，使用模拟数据', true);
                 onScreeningDone(mockScreening());
             });
-        } else if (selectedPool === 'custom') {
-            var raw = customCodes || '';
-            var pool = raw.split(/[,，\s]+/).filter(function (s) { return s.length > 0; });
-            if (pool.length === 0) { showToast('请输入自定义股票代码', true); return; }
-            console.log("[Screener] 自定义股票池:", pool.length + " 只");
-            doRunScreening(startDate, endDate, pool);
         } else {
+            // 'all' or unknown: full market
             console.log("[Screener] 股票池: 全市场");
             doRunScreening(startDate, endDate, null);
         }
@@ -1760,12 +1774,32 @@ function doRunScreening(startDate, endDate, stockPool) {
     console.log("[Screener] 股票池:", stockPool);
     console.log("[Screener] 筛选区间:", startDate, "~", endDate);
 
+    // Build pre_filters from UI state
+    var preFilters = {};
+    var ind = poolIndustryFilter || '';
+    if (ind) preFilters.industry = ind;
+    if (poolConceptFilter.length > 0) {
+        preFilters.concepts = poolConceptFilter.slice();
+        preFilters.concept_match = poolConceptMatchMode || 'any';
+    }
+    var mcMin = parseFloat(poolMarketCapMin);
+    var mcMax = parseFloat(poolMarketCapMax);
+    if (!isNaN(mcMin)) preFilters.market_cap_min = mcMin;
+    if (!isNaN(mcMax)) preFilters.market_cap_max = mcMax;
+    var fsMin = parseFloat(poolFloatSharesMin);
+    var fsMax = parseFloat(poolFloatSharesMax);
+    if (!isNaN(fsMin)) preFilters.float_shares_min = fsMin;
+    if (!isNaN(fsMax)) preFilters.float_shares_max = fsMax;
+    var hasPrefilters = Object.keys(preFilters).length > 0;
+    console.log("[Screener] 预筛选:", hasPrefilters ? preFilters : '无');
+
     var startBtn = document.getElementById('screenerStartBtn');
 
     if (bridge && typeof bridge.screen_stocks === 'function') {
         var cardsJson = JSON.stringify(cards);
         var poolJson = stockPool ? JSON.stringify(stockPool) : '';
-        bridge.screen_stocks(cardsJson, poolJson, startDate, endDate).then(function (jsonStr) {
+        var preFiltersJson = hasPrefilters ? JSON.stringify(preFilters) : '';
+        bridge.screen_stocks(cardsJson, poolJson, startDate, endDate, preFiltersJson).then(function (jsonStr) {
             onScreeningDone(JSON.parse(jsonStr));
         }).catch(function (err) {
             console.error('[Screener] Bridge call failed, using mock:', err);
