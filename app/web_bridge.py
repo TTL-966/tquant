@@ -122,6 +122,17 @@ class WebBridge(QObject):
 
         df = DataFeed()
 
+        # Ensure trade_date index exists for fast MAX lookup
+        try:
+            with self.db.engine.connect() as conn:
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_sd_trade_date "
+                    "ON stock_daily_qfq_with_name(trade_date)"
+                ))
+                conn.commit()
+        except Exception:
+            pass  # non-critical, best-effort
+
     def _prewarm_kline_cache(self):
         """Pre-load common stock data into DataFeed cache (background thread, non-blocking)."""
         from concurrent.futures import ThreadPoolExecutor
