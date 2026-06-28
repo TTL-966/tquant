@@ -1,6 +1,14 @@
 """OptunaWorker — 在 QThread 中运行 Optuna Study，逐步发射进度信号"""
 
 import traceback
+import gc
+import os
+
+# 禁用 numpy/pandas MKL 多线程（Windows 0xC0000409 崩溃修复）
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import optuna
 from optuna.samplers import TPESampler
