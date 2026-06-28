@@ -29,6 +29,7 @@ from backend.auto_trader import create_auto_trader
 from backend.auto_trade_config import load_auto_trade_config, save_auto_trade_config
 from backend.backtest_worker import BacktestWorker
 from backend.backtest_job_manager import BacktestJobManager
+from backend.optimization import OptunaWorker
 from sqlalchemy import text
 import threading
 import time
@@ -83,6 +84,41 @@ class FinancialUpdateWorker(QThread):
             print(f"[FinancialUpdateWorker] 更新异常: {e}")
 
 
+class ConceptUpdateWorker(QThread):
+    """后台线程：执行概念题材数据更新，不阻塞 UI。"""
+
+    def __init__(self, db_engine, parent=None):
+        super().__init__(parent)
+        self.db_engine = db_engine
+
+    def run(self):
+        from backend.data_updater.concept_updater import ConceptUpdater
+        try:
+            updater = ConceptUpdater(self.db_engine)
+            success, msg = updater._safe_run()
+            print(f"[ConceptUpdateWorker] 概念题材更新完成: success={success}, msg={msg}")
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            print(f"[ConceptUpdateWorker] 概念题材更新异常: {e}")
+
+
+class IndustryUpdateWorker(QThread):
+    """后台线程：执行行业分类数据更新，不阻塞 UI。"""
+
+    def __init__(self, db_engine, parent=None):
+        super().__init__(parent)
+        self.db_engine = db_engine
+
+    def run(self):
+        try:
+            from backend.industry import download_industry_components
+            df = download_industry_components()
+            print(f"[IndustryUpdateWorker] 行业分类更新完成: {len(df) if df is not None else 0} 条")
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            print(f"[IndustryUpdateWorker] 行业分类更新异常: {e}")
+
+
 class WebBridge(QObject):
     coordinate_captured = Signal(int, int, str)
     window_title_captured = Signal(str)
@@ -106,6 +142,9 @@ class WebBridge(QObject):
         self._all_realtime_signals = []   # 所有实时信号历史
         self._update_thread = None   # 日线数据更新后台线程
         self._fin_update_thread = None  # 财务数据更新后台线程
+        self._optimization_jobs = {}  # job_id -> {worker, progress, result, status}
+        self._concept_update_thread = None  # 概念题材更新后台线程
+        self._industry_update_thread = None  # 行业分类更新后台线程
         self._idle_updater = None     # 空闲后台更新器
         self._user_active = True      # 用户活动标志
 
@@ -450,7 +489,7 @@ class WebBridge(QObject):
 
     @Slot(str, result=str)
     def get_stock_financial(self, code):
-        """获取个股财务数据（最新）"""
+        """获取个股财务数据（最新）+ 行业/概念补充信息"""
         try:
             code_pure = code.split('.')[0]
             # 生成 ts_code
@@ -481,6 +520,31 @@ class WebBridge(QObject):
                 }
             else:
                 result = {"success": False, "error": "无财务数据"}
+
+            # 补充行业信息（含 Baostock 更新日期）
+            try:
+                ind_sql = text("SELECT industry, update_date FROM stock_industry WHERE ts_code = :ts_code LIMIT 1")
+                with self.db.engine.connect() as conn:
+                    ind_row = conn.execute(ind_sql, {"ts_code": ts_code}).fetchone()
+                if ind_row:
+                    result["industry_name"] = ind_row[0]
+                    result["industry_update_date"] = ind_row[1]
+            except Exception:
+                pass
+
+            # 补充概念数量
+            try:
+                cnt_sql = text("SELECT COUNT(*) FROM stock_concept WHERE ts_code = :ts_code")
+                with self.db.engine.connect() as conn:
+                    result["concept_count"] = conn.execute(cnt_sql, {"ts_code": ts_code}).scalar() or 0
+            except Exception:
+                result["concept_count"] = 0
+
+            # 补充全局更新时间戳
+            config = load_config()
+            result["last_concept_update"] = config.get("last_concept_update", "")
+            result["last_industry_update"] = config.get("last_industry_update", "")
+
             return json.dumps(result, ensure_ascii=False)
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
@@ -1905,6 +1969,30 @@ class WebBridge(QObject):
         """数据更新线程完成后的回调。"""
         print("[WebBridge] 数据更新线程结束")
 
+    def _on_concept_update_done(self):
+        """概念题材更新完成后记录时间戳。"""
+        self._concept_update_thread = None
+        try:
+            from datetime import datetime
+            config = load_config()
+            config["last_concept_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            save_config(config)
+            print("[WebBridge] 概念题材更新时间已记录")
+        except Exception as e:
+            print(f"[WebBridge] 记录概念更新时间失败: {e}")
+
+    def _on_industry_update_done(self):
+        """行业分类更新完成后记录时间戳。"""
+        self._industry_update_thread = None
+        try:
+            from datetime import datetime
+            config = load_config()
+            config["last_industry_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            save_config(config)
+            print("[WebBridge] 行业分类更新时间已记录")
+        except Exception as e:
+            print(f"[WebBridge] 记录行业更新时间失败: {e}")
+
     @Slot(result=str)
     def trigger_financial_update(self):
         """手动触发财务数据更新（后台线程，更新 PE/PB/ROE/总市值/流通股本等）。"""
@@ -1923,6 +2011,139 @@ class WebBridge(QObject):
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "message": f"启动财务更新失败: {str(e)}"})
+
+    @Slot(result=str)
+    def trigger_concept_update(self):
+        """手动触发概念题材数据更新（后台线程，使用 AkShare 获取板块概念）。"""
+        if self._concept_update_thread is not None and self._concept_update_thread.isRunning():
+            return json.dumps({"success": False, "message": "概念题材更新已在运行中，请稍后再试"})
+
+        try:
+            worker = ConceptUpdateWorker(self.db.engine)
+            worker.finished.connect(lambda: self._on_concept_update_done())
+            self._concept_update_thread = worker
+            worker.start()
+            # 清除缓存，下次查询时重新加载
+            self._concept_list_cache = None
+            return json.dumps({"success": True, "message": "概念题材更新已在后台启动（预计 3-10 分钟）"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": f"启动概念更新失败: {str(e)}"})
+
+    @Slot(result=str)
+    def trigger_industry_update(self):
+        """手动触发行业分类数据更新（后台线程，使用 Baostock 获取行业数据）。"""
+        if self._industry_update_thread is not None and self._industry_update_thread.isRunning():
+            return json.dumps({"success": False, "message": "行业数据更新已在运行中，请稍后再试"})
+
+        try:
+            worker = IndustryUpdateWorker(self.db.engine)
+            worker.finished.connect(lambda: self._on_industry_update_done())
+            self._industry_update_thread = worker
+            worker.start()
+            # 清除缓存，下次查询时重新加载
+            self._industry_list_cache = None
+            return json.dumps({"success": True, "message": "行业数据更新已在后台启动（预计 1-3 分钟）"})
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({"success": False, "message": f"启动行业更新失败: {str(e)}"})
+
+    # ---------- 参数优化 Slot ----------
+
+    @Slot(str, result=str)
+    def start_optimization(self, params_json):
+        """启动 Optuna 参数优化搜索。
+
+        params_json: {
+            strategy_code, stock, start, end, cash,
+            objective, n_trials,
+            params_to_search: [{name, type, low, high, step?}],
+            fixed_params: {name: value},
+            slippage, commission_rate, stamp_tax_rate,
+            slippage_cost_type, slippage_cost_value,
+            benchmark_code
+        }
+        返回 {success, job_id}
+        """
+        try:
+            params = json.loads(params_json) if isinstance(params_json, str) else params_json
+        except Exception:
+            return json.dumps({"success": False, "error": "参数 JSON 解析失败"})
+
+        if not params.get("params_to_search"):
+            return json.dumps({"success": False, "error": "没有选择要搜索的参数"})
+
+        import secrets
+        job_id = secrets.token_hex(6)
+
+        worker = OptunaWorker(params)
+
+        # 捕获进度
+        def on_progress(prog):
+            if job_id in self._optimization_jobs:
+                self._optimization_jobs[job_id]["progress"] = prog
+
+        # 捕获结果
+        def on_finished(result):
+            if job_id in self._optimization_jobs:
+                self._optimization_jobs[job_id]["result"] = result
+                self._optimization_jobs[job_id]["status"] = "finished"
+
+        worker.progress.connect(on_progress)
+        worker.finished.connect(on_finished)
+
+        self._optimization_jobs[job_id] = {
+            "worker": worker,
+            "progress": {"current": 0, "total": params.get("n_trials", 100), "best_value": None},
+            "result": None,
+            "status": "running",
+        }
+
+        worker.start()
+        return json.dumps({"success": True, "job_id": job_id})
+
+    @Slot(str, result=str)
+    def get_optimization_progress(self, job_id):
+        """轮询优化进度。
+
+        返回 {status, progress: {current, total, best_value, last_trial?}}
+        """
+        job = self._optimization_jobs.get(job_id)
+        if not job:
+            return json.dumps({"status": "not_found"})
+        return json.dumps({
+            "status": job["status"],
+            "progress": job["progress"],
+        })
+
+    @Slot(str, result=str)
+    def get_optimization_result(self, job_id):
+        """获取优化完成结果。
+
+        返回 {ready: bool, result: {best_params, best_value, trials, param_importance}}
+        """
+        job = self._optimization_jobs.get(job_id)
+        if not job:
+            return json.dumps({"ready": False, "error": "job not found"})
+        if job["status"] == "finished":
+            result = job["result"]
+            # 转为 JSON 安全格式
+            safe = WebBridge._to_json_safe(result)
+            # 清理 job
+            del self._optimization_jobs[job_id]
+            return json.dumps({"ready": True, "result": safe})
+        return json.dumps({"ready": False})
+
+    @Slot(str, result=str)
+    def cancel_optimization(self, job_id):
+        """取消正在运行的优化。"""
+        job = self._optimization_jobs.get(job_id)
+        if not job:
+            return json.dumps({"success": False, "error": "job not found"})
+        if job["worker"]:
+            job["worker"].cancel()
+        job["status"] = "cancelled"
+        return json.dumps({"success": True})
 
     # ---------- 报告导出 ----------
     @Slot(str, result=str)
