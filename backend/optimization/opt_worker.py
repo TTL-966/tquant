@@ -60,6 +60,10 @@ class OptunaWorker(QThread):
                 if best_val is not None:
                     best_val = float(best_val)
 
+                # 每 trial 后强制 GC，防止内存累积
+                if trial.number % 5 == 0:
+                    gc.collect()
+
                 self.progress.emit({
                     "current": len(results),
                     "total": p.get("n_trials", 100),

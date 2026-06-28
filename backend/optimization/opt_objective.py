@@ -111,10 +111,13 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
     # 3. 注入参数到策略代码
     code = inject_params(strategy_code, all_params)
 
-    # 4. 运行回测
-    data_feed = DataFeed()
-    executor = BacktestExecutor(data_feed)
-    result = executor.run(
+    # 4. 运行回测（每 trial 新建实例，用完即清）
+    data_feed = None
+    executor = None
+    try:
+        data_feed = DataFeed()
+        executor = BacktestExecutor(data_feed)
+        result = executor.run(
         user_code=code,
         stock_code=stock_code,
         start_date=start,
@@ -128,11 +131,17 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
         benchmark_code=benchmark_code,
     )
 
-    # 5. 错误处理 → 返回 NaN（Optuna 自动跳过）
-    if result.get("status") == "error":
-        return float("nan")
+        # 5. 错误处理 → 返回 NaN（Optuna 自动跳过）
+        if result.get("status") == "error":
+            return float("nan")
 
-    metrics = result.get("metrics", {})
+        metrics = result.get("metrics", {})
 
-    # 6. 计算目标值
-    return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
+        # 6. 计算目标值
+        return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
+    finally:
+        # 清理回测实例，释放数据库连接
+        if executor is not None:
+            del executor
+        if data_feed is not None:
+            del data_feed
