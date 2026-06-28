@@ -2093,9 +2093,11 @@ class WebBridge(QObject):
         worker.progress.connect(on_progress)
         worker.finished.connect(on_finished)
 
+        stock_codes = params.get("stock_codes")
+        stock_count = len(stock_codes) if isinstance(stock_codes, list) else 1
         self._optimization_jobs[job_id] = {
             "worker": worker,
-            "progress": {"current": 0, "total": params.get("n_trials", 100), "best_value": None},
+            "progress": {"current": 0, "total": params.get("n_trials", 100), "best_value": None, "stock_count": stock_count},
             "result": None,
             "status": "running",
         }
