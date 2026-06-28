@@ -1687,6 +1687,12 @@ export function extractParamsFromCards(cards) {
                 low = parseFloat(low.toFixed(4));
                 high = parseFloat(high.toFixed(4));
             }
+            // 负值默认参数（如止损 -0.05）会导致 low > high，交换确保 low <= high
+            if (low > high) {
+                var _swap = low;
+                low = high;
+                high = _swap;
+            }
 
             result.push({
                 name: name,
