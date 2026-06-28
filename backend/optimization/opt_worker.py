@@ -84,10 +84,15 @@ class OptunaWorker(QThread):
                     },
                 })
 
+            # 单 DataFeed 实例复用于所有 trial，避免 SQLite 连接累积
+            from backend.data_feed import DataFeed
+            shared_feed = DataFeed()
+
             # 包装 objective，传入 class 的参数
             def objective(trial):
                 return run_objective(
                     trial=trial,
+                    data_feed=shared_feed,
                     params_to_search=p["params_to_search"],
                     fixed_params=p.get("fixed_params", {}),
                     strategy_code=p["strategy_code"],

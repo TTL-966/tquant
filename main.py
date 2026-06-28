@@ -1,5 +1,13 @@
 import sys
 import os
+
+# 必须在所有其他 import 之前设置，禁用 numpy/pandas MKL 多线程
+# 防止 Windows 0xC0000409 崩溃（STATUS_STACK_BUFFER_OVERRUN）
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel

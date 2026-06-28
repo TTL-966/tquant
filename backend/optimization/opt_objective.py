@@ -92,10 +92,12 @@ def compute_objective(metrics, objective_type, min_trades=5):
 def run_objective(trial, params_to_search, fixed_params, strategy_code,
                   stock_code, start, end, cash, slippage,
                   commission_rate, stamp_tax_rate, slippage_cost_type,
-                  slippage_cost_value, benchmark_code, objective_type):
+                  slippage_cost_value, benchmark_code, objective_type,
+                  data_feed=None):
     """Optuna objective 函数。
 
     每被 Optuna 调用一次，就跑一次完整回测。
+    data_feed 可复用，避免每 trial 新建 SQLite 连接。
 
     Returns:
         float 目标值
@@ -111,11 +113,12 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
     # 3. 注入参数到策略代码
     code = inject_params(strategy_code, all_params)
 
-    # 4. 运行回测（每 trial 新建实例，用完即清）
-    data_feed = None
+    # 4. 运行回测（复用 data_feed 避免 SQLite 连接累积）
+    _own_feed = data_feed is None
+    if _own_feed:
+        data_feed = DataFeed()
     executor = None
     try:
-        data_feed = DataFeed()
         executor = BacktestExecutor(data_feed)
         result = executor.run(
         user_code=code,
@@ -140,8 +143,7 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
         # 6. 计算目标值
         return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
     finally:
-        # 清理回测实例，释放数据库连接
         if executor is not None:
             del executor
-        if data_feed is not None:
+        if _own_feed and data_feed is not None:
             del data_feed
