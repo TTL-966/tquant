@@ -33,23 +33,21 @@ def suggest_for_param(trial, param_def):
 def inject_params(strategy_code, sampled_params):
     """将采样参数值注入策略代码。
 
-    策略代码中 `context.xxx = <原值>` 的行会被替换为 `context.xxx = <新值>`。
-    参数注入依赖 strategyUtils.js 生成的代码中 initialize() 使用 `context.paramName = value` 模式。
-
-    Args:
-        strategy_code: 原始 Python 策略代码字符串
-        sampled_params: {param_name: sampled_value}
-
-    Returns:
-        注入参数后的代码字符串
+    前端 generateCode 使用 contextName(i, key) 生成上下文变量名，
+    格式为 context.c{cardIdx}_{paramKey}（如 context.c0_fastPeriod）。
+    本函数匹配该模式并替换数值。
     """
     code = strategy_code
     for name, value in sampled_params.items():
-        # 替换 context.<name> = <原值> → context.<name> = <新值>
-        pattern = rf'(context\.{name}\s*=\s*)(-?[\d.]+)'
-        code = re.sub(pattern, rf'\g<1>{value}', code)
+        # 主模式: context.c0_fastPeriod = 5 -> context.c0_fastPeriod = <new>
+        pat1 = rf'(context\.c\d+_{name}\s*=\s*)(-?[\d.]+)'
+        if re.search(pat1, code):
+            code = re.sub(pat1, rf'\g<1>{value}', code)
+        else:
+            # fallback: word-boundary match for non-card-indexed params
+            pat2 = rf'(\b{name}\s*=\s*)(-?[\d.]+)'
+            code = re.sub(pat2, rf'\g<1>{value}', code)
     return code
-
 
 def compute_objective(metrics, objective_type):
     """从回测指标计算目标值。

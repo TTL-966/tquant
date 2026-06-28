@@ -132,7 +132,11 @@ class OptunaWorker(QThread):
             })
 
     def cancel(self):
-        """停止 Optuna Study。"""
-        if self._study:
-            self._study.stop()
+        """停止 Optuna Study（通过中断标志，不在外部调 study.stop）。"""
         self.requestInterruption()
+        # study.stop() 只能在 objective/callback 内调用，外部调用抛 RuntimeError
+        if self._study:
+            try:
+                self._study.stop()
+            except RuntimeError:
+                pass  # 不在 objective 内，忽略
