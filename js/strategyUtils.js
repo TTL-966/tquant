@@ -1654,6 +1654,9 @@ export function extractParamsFromCards(cards) {
     var seen = {};
 
     cards.forEach(function(card) {
+        // 仓位管理卡参数用 context._position_value 内部命名，
+        // 不走 context.cN_paramName 模式，跳过避免白费 trial
+        if (card.type === 'position') return;
         var meta = CARD_TYPE_META[card.type];
         if (!meta || !meta.paramFields) return;
 

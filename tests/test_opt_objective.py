@@ -88,7 +88,7 @@ def test_compute_objective_penalizes_few_trades():
     """交易不足最低次数 → -999 惩罚"""
     metrics = {"total_return": 25.0, "total_trades": 2}
     val = compute_objective(metrics, "return", min_trades=5)
-    assert val == -999
+    assert val == -600  # -200*(5-2)
 
 
 def test_compute_objective_allows_enough_trades():
@@ -102,7 +102,7 @@ def test_compute_objective_default_min_trades():
     """默认 min_trades=5"""
     metrics = {"total_return": 10.0, "sharpe_ratio": 1.0, "total_trades": 3}
     val = compute_objective(metrics, "sharpe")
-    assert val == -999
+    assert val == -400  # -200*(5-3)
 
 def test_compute_objective_return():
     metrics = {"total_return": 35.0, "total_trades": 12}

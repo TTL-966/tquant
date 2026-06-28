@@ -67,9 +67,10 @@ def compute_objective(metrics, objective_type, min_trades=5):
 
     total_trades = metrics.get("total_trades", 0)
 
-    # 交易次数不足 → 极低惩罚分，防止 Optuna 偏爱低频策略
+    # 交易次数不足 → 渐进惩罚分，给 Optuna 搜索梯度
+    # 每缺 1 笔扣 200 分：0笔=-1000, 4笔(min=5)=-200, 5+笔=正常
     if total_trades < min_trades:
-        return float(-999)
+        return float(-200 * (min_trades - total_trades))
 
     if objective_type == "sharpe_drawdown":
         drawdown = metrics.get("max_drawdown", 0)
