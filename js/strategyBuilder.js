@@ -28,6 +28,7 @@ var strategyLogger = null;
 
 // Stock pool state - layered selector
 var poolSource = 'all';  // 'all', 'hs300', 'zz500', 'zz1000', 'cyb', 'kc50', 'custom'
+var _optMode = 'single';  // 'single' | 'multi'
 var customStockCodes = '';
 var poolIndustryFilter = '';
 var poolConceptFilter = [];
@@ -2529,6 +2530,14 @@ function renderOptimizationPanel() {
     var defaultStock = (window.currentStockPool && window.currentStockPool.length > 0)
         ? window.currentStockPool[0] : '000001';
 
+    var poolStockCount = (window.currentStockPool && window.currentStockPool.length) || 0;
+    var canMulti = poolStockCount > 1;
+    var poolDisplayName = '';
+    if (canMulti) {
+        var poolLabelMap = { all: '全部A股', hs300: '沪深300', zz500: '中证500', zz1000: '中证1000', cyb: '创业板', kc50: '科创50', custom: '自选股' };
+        poolDisplayName = poolLabelMap[poolSource] || '当前股票池';
+    }
+
     // Build parameter rows
     var paramsHtml = _optParams.map(function(p, i) {
         return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;padding:6px 8px;background:#151c2c;border-radius:6px;">' +
@@ -2545,15 +2554,47 @@ function renderOptimizationPanel() {
             '</div>';
     }).join('');
 
+    var singleBtnStyle = _optMode === 'single'
+        ? 'background:#4f7eff;color:#fff;border:none;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;'
+        : 'background:#1e253b;color:#9aa9cc;border:1px solid #323d5a;padding:4px 14px;border-radius:20px;font-size:12px;cursor:pointer;';
+    var multiBtnStyle = _optMode === 'multi'
+        ? 'background:#4f7eff;color:#fff;border:none;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;' + (!canMulti ? 'opacity:0.4;' : '')
+        : 'background:#1e253b;color:#9aa9cc;border:1px solid #323d5a;padding:4px 14px;border-radius:20px;font-size:12px;cursor:pointer;' + (!canMulti ? 'opacity:0.4;' : '');
+
+    var stockInputDisplay = _optMode === 'multi' ? 'display:none;' : '';
+    var poolInfoDisplay = _optMode === 'multi' ? '' : 'display:none;';
+
+    var baseTrials = (document.getElementById('optNTrials') && _optMode === 'multi')
+        ? (parseInt(document.getElementById('optNTrials').value) || 100)
+        : 100;
+    var adjustedTrials = canMulti ? Math.max(30, Math.floor(baseTrials / Math.sqrt(poolStockCount))) : baseTrials;
+
     container.innerHTML = '<div class="card" id="optimizationCard">' +
         '<div class="card-title">🔍 参数优化 <span style="font-size:12px;color:#9aa9cc;">— Optuna TPE 智能搜索</span></div>' +
         '<div class="opt-panel-layout">' +
         // Left: settings
         '<div class="opt-settings">' +
+        // Mode toggle
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">' +
+        '<span style="color:#9aa9cc;font-size:12px;">📈 模式</span>' +
+        '<button id="optModeSingle" style="' + singleBtnStyle + '">单股</button>' +
+        '<button id="optModeMulti" style="' + multiBtnStyle + '"' + (!canMulti ? ' disabled title="股票池不足（需≥2只）"' : '') + '>多股</button>' +
+        '</div>' +
+        // Single stock input
+        '<div id="optSingleStockRow" style="margin-bottom:10px;' + stockInputDisplay + '">' +
+        '<span style="color:#9aa9cc;font-size:12px;">📈 股票</span><br>' +
+        '<input type="text" id="optStockCode" value="' + defaultStock + '" style="width:100px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:4px 8px;font-size:12px;">' +
+        '</div>' +
+        // Multi stock info
+        '<div id="optMultiStockInfo" style="margin-bottom:10px;' + poolInfoDisplay + '">' +
+        '<div style="background:#0e1220;border:1px solid #2a3145;border-radius:8px;padding:10px;">' +
+        '<span style="color:#4f7eff;font-weight:600;font-size:12px;">📊 ' + escapeHtml(poolDisplayName) + ' (' + poolStockCount + '只)</span><br>' +
+        '<span style="color:#f2c94c;font-size:11px;" id="optTrialsHint">⚠ trial数已调整为 ' + adjustedTrials + ' (基础' + baseTrials + ')</span>' +
+        '</div>' +
+        '</div>' +
         '<div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;">' +
-        '<div><span style="color:#9aa9cc;font-size:12px;">📈 股票</span><br><input type="text" id="optStockCode" value="' + defaultStock + '" style="width:100px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:4px 8px;font-size:12px;"></div>' +
         '<div><span style="color:#9aa9cc;font-size:12px;">🎯 目标</span><br><select id="optObjective" style="background:#1e253b;border:1px solid #323d5a;color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;"><option value="sharpe_drawdown">稳健（回撤≤15%）</option><option value="sharpe">夏普优先</option><option value="return">纯收益率</option></select></div>' +
-        '<div><span style="color:#9aa9cc;font-size:12px;">🔢 试验次数</span><br><input type="number" id="optNTrials" value="100" min="20" max="500" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:4px 8px;font-size:12px;"></div>' +
+        '<div><span style="color:#9aa9cc;font-size:12px;">🔢 试验次数</span><br><input type="number" id="optNTrials" value="' + baseTrials + '" min="20" max="500" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:4px 8px;font-size:12px;"></div>' +
         '</div>' +
         '<div style="background:#0e1220;border:1px solid #2a3145;border-radius:8px;padding:10px;margin-bottom:10px;">' +
         '<div style="color:#4f7eff;font-weight:600;margin-bottom:8px;font-size:13px;">🔧 搜索参数（可修改范围、取消勾选）</div>' +
@@ -2568,7 +2609,7 @@ function renderOptimizationPanel() {
         '<div class="opt-results">' +
         '<div class="opt-status-row" style="display:flex;gap:8px;margin-bottom:10px;">' +
         '<div class="opt-status-card"><div class="opt-stat-label">状态</div><div class="opt-stat-value" id="optStatus" style="color:#9aa9cc;">等待开始</div></div>' +
-        '<div class="opt-status-card"><div class="opt-stat-label">已完成</div><div class="opt-stat-value" id="optProgress" style="color:#fff;">0 / 100</div></div>' +
+        '<div class="opt-status-card"><div class="opt-stat-label">已完成</div><div class="opt-stat-value" id="optProgress" style="color:#fff;">0 / ' + baseTrials + '</div></div>' +
         '<div class="opt-status-card"><div class="opt-stat-label">当前最优</div><div class="opt-stat-value" id="optBestValue" style="color:#27ae60;">--</div></div>' +
         '</div>' +
         '<div id="optHistoryChart" style="height:180px;background:#0e1220;border-radius:8px;margin-bottom:8px;"></div>' +
@@ -2586,6 +2627,32 @@ function bindOptimizationEvents() {
     var stopBtn = document.getElementById('stopOptBtn');
     if (startBtn) startBtn.addEventListener('click', startOptimization);
     if (stopBtn) stopBtn.addEventListener('click', stopOptimization);
+
+    var singleBtn = document.getElementById('optModeSingle');
+    var multiBtn = document.getElementById('optModeMulti');
+    if (singleBtn) singleBtn.addEventListener('click', function() {
+        if (_optMode === 'single') return;
+        _optMode = 'single';
+        renderOptimizationPanel();
+    });
+    if (multiBtn) multiBtn.addEventListener('click', function() {
+        if (_optMode === 'multi') return;
+        var poolCount = (window.currentStockPool && window.currentStockPool.length) || 0;
+        if (poolCount <= 1) return;
+        _optMode = 'multi';
+        renderOptimizationPanel();
+    });
+
+    var trialsEl = document.getElementById('optNTrials');
+    if (trialsEl) trialsEl.addEventListener('input', function() {
+        if (_optMode === 'multi') {
+            var base = parseInt(this.value) || 100;
+            var poolCount = (window.currentStockPool && window.currentStockPool.length) || 1;
+            var adjusted = Math.max(30, Math.floor(base / Math.sqrt(poolCount)));
+            var hint = document.getElementById('optTrialsHint');
+            if (hint) hint.textContent = '⚠ trial数已调整为 ' + adjusted + ' (基础' + base + ')';
+        }
+    });
 }
 
 function stopOptimization() {
@@ -2638,13 +2705,9 @@ function startOptimization() {
 
     var code = window.currentStrategyCode || (typeof generateCode === 'function' ? generateCode(window.__currentCards || cards) : '');
     var stock = stockEl ? stockEl.value.trim() : '000001';
-    if (code && stock) {
-        code = code.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
-    }
 
     var params = {
         strategy_code: code,
-        stock: stock,
         start: window.strategyStartDate || '2010-01-01',
         end: window.strategyEndDate || new Date().toISOString().slice(0, 10),
         cash: window.initialCapital || 1000000,
@@ -2658,6 +2721,18 @@ function startOptimization() {
         slippage_cost_type: window._slippageCostType || 'percent',
         slippage_cost_value: window._slippageCostValue || 0.1,
     };
+
+    if (_optMode === 'multi' && window.currentStockPool && window.currentStockPool.length > 1) {
+        var pool = window.currentStockPool.map(function(c) { return c.split('.')[0]; });
+        params.stock_codes = pool;
+        params.stock = pool[0];
+    } else {
+        params.stock = stock;
+        if (code && stock) {
+            code = code.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
+        }
+    }
+    params.strategy_code = code;
 
     bridge.start_optimization(JSON.stringify(params)).then(function(jsonStr) {
         var res = JSON.parse(jsonStr);
