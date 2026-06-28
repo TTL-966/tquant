@@ -2527,10 +2527,10 @@ function renderOptimizationPanel() {
     var container = document.getElementById('dynamicContent');
     if (!container) return;
 
-    var defaultStock = (window.currentStockPool && window.currentStockPool.length > 0)
-        ? window.currentStockPool[0] : '000001';
+    var defaultStock = (currentStockPool && currentStockPool.length > 0)
+        ? currentStockPool[0] : '000001';
 
-    var poolStockCount = (window.currentStockPool && window.currentStockPool.length) || 0;
+    var poolStockCount = (currentStockPool && currentStockPool.length) || 0;
     var canMulti = poolStockCount > 1;
     var poolDisplayName = '';
     if (canMulti) {
@@ -2637,7 +2637,7 @@ function bindOptimizationEvents() {
     });
     if (multiBtn) multiBtn.addEventListener('click', function() {
         if (_optMode === 'multi') return;
-        var poolCount = (window.currentStockPool && window.currentStockPool.length) || 0;
+        var poolCount = (currentStockPool && currentStockPool.length) || 0;
         if (poolCount <= 1) return;
         _optMode = 'multi';
         renderOptimizationPanel();
@@ -2647,7 +2647,7 @@ function bindOptimizationEvents() {
     if (trialsEl) trialsEl.addEventListener('input', function() {
         if (_optMode === 'multi') {
             var base = parseInt(this.value) || 100;
-            var poolCount = (window.currentStockPool && window.currentStockPool.length) || 1;
+            var poolCount = (currentStockPool && currentStockPool.length) || 1;
             var adjusted = Math.max(30, Math.floor(base / Math.sqrt(poolCount)));
             var hint = document.getElementById('optTrialsHint');
             if (hint) hint.textContent = '⚠ trial数已调整为 ' + adjusted + ' (基础' + base + ')';
@@ -2722,8 +2722,8 @@ function startOptimization() {
         slippage_cost_value: window._slippageCostValue || 0.1,
     };
 
-    if (_optMode === 'multi' && window.currentStockPool && window.currentStockPool.length > 1) {
-        var pool = window.currentStockPool.map(function(c) { return c.split('.')[0]; });
+    if (_optMode === 'multi' && currentStockPool && currentStockPool.length > 1) {
+        var pool = currentStockPool.map(function(c) { return c.split('.')[0]; });
         params.stock_codes = pool;
         params.stock = pool[0];
     } else {
