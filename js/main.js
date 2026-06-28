@@ -13,6 +13,7 @@ import { debounceSuggestions } from './suggestions.js';
 import { clearKlineCache } from './kline.js';
 import { checkFirstLaunch, checkDegradationNotice, showNotification } from './settings.js';
 import { onBridgeReady } from './bridge.js';
+import './autoTradeConfirm.js';
 
 // ---- 股票名称显示辅助（纯名称）----
 export function formatStockNameOnly(code) {

@@ -478,6 +478,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
         tooltip: {
             trigger: 'axis',
             axisPointer: { type: 'shadow' },
+            appendToBody: true,
             formatter: function(params) {
                 if (!params || params.length === 0) return '';
                 var idx = params[0].dataIndex;
@@ -486,6 +487,7 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                 var data = values[idx];
                 var open = data[0], close = data[1], low = data[2], high = data[3];
                 var rawVolume = data.length > 4 ? data[4] : 0;
+                var turnover = data.length > 5 ? data[5] : null;
 
                 // ---------- 容器ID和启用的指标 ----------
                 var containerId = 'klineMainChart';
@@ -513,6 +515,12 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                     }
                 } else if (rawVolume === 0) {
                     volumeDisplay = '0 手';
+                }
+
+                // ---------- 换手率格式化 ----------
+                var turnoverDisplay = '--';
+                if (turnover !== null && turnover !== undefined && !isNaN(turnover) && turnover > 0) {
+                    turnoverDisplay = turnover.toFixed(2) + '%';
                 }
 
                 // ---------- 涨跌幅计算（基于前收盘）----------
@@ -579,6 +587,8 @@ export function renderKlineWithSignals(dates, values, buyPts, sellPts, maData, e
                     '</div>' +
                     '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
                     '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
+                    '<div style="margin-bottom:6px;">' +
+                    '<span style="color:#9aa9cc;">换手率</span> <span style="font-family:Consolas,monospace;">' + turnoverDisplay + '</span></div>' +
                     '<div style="margin-top:8px;font-size:12px;color:#9aa9cc;display:flex;gap:12px;flex-wrap:wrap;">' +
                     indicatorsHtml +
                     '</div></div>';
@@ -839,6 +849,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
             tooltip: {
                 trigger: 'axis',
                 axisPointer: { type: 'shadow' },
+                appendToBody: true,
                 formatter: function(params) {
                     if (!params || params.length === 0) return '';
                     var idx = params[0].dataIndex;
@@ -847,6 +858,7 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                     var data = values[idx];
                     var open = data[0], close = data[1], low = data[2], high = data[3];
                     var rawVolume = data.length > 4 ? data[4] : 0;
+                    var turnover = data.length > 5 ? data[5] : null;
 
                     // ---------- 容器ID和启用的指标 ----------
                     var enabledIndicators = (window._enabledIndicators && window._enabledIndicators[containerId]) || [];
@@ -873,6 +885,12 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                         }
                     } else if (rawVolume === 0) {
                         volumeDisplay = '0 手';
+                    }
+
+                    // ---------- 换手率格式化 ----------
+                    var turnoverDisplay = '--';
+                    if (turnover !== null && turnover !== undefined && !isNaN(turnover) && turnover > 0) {
+                        turnoverDisplay = turnover.toFixed(2) + '%';
                     }
 
                     // ---------- 涨跌幅计算（基于前收盘）----------
@@ -938,6 +956,8 @@ export function renderStockKline(containerId, dates, values, retryCount) {
                         '</div>' +
                         '<div style="border-top:1px solid #2a314a;margin:6px 0;padding-top:6px;">' +
                         '<span style="color:#9aa9cc;">成交量</span> <span style="font-family:Consolas,monospace;">' + volumeDisplay + '</span></div>' +
+                        '<div style="margin-bottom:6px;">' +
+                        '<span style="color:#9aa9cc;">换手率</span> <span style="font-family:Consolas,monospace;">' + turnoverDisplay + '</span></div>' +
                         '<div style="margin-top:8px;font-size:12px;color:#9aa9cc;display:flex;gap:12px;flex-wrap:wrap;">' +
                         indicatorsHtml +
                         '</div></div>';

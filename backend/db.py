@@ -1,16 +1,47 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 
+def get_db_path():
+    """返回数据库文件路径，兼容开发环境和 PyInstaller 打包环境。
+    打包后：exe 同级目录下的 tquant.db
+    开发环境：项目根目录下的 tquant.db
+    """
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, 'tquant.db')
+
+
 class Database:
     def __init__(self):
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        db_path = os.path.join(base_dir, 'tquant.db')
-        self.db_path = db_path
-        self.engine = create_engine(f'sqlite:///{db_path}?check_same_thread=False', echo=False)
+        self.db_path = get_db_path()
+        if not os.path.exists(self.db_path):
+            err_msg = (
+                f"数据库文件未找到:\n\n"
+                f"   {self.db_path}\n\n"
+                f"请将 tquant.db 文件放在程序所在目录。\n"
+                f"如果数据库文件名不同，请重命名为 tquant.db。"
+            )
+            print(f"[ERROR] {err_msg}")
+            # 尝试弹出 GUI 提示（如果有 QMessageBox 可用）
+            try:
+                from PySide6.QtWidgets import QMessageBox, QApplication
+                app = QApplication.instance()
+                if app:
+                    QMessageBox.critical(None, "数据库未找到", err_msg)
+                else:
+                    QMessageBox.critical(None, "数据库未找到", err_msg)
+            except Exception:
+                pass
+            raise FileNotFoundError(err_msg)
+
+        self.engine = create_engine(f'sqlite:///{self.db_path}?check_same_thread=False', echo=False)
         # WAL 模式提升并发读性能
         with self.engine.connect() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -179,6 +210,25 @@ class Database:
                 ON fund_flow_history(ts_code, trade_date)
             """))
 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS auto_trade_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    stock_code TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    volume INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT,
+                    mode TEXT,
+                    order_id TEXT
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_auto_trade_log_time
+                ON auto_trade_log(timestamp)
+            """))
+
             conn.commit()
 
     def _get_stock_suffix(self, code):
@@ -200,7 +250,7 @@ class Database:
         def do_query():
             if limit > 0:
                 sql = text("""
-                    SELECT trade_date, open, high, low, close, vol AS volume
+                    SELECT trade_date, open, high, low, close, vol AS volume, turnover_rate_f
                     FROM stock_daily_qfq_with_name
                     WHERE ts_code = :code
                       AND trade_date >= :start
@@ -218,7 +268,7 @@ class Database:
                 return df
             else:
                 sql = text("""
-                    SELECT trade_date, open, high, low, close, vol AS volume
+                    SELECT trade_date, open, high, low, close, vol AS volume, turnover_rate_f
                     FROM stock_daily_qfq_with_name
                     WHERE ts_code = :code
                       AND trade_date >= :start

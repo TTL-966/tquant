@@ -208,15 +208,18 @@ export var CARD_TYPE_META = {
         type: 'position',
         label: '仓位管理',
         icon: '⚖️',
-        description: '设置每次交易的仓位比例',
+        description: '设置每次交易的仓位（比例或固定数量）',
         defaultAction: null,
-        defaultParams: { positionType: 'fixed', fixedPercent: 1.0 },
+        defaultParams: { position_mode: 'percentage', position_value: 100, quantity_unit: 'shares' },
         paramFields: [
-            { key: 'positionType', label: '仓位类型', type: 'select', options: [
-                { value: 'fixed', label: '固定仓位' },
-                { value: 'kelly', label: '凯利公式' }
-            ], default: 'fixed' },
-            { key: 'fixedPercent', label: '仓位比例', type: 'number', min: 0.01, max: 1.0, step: 0.01, default: 1.0 }
+            { key: 'position_mode', label: '仓位模式', type: 'select', options: [
+                { value: 'percentage', label: '按比例（可用资金百分比）' },
+                { value: 'fixed_quantity', label: '按数量（固定股数）' }
+            ], default: 'percentage' },
+            { key: 'position_pct', label: '比例(%)', type: 'number', min: 0, max: 100, step: 1, default: 100,
+                visible: { position_mode: ['percentage'] } },
+            { key: 'position_shares', label: '数量（股）', type: 'number', min: 100, max: 10000000, step: 100, default: 1000,
+                visible: { position_mode: ['fixed_quantity'] } }
         ]
     },
     price_limit: {
@@ -560,6 +563,25 @@ export var CARD_TYPE_META = {
         ]
     },
 
+    seven_swords: {
+        type: 'seven_swords',
+        label: '七脉神剑',
+        icon: '⚔️',
+        description: '7指标综合多空方向（量能/CCI/MACD/SAR/RSI/KDJ/CJDX），多头数≥阈值触发',
+        defaultAction: 'buy',
+        defaultParams: { minBullish: 4, useVol: true, useCCI: true, useMACD: true, useSAR: true, useRSI: true, useKDJ: true, useCJDX: true },
+        paramFields: [
+            { key: 'minBullish', label: '最小多头数', type: 'number', min: 1, max: 7, default: 4 },
+            { key: 'useVol', label: '启用量能(VOL)', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' },
+            { key: 'useCCI', label: '启用CCI', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' },
+            { key: 'useMACD', label: '启用MACD', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' },
+            { key: 'useSAR', label: '启用SAR', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' },
+            { key: 'useRSI', label: '启用RSI', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' },
+            { key: 'useKDJ', label: '启用KDJ', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' },
+            { key: 'useCJDX', label: '启动力(CJDX)', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }], default: 'true' }
+        ]
+    },
+
     trend_strength: {
         type: 'trend_strength',
         label: '趋势强度',
@@ -574,6 +596,187 @@ export var CARD_TYPE_META = {
                 { value: 'price_above_pressure', label: '价格突破压力线（20日高点）' },
                 { value: 'price_below_support', label: '价格跌破支撑线（20日低点）' }
             ], default: 'short_bottom' }
+        ]
+    },
+
+    vwap_signal: {
+        type: 'vwap_signal',
+        label: 'VWAP 信号',
+        icon: '📊',
+        description: '收盘价与成交量加权平均价的关系',
+        defaultAction: 'buy',
+        defaultParams: { period: 60, direction: 'above' },
+        paramFields: [
+            { key: 'period', label: '计算周期', type: 'number', min: 5, max: 250, default: 60 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'above', label: '收盘价 > VWAP' },
+                { value: 'below', label: '收盘价 < VWAP' }
+            ], default: 'above' }
+        ]
+    },
+    median_signal: {
+        type: 'median_signal',
+        label: '中位数信号',
+        icon: '📊',
+        description: '收盘价与中位数的关系',
+        defaultAction: 'buy',
+        defaultParams: { period: 60, direction: 'above' },
+        paramFields: [
+            { key: 'period', label: '计算周期', type: 'number', min: 5, max: 250, default: 60 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'above', label: '收盘价 > 中位数' },
+                { value: 'below', label: '收盘价 < 中位数' }
+            ], default: 'above' }
+        ]
+    },
+    mean_signal: {
+        type: 'mean_signal',
+        label: '算术平均信号',
+        icon: '📊',
+        description: '收盘价与算术平均的关系',
+        defaultAction: 'buy',
+        defaultParams: { period: 60, direction: 'above' },
+        paramFields: [
+            { key: 'period', label: '计算周期', type: 'number', min: 5, max: 250, default: 60 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'above', label: '收盘价 > 算术平均' },
+                { value: 'below', label: '收盘价 < 算术平均' }
+            ], default: 'above' }
+        ]
+    },
+    turnover_threshold: {
+        type: 'turnover_threshold',
+        label: '换手率阈值',
+        icon: '🔄',
+        description: '当日自由流通换手率与指定阈值比较',
+        defaultAction: 'buy',
+        defaultParams: { threshold: 5, direction: 'above' },
+        paramFields: [
+            { key: 'threshold', label: '阈值(%)', type: 'number', min: 0, max: 50, step: 0.5, default: 5 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'above', label: '换手率 > 阈值' },
+                { value: 'below', label: '换手率 < 阈值' }
+            ], default: 'above' }
+        ]
+    },
+    turnover_ratio: {
+        type: 'turnover_ratio',
+        label: '换手率均量比',
+        icon: '📊',
+        description: '当日换手率与过去N日均量的比值',
+        defaultAction: 'buy',
+        defaultParams: { period: 20, ratio: 1.5, direction: 'above' },
+        paramFields: [
+            { key: 'period', label: '均线周期', type: 'number', min: 5, max: 100, default: 20 },
+            { key: 'ratio', label: '倍数', type: 'number', min: 0.5, max: 5, step: 0.1, default: 1.5 },
+            { key: 'direction', label: '信号方向', type: 'select', options: [
+                { value: 'above', label: '换手率 > 均量 × 倍数' },
+                { value: 'below', label: '换手率 < 均量 × 倍数' }
+            ], default: 'above' }
+        ]
+    },
+    index_sentiment: {
+        type: 'index_sentiment',
+        label: '指数情绪',
+        icon: '📊',
+        description: '根据指数的技术指标判断市场情绪，作为买卖的辅助条件',
+        defaultAction: null,
+        defaultParams: {
+            index_code: '000300.SH',
+            indicator: 'close_above_ma',
+            ma_period: 20,
+            rsi_period: 14,
+            rsi_threshold: 70,
+            volume_ratio_period: 20,
+            volume_ratio_threshold: 1.5,
+            strict_mode: true
+        },
+        paramFields: [
+            {
+                key: 'index_code',
+                label: '指数',
+                type: 'select',
+                options: [
+                    { value: '000300.SH', label: '沪深300' },
+                    { value: '000001.SH', label: '上证指数' },
+                    { value: '399001.SZ', label: '深证成指' },
+                    { value: '000905.SH', label: '中证500' },
+                    { value: '399006.SZ', label: '创业板指' },
+                    { value: '000688.SH', label: '科创50' }
+                ],
+                default: '000300.SH'
+            },
+            {
+			    key: 'indicator',
+			    label: '指标',
+			    type: 'select',
+			    options: [
+			        { value: 'close_above_ma', label: '收盘价 > 均线' },
+			        { value: 'close_below_ma', label: '收盘价 < 均线' },
+			        { value: 'rsi_above', label: 'RSI 大于' },
+			        { value: 'rsi_below', label: 'RSI 小于' },
+			        { value: 'macd_golden', label: 'MACD 金叉（严格）' },
+			        { value: 'macd_death', label: 'MACD 死叉（严格）' },
+			        { value: 'macd_bull', label: 'MACD 多头（DIF > DEA）' },
+			        { value: 'macd_bear', label: 'MACD 空头（DIF < DEA）' },
+			        { value: 'dif_above_zero', label: 'DIF > 0' },
+			        { value: 'dif_below_zero', label: 'DIF < 0' },
+			        { value: 'volume_ratio', label: '成交量比率大于' }
+			    ],
+			    default: 'close_above_ma'
+			},
+            {
+                key: 'ma_period',
+                label: '均线周期',
+                type: 'number',
+                min: 5,
+                max: 250,
+                default: 20,
+                visible: { indicator: ['close_above_ma', 'close_below_ma'] }
+            },
+            {
+                key: 'rsi_period',
+                label: 'RSI 周期',
+                type: 'number',
+                min: 5,
+                max: 30,
+                default: 14,
+                visible: { indicator: ['rsi_above', 'rsi_below'] }
+            },
+            {
+                key: 'rsi_threshold',
+                label: '阈值',
+                type: 'number',
+                min: 0,
+                max: 100,
+                default: 70,
+                visible: { indicator: ['rsi_above', 'rsi_below'] }
+            },
+            {
+                key: 'volume_ratio_period',
+                label: '成交量均线周期',
+                type: 'number',
+                min: 5,
+                max: 60,
+                default: 20,
+                visible: { indicator: ['volume_ratio'] }
+            },
+            {
+                key: 'volume_ratio_threshold',
+                label: '倍率',
+                type: 'number',
+                min: 1.0,
+                max: 10.0,
+                step: 0.1,
+                default: 1.5,
+                visible: { indicator: ['volume_ratio'] }
+            },
+            {
+                key: 'strict_mode',
+                label: '严格模式（使用前一日数据，避免未来函数）',
+                type: 'boolean',
+                default: true
+            }
         ]
     }
 };
@@ -600,7 +803,7 @@ export var STRATEGY_TEMPLATES = [
         cards: [
             { id: generateCardId(), type: 'ma_cross', action: 'buy', params: { fastPeriod: 5, slowPeriod: 20, direction: 'golden' } },
             { id: generateCardId(), type: 'ma_cross', action: 'sell', params: { fastPeriod: 5, slowPeriod: 20, direction: 'death' } },
-            { id: generateCardId(), type: 'position', action: null, params: { positionType: 'fixed', fixedPercent: 1.0 } }
+            { id: generateCardId(), type: 'position', action: null, params: { position_mode: 'percentage', position_value: 100, quantity_unit: 'shares' } }
         ]
     },
     {
@@ -612,7 +815,7 @@ export var STRATEGY_TEMPLATES = [
             { id: generateCardId(), type: 'rsi', action: 'buy', params: { period: 14, oversold: 30, overbought: 70, direction: 'oversold_buy' } },
             { id: generateCardId(), type: 'rsi', action: 'sell', params: { period: 14, oversold: 30, overbought: 70, direction: 'overbought_sell' } },
             { id: generateCardId(), type: 'stop_loss_profit', action: 'sell', params: { stopLossPercent: 5, takeProfitPercent: 15, maxHoldDays: 30 } },
-            { id: generateCardId(), type: 'position', action: null, params: { positionType: 'fixed', fixedPercent: 0.8 } }
+            { id: generateCardId(), type: 'position', action: null, params: { position_mode: 'percentage', position_value: 80, quantity_unit: 'shares' } }
         ]
     },
     {
@@ -626,7 +829,7 @@ export var STRATEGY_TEMPLATES = [
             { id: generateCardId(), type: 'macd', action: 'sell', params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, direction: 'death' } },
             { id: generateCardId(), type: 'kdj', action: 'sell', params: { n: 9, m1: 3, m2: 3, direction: 'death' } },
             { id: generateCardId(), type: 'stop_loss_profit', action: 'sell', params: { stopLossPercent: 8, takeProfitPercent: 20, maxHoldDays: 40 } },
-            { id: generateCardId(), type: 'position', action: null, params: { positionType: 'fixed', fixedPercent: 1.0 } }
+            { id: generateCardId(), type: 'position', action: null, params: { position_mode: 'percentage', position_value: 100, quantity_unit: 'shares' } }
         ]
     },
     {
@@ -640,7 +843,7 @@ export var STRATEGY_TEMPLATES = [
             { id: generateCardId(), type: 'rsi', action: 'sell', params: { period: 14, oversold: 30, overbought: 70, direction: 'overbought_sell' } },
             { id: generateCardId(), type: 'bollinger', action: 'sell', params: { period: 20, stdMultiplier: 2, direction: 'upper_breakout' } },
             { id: generateCardId(), type: 'stop_loss_profit', action: 'sell', params: { stopLossPercent: 5, takeProfitPercent: 10, maxHoldDays: 20 } },
-            { id: generateCardId(), type: 'position', action: null, params: { positionType: 'fixed', fixedPercent: 0.8 } }
+            { id: generateCardId(), type: 'position', action: null, params: { position_mode: 'percentage', position_value: 80, quantity_unit: 'shares' } }
         ]
     },
     {
@@ -654,7 +857,7 @@ export var STRATEGY_TEMPLATES = [
             { id: generateCardId(), type: 'volume', action: 'sell', params: { period: 20, multiple: 1.5 } },
             { id: generateCardId(), type: 'ma_cross', action: 'sell', params: { fastPeriod: 5, slowPeriod: 20, direction: 'death' } },
             { id: generateCardId(), type: 'stop_loss_profit', action: 'sell', params: { stopLossPercent: 5, takeProfitPercent: 12, maxHoldDays: 25 } },
-            { id: generateCardId(), type: 'position', action: null, params: { positionType: 'fixed', fixedPercent: 1.0 } }
+            { id: generateCardId(), type: 'position', action: null, params: { position_mode: 'percentage', position_value: 100, quantity_unit: 'shares' } }
         ]
     },
     {
@@ -667,7 +870,7 @@ export var STRATEGY_TEMPLATES = [
             { id: generateCardId(), type: 'macd', action: 'buy', params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, direction: 'golden' } },
             { id: generateCardId(), type: 'ma_cross', action: 'sell', params: { fastPeriod: 5, slowPeriod: 20, direction: 'death' } },
             { id: generateCardId(), type: 'stop_loss_profit', action: 'sell', params: { stopLossPercent: 6, takeProfitPercent: 18, maxHoldDays: 60 } },
-            { id: generateCardId(), type: 'position', action: null, params: { positionType: 'fixed', fixedPercent: 0.7 } }
+            { id: generateCardId(), type: 'position', action: null, params: { position_mode: 'percentage', position_value: 70, quantity_unit: 'shares' } }
         ]
     }
 ];

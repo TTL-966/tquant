@@ -291,6 +291,15 @@ export function loadPage(pageId) {
     var container = document.getElementById('dynamicContent');
     if (!container) return;
 
+    // 同页面跳过重建（避免重复渲染卡顿），仅 stock/kchart 做数据刷新
+    var curActive = document.querySelector('.nav-item.active');
+    if (curActive && curActive.getAttribute('data-page') === pageId) {
+        if (pageId === 'stock' && window._loadStockRef) {
+            window._loadStockRef(currentStockCode);
+        }
+        return;
+    }
+
     // 切换页面时清理旧副图实例和行情轮询
     if (window.subChartManager) {
         window.subChartManager.destroyAll();
@@ -355,12 +364,12 @@ window.navigateToKline = navigateToKline;
 
 // ---- 副图工具栏事件绑定（公共）----
 function _bindSubchartToolbar(mgr, containerId, stockCode) {
-    var wrapper = document.querySelector('.subchart-wrapper[data-subchart="' + containerId.replace('SubChart', 'Sub') + '"]');
-    // 兼容 stock/kchart 命名差异
+    // 优先通过容器ID查DOM，再用closest找wrapper（比data-subchart属性选择更可靠）
+    var chartContainer = document.getElementById(containerId);
+    var wrapper = chartContainer ? chartContainer.closest('.subchart-wrapper') : null;
+    // 备用：通过 data-subchart 属性查找
     if (!wrapper) {
-        // 尝试备用选择
-        var chartContainer = document.getElementById(containerId);
-        if (chartContainer) wrapper = chartContainer.closest('.subchart-wrapper');
+        wrapper = document.querySelector('.subchart-wrapper[data-subchart="' + containerId.replace('SubChart', 'Sub') + '"]');
     }
     if (!wrapper) return;
 
@@ -452,7 +461,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
-                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
+                    <button class="subchart-type-btn" data-type="seven_swords">七脉神剑</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart1Values"></div>
@@ -474,7 +483,7 @@ function renderKchartPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
-                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
+                    <button class="subchart-type-btn" data-type="seven_swords">七脉神剑</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="kchartSubChart2Values"></div>
@@ -622,13 +631,26 @@ function renderKchartPage(container) {
             });
         }
 
-        // 刷新K线按钮
+        // 刷新K线按钮：先触发按需更新，再重新加载K线
         var refreshBtn = document.getElementById('refreshKlineBtn');
-        if (refreshBtn) {
-            refreshBtn.onclick = function() {
-                fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd);
-            };
-        }
+		if (refreshBtn) {
+		    refreshBtn.onclick = function() {
+		        if (bridge && typeof bridge.ensure_stock_updated === 'function') {
+		            bridge.ensure_stock_updated(currentStockCode).then(() => {
+		                // 后端更新完成，清除前端缓存
+		                var cacheKey = getCacheKey('stock', currentStockCode, backtestStart, backtestEnd);
+		                klineDataCache.delete(cacheKey);
+		                // 重新获取并渲染
+		                fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd, currentPeriod);
+		            }).catch(() => {
+		                // 即使失败也尝试直接刷新
+		                fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd, currentPeriod);
+		            });
+		        } else {
+		            fetchAndRenderKline(currentStockCode, backtestStart, backtestEnd, currentPeriod);
+		        }
+		    };
+		}
 
         // 周期切换（自定义下拉，避免QtWebEngine原生select拉伸）
         var periodInput = document.getElementById('periodInput');
@@ -939,6 +961,7 @@ function renderStockPage(container) {
                     <input type="text" id="stockCodeInput" placeholder="输入股票代码或名称搜索" style="flex:1; background:#1e253b; border:1px solid #323d5a; padding:8px 14px; border-radius:30px; color:#ffffff; font-size:13px;">
                     <div id="stockSuggestionsContainer" style="position: absolute; top:40px; left:0; right:0; z-index: 1000; max-height: 200px; overflow-y: auto; background: #1a2135; border:1px solid #2a314a; border-radius: 8px; display: none;"></div>
                     <button id="stockSearchBtn">🔍 查询</button>
+                    <button id="refreshStockKlineBtn" style="background:#2a3a5a;">🔄 刷新K线</button>
                     <button id="stockFundamentalBtn" style="background:#2a3a5a;">📊 个股资料</button>
                 </div>
                 <div id="stockIndustryInfo" style="display:flex; align-items:center; gap:8px; margin-left:16px; white-space:nowrap;">
@@ -996,7 +1019,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
-                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
+                    <button class="subchart-type-btn" data-type="seven_swords">七脉神剑</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart1Values"></div>
@@ -1018,7 +1041,7 @@ function renderStockPage(container) {
                     <button class="subchart-type-btn" data-type="trend_strength">趋势强度</button>
                     <button class="subchart-type-btn" data-type="supertrend">超级趋势</button>
                     <button class="subchart-type-btn" data-type="cmf">资金流(CMF)</button>
-                    <button class="subchart-type-btn" data-type="resonance">共振指标</button>
+                    <button class="subchart-type-btn" data-type="seven_swords">七脉神剑</button>
                     <button class="collapse-btn">▲ 折叠</button>
                 </div>
                 <div class="subchart-values" id="stockSubChart2Values"></div>
@@ -1542,6 +1565,17 @@ function renderStockPage(container) {
             });
             codeInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') searchBtn.click();
+            });
+        }
+
+        // 刷新K线按钮：先触发按需更新，再重新加载K线
+        var refreshStockBtn = document.getElementById('refreshStockKlineBtn');
+        if (refreshStockBtn) {
+            refreshStockBtn.addEventListener('click', function() {
+                if (bridge && typeof bridge.ensure_stock_updated === 'function') {
+                    bridge.ensure_stock_updated(currentStockCode).catch(function() {});
+                }
+                setTimeout(function() { loadStock(currentStockCode); }, 800);
             });
         }
 
@@ -2517,14 +2551,42 @@ async function showFundamentalModal(code) {
         var netProfit = fmtNum(data.net_profit);
         var floatSh  = fmtNum(data.float_shares);
         var updDate  = data.update_date || '--';
+        var indName = data.industry_name || '';
+        var indUpdDate = data.industry_update_date || '';
+        var conceptCount = data.concept_count || 0;
+        var lastConceptUpd = data.last_concept_update || '';
+        var lastIndustryUpd = data.last_industry_update || '';
 
         // 构建概念标签
         var conceptsHtml = '';
         if (concepts.length > 0) {
             var tags = concepts.map(c => `<span style="background:#2a3a5e;padding:2px 8px;border-radius:12px;font-size:12px;">${escapeHtml(c)}</span>`).join('');
-            conceptsHtml = `<div style="margin-top:16px;"><span style="color:#9aa9cc;">概念题材：</span><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${tags}</div></div>`;
+            conceptsHtml = `<div style="margin-top:16px;"><span style="color:#9aa9cc;">概念题材：</span><span style="color:#fff;font-weight:600;margin-left:4px;">${concepts.length} 个</span>`;
+            if (lastConceptUpd) conceptsHtml += ` <span style="color:#6a7a9a;font-size:11px;">（更新: ${escapeHtml(lastConceptUpd)}）</span>`;
+            conceptsHtml += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${tags}</div></div>`;
         } else {
-            conceptsHtml = `<div style="margin-top:16px;"><span style="color:#9aa9cc;">概念题材：</span><span style="color:#9aa9cc; margin-left:8px;">--</span></div>`;
+            conceptsHtml = `<div style="margin-top:16px;"><span style="color:#9aa9cc;">概念题材：</span><span style="color:#9aa9cc; margin-left:8px;">--</span>`;
+            if (lastConceptUpd) conceptsHtml += ` <span style="color:#6a7a9a;font-size:11px;">（上次更新: ${escapeHtml(lastConceptUpd)}）</span>`;
+            conceptsHtml += `</div>`;
+        }
+
+        // 行业/概念数据更新时间行
+        var dataSourcesHtml = '';
+        if (indName || lastIndustryUpd || lastConceptUpd) {
+            dataSourcesHtml = '<div style="margin-top:12px;padding:8px 12px;background:#0e1220;border-radius:8px;font-size:11px;color:#6a7a9a;">';
+            if (indName && indUpdDate) {
+                dataSourcesHtml += '<div>📌 行业分类: <span style="color:#fff;">' + escapeHtml(indName) + '</span>（Baostock 更新: ' + escapeHtml(indUpdDate) + '）</div>';
+            }
+            if (lastIndustryUpd) {
+                dataSourcesHtml += '<div>🏭 行业表更新: ' + escapeHtml(lastIndustryUpd) + '</div>';
+            }
+            if (lastConceptUpd) {
+                dataSourcesHtml += '<div>🏷️ 概念表更新: ' + escapeHtml(lastConceptUpd) + '</div>';
+            }
+            if (!indName && !lastIndustryUpd && !lastConceptUpd) {
+                dataSourcesHtml += '<div>暂无行业/概念更新记录</div>';
+            }
+            dataSourcesHtml += '</div>';
         }
 
         modal.innerHTML = `
@@ -2541,7 +2603,8 @@ async function showFundamentalModal(code) {
                 <div><span style="color:#9aa9cc;">流通股本 (亿股)</span><br><span style="font-size:18px;font-weight:600;">${floatSh}</span></div>
             </div>
             ${conceptsHtml}
-            <div style="margin-top:20px;text-align:center;color:#9aa9cc;font-size:12px;">数据更新: ${escapeHtml(updDate)}</div>
+            ${dataSourcesHtml}
+            <div style="margin-top:20px;text-align:center;color:#9aa9cc;font-size:12px;">财务数据更新: ${escapeHtml(updDate)}</div>
             <div style="margin-top:20px;text-align:right;">
                 <button id="closeModalBtn" style="background:#4f7eff;border:none;padding:6px 20px;border-radius:30px;color:#fff;cursor:pointer;">关闭</button>
             </div>

@@ -53,6 +53,9 @@ class DataFeed:
             'close': 'last',
             'volume': 'sum'
         }
+        has_turnover = 'turnover_rate_f' in df_copy.columns
+        if has_turnover:
+            agg_dict['turnover_rate_f'] = 'mean'
         if period == 'weekly':
             df_copy['_group'] = df_copy.index.to_period('W').start_time
         elif period == 'monthly':
@@ -61,12 +64,17 @@ class DataFeed:
             return df
         result = df_copy.groupby('_group').agg(agg_dict)
         result.index = pd.to_datetime(result.index)
-        # 重新排列列顺序以匹配缓存格式: open, close, low, high, volume
-        result = result[['open', 'close', 'low', 'high', 'volume']]
+        # 重新排列列顺序以匹配缓存格式: open, close, low, high, volume, [turnover_rate_f]
+        cols = ['open', 'close', 'low', 'high', 'volume']
+        if has_turnover:
+            cols.append('turnover_rate_f')
+        result = result[cols]
         # 确保数据类型正确
         for col in ['open', 'close', 'low', 'high']:
             result[col] = result[col].astype(float).round(2)
         result['volume'] = result['volume'].astype(int)
+        if has_turnover:
+            result['turnover_rate_f'] = result['turnover_rate_f'].astype(float).round(2)
         return result
 
     def get_kline_json(self, code, start_date=None, end_date=None, limit=0, period='daily'):
@@ -98,8 +106,13 @@ class DataFeed:
 
             # 将 DataFrame 转换为缓存格式
             dates = [self._format_date(d) for d in df['trade_date']]
-            values = [[safe_float(o), safe_float(c), safe_float(l), safe_float(h), safe_int(v)]
-                      for o, c, l, h, v in zip(df['open'], df['close'], df['low'], df['high'], df['volume'])]
+            has_turnover = 'turnover_rate_f' in df.columns
+            if has_turnover:
+                values = [[safe_float(o), safe_float(c), safe_float(l), safe_float(h), safe_int(v), safe_float(t)]
+                          for o, c, l, h, v, t in zip(df['open'], df['close'], df['low'], df['high'], df['volume'], df['turnover_rate_f'])]
+            else:
+                values = [[safe_float(o), safe_float(c), safe_float(l), safe_float(h), safe_int(v)]
+                          for o, c, l, h, v in zip(df['open'], df['close'], df['low'], df['high'], df['volume'])]
             self._kline_cache[code_pure] = {"dates": dates, "values": values}
 
         cached = self._kline_cache.get(code_pure)
@@ -119,19 +132,26 @@ class DataFeed:
 
         # 聚合到目标周期（周线/月线）
         if period != 'daily' and len(filtered_dates) > 0:
-            df = pd.DataFrame(filtered_values, columns=['open', 'close', 'low', 'high', 'volume'])
+            cols = ['open', 'close', 'low', 'high', 'volume']
+            has_turnover = any(len(v) >= 6 for v in filtered_values)
+            if has_turnover:
+                cols.append('turnover_rate_f')
+            df = pd.DataFrame(filtered_values, columns=cols)
             df.index = pd.to_datetime(filtered_dates)
             df_agg = self._aggregate_to_period(df, period)
             filtered_dates = [d.strftime('%Y-%m-%d') for d in df_agg.index]
             filtered_values = []
             for _, row in df_agg.iterrows():
-                filtered_values.append([
+                vals = [
                     float(row['open']),
                     float(row['close']),
                     float(row['low']),
                     float(row['high']),
                     int(row['volume'])
-                ])
+                ]
+                if has_turnover and 'turnover_rate_f' in df_agg.columns:
+                    vals.append(float(row['turnover_rate_f']))
+                filtered_values.append(vals)
 
         # 如果 limit > 0，取尾部 limit 条
         if limit > 0 and len(filtered_dates) > limit:
