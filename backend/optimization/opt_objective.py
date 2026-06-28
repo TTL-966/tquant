@@ -103,6 +103,14 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
     # 3. 注入参数到策略代码
     code = inject_params(strategy_code, all_params)
 
+    # 首次 trial 打印策略代码 init 段，排查零交易问题
+    if trial.number == 0:
+        init_end = code.find("def handle_bar")
+        preview = code[:init_end] if init_end > 0 else code[:500]
+        print(f"[DEBUG opt] trial 0: stock={stock_code}, sampled={sampled}")
+        print("[DEBUG opt] strategy init (first 600 chars):")
+        print(code[:600])
+
     # 4. 运行回测
     data_feed = DataFeed()
     executor = BacktestExecutor(data_feed)
