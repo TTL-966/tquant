@@ -1,7 +1,6 @@
 """OptunaWorker — 在 QThread 中运行 Optuna Study，逐步发射进度信号"""
 
 import traceback
-import json
 
 import optuna
 from optuna.samplers import TPESampler
@@ -57,10 +56,14 @@ class OptunaWorker(QThread):
                     "state": state,
                 })
 
+                best_val = study.best_value if study.best_trial else None
+                if best_val is not None:
+                    best_val = float(best_val)
+
                 self.progress.emit({
                     "current": len(results),
                     "total": p.get("n_trials", 100),
-                    "best_value": study.best_value if study.best_trial else None,
+                    "best_value": best_val,
                     "last_trial": {
                         "number": trial.number,
                         "value": val if val == val else None,

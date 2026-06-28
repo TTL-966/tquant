@@ -2,6 +2,7 @@ import json
 import sys
 import os
 import re
+import secrets
 import time
 import shutil
 import threading
@@ -2073,7 +2074,6 @@ class WebBridge(QObject):
         if not params.get("params_to_search"):
             return json.dumps({"success": False, "error": "没有选择要搜索的参数"})
 
-        import secrets
         job_id = secrets.token_hex(6)
 
         worker = OptunaWorker(params)
@@ -2086,8 +2086,9 @@ class WebBridge(QObject):
         # 捕获结果
         def on_finished(result):
             if job_id in self._optimization_jobs:
-                self._optimization_jobs[job_id]["result"] = result
-                self._optimization_jobs[job_id]["status"] = "finished"
+                if self._optimization_jobs[job_id].get("status") != "cancelled":
+                    self._optimization_jobs[job_id]["result"] = result
+                    self._optimization_jobs[job_id]["status"] = "finished"
 
         worker.progress.connect(on_progress)
         worker.finished.connect(on_finished)

@@ -5,7 +5,7 @@ import { bridge } from './bridge.js';
 import { bindDatePicker } from './datepicker.js';
 import { escapeHtml } from './main.js';
 import { generateCardId, CARD_TYPE_META, STRATEGY_TEMPLATES, createDefaultCard } from './strategyTemplates.js';
-import { generateCode, serializeConfig, deserializeConfig, validateCards } from './strategyUtils.js';
+import { generateCode, serializeConfig, deserializeConfig, validateCards, extractParamsFromCards } from './strategyUtils.js';
 import { stockNameMap, fetchStockName } from './stockData.js';
 import { Logger } from './logger.js';
 import { showCompareBacktestModal } from './compareStrategy.js';
@@ -19,6 +19,8 @@ var startDate = '2025-01-01';
 var endDate = new Date().toISOString().slice(0, 10);
 var stockPool = '';
 var slippage = 'close';
+var entryLogic = 'all';
+var exitLogic = 'any';
 var logContainer = null;
 var codeExpanded = false;
 var logExpanded = true;
@@ -154,8 +156,17 @@ function buildParamSummary(card) {
     meta.paramFields.forEach(function(f) {
         var val = card.params[f.key];
         if (val === undefined || val === null) return;
+        // 检查可见性条件
+        if (f.visible) {
+            var visKey = Object.keys(f.visible)[0];
+            var visVal = card.params[visKey];
+            if (visVal === undefined || visVal === null) visVal = meta.defaultParams[visKey];
+            if (f.visible[visKey].indexOf(visVal) === -1) return;
+        }
         var display = val;
-        if (f.multiple && Array.isArray(val)) {
+        if (f.type === 'boolean') {
+            display = val ? '是' : '否';
+        } else if (f.multiple && Array.isArray(val)) {
             display = val.join(', ') || '(无)';
         } else if (f.type === 'select' && f.options) {
             var opt = f.options.find(function(o) { return o.value === val; });
@@ -173,6 +184,9 @@ function buildActionBadge(card) {
     }
     if (card.type === 'stop_loss_profit') {
         return '<span style="color:#ff6b6b;">🛡️ 风控</span>';
+    }
+    if (card.type === 'index_sentiment') {
+        return '<span style="color:#f2c94c;">📊 情绪</span>';
     }
     if (card.action === 'buy') {
         return '<span style="color:#4cff4c;">🟢 买入</span>';
@@ -339,7 +353,10 @@ function showAddCardModal() {
         'hammer_hanging', 'williams_r', 'roc', 'psy', 'atr_breakout', 'cci',
         'ma_alignment', 'stop_loss_profit', 'position', 'price_limit',
         'yesterday_change', 'n_day_high', 'n_day_low', 'consecutive_up',
-        'pe_below', 'pb_below', 'roe_above', 'concept_contains', 'industry_contains'];
+        'pe_below', 'pb_below', 'roe_above', 'concept_contains', 'industry_contains',
+        'turnover_threshold', 'turnover_ratio',
+        'vwap_signal', 'median_signal', 'mean_signal',
+        'index_sentiment'];
     typeKeys.forEach(function(key) {
         var meta = CARD_TYPE_META[key];
         var item = document.createElement('div');
@@ -352,7 +369,7 @@ function showAddCardModal() {
         item.onclick = function() {
             overlay.remove();
             modal.remove();
-            if (key === 'position') {
+            if (key === 'position' || key === 'index_sentiment') {
                 addCard(key, null);
             } else if (key === 'stop_loss_profit') {
                 addCard(key, 'sell');
@@ -404,6 +421,27 @@ function showEditCardModal(card, index) {
     var meta = CARD_TYPE_META[card.type];
     if (!meta) return;
 
+    // 归一化旧格式仓位卡片为新的 position_mode / position_value 格式
+    if (card.type === 'position') {
+        var _pm = card.params.position_mode;
+        if (!_pm) {
+            var oldPct = card.params.fixedPercent;
+            if (oldPct !== undefined) {
+                card.params.position_mode = 'percentage';
+                card.params.position_value = oldPct * 100;
+                card.params.quantity_unit = 'shares';
+            }
+        }
+        if (!card.params.position_mode) {
+            card.params.position_mode = 'percentage';
+            card.params.position_value = 100;
+            card.params.quantity_unit = 'shares';
+        }
+        var _pv = card.params.position_value;
+        card.params.position_pct = (card.params.position_mode === 'percentage') ? _pv : 100;
+        card.params.position_shares = (card.params.position_mode === 'fixed_quantity') ? _pv : 1000;
+    }
+
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;';
     overlay.onclick = function() { closeCustomSelect(); overlay.remove(); modal.remove(); };
@@ -424,11 +462,23 @@ function showEditCardModal(card, index) {
 
     // Build form fields
     var formData = {};
+    var fieldRows = {};  // track row elements for visibility toggling
     meta.paramFields.forEach(function(f) {
         formData[f.key] = card.params[f.key] !== undefined ? card.params[f.key] : f.default;
 
         var row = document.createElement('div');
         row.style.cssText = 'margin-bottom:12px;overflow:hidden;';
+        fieldRows[f.key] = row;
+
+        // Check visibility condition
+        if (f.visible) {
+            var visField = Object.keys(f.visible)[0];
+            var visValues = f.visible[visField];
+            var currentVisVal = formData[visField];
+            if (visValues.indexOf(currentVisVal) === -1) {
+                row.style.display = 'none';
+            }
+        }
 
         var label = document.createElement('div');
         label.style.cssText = 'color:#9aa9cc;font-size:12px;margin-bottom:4px;';
@@ -440,7 +490,7 @@ function showEditCardModal(card, index) {
         if ((!opts || opts.length === 0) && f.key === 'industry') opts = industryListCache;
 
         if (f.key === 'concepts' && opts) {
-            // 概念多选：搜索框 + 原生 select[multiple]
+            // ... (concepts handling unchanged)
             var container = document.createElement('div');
 
             var searchInput = document.createElement('input');
@@ -475,13 +525,11 @@ function showEditCardModal(card, index) {
             populateSelect('');
 
             searchInput.addEventListener('input', function(e) {
-                // Preserve already-selected values before repopulating
                 var sel = Array.from(selectEl.selectedOptions).map(function(o) { return o.value; });
                 selectedArr = sel;
                 populateSelect(e.target.value);
             });
 
-            // Sync selections back on change
             selectEl.addEventListener('change', function() {
                 selectedArr = Array.from(selectEl.selectedOptions).map(function(o) { return o.value; });
             });
@@ -508,6 +556,33 @@ function showEditCardModal(card, index) {
                 showCustomSelect(input, opts, function(selectedValue) {});
             });
 
+            // Check if this field controls visibility of other fields
+            var controlsVisibility = false;
+            meta.paramFields.forEach(function(otherF) {
+                if (otherF.visible) {
+                    var visKey = Object.keys(otherF.visible)[0];
+                    if (visKey === f.key) controlsVisibility = true;
+                }
+            });
+            if (controlsVisibility) {
+                input.addEventListener('click', function(e) {
+                    // After selection, update visibility
+                    setTimeout(function() {
+                        meta.paramFields.forEach(function(otherF) {
+                            if (otherF.visible) {
+                                var visKey = Object.keys(otherF.visible)[0];
+                                var visValues = otherF.visible[visKey];
+                                var curVisVal = input.getAttribute('data-value');
+                                var rowEl = fieldRows[otherF.key];
+                                if (rowEl) {
+                                    rowEl.style.display = visValues.indexOf(curVisVal) >= 0 ? '' : 'none';
+                                }
+                            }
+                        });
+                    }, 200);
+                });
+            }
+
             row.appendChild(input);
         } else if (f.type === 'number') {
             var input = document.createElement('input');
@@ -519,13 +594,39 @@ function showEditCardModal(card, index) {
             input.value = formData[f.key];
             input.style.cssText = 'width:100%;background:#0e1220;border:1px solid #323d5a;border-radius:8px;color:#fff;padding:8px;font-size:13px;box-sizing:border-box;';
             row.appendChild(input);
+            // 数量模式下显示 "≈ X 手" 提示
+            if (f.key === 'position_shares') {
+                var lotsHint = document.createElement('span');
+                lotsHint.style.cssText = 'color:#7a8ba8;font-size:11px;margin-left:8px;white-space:nowrap;';
+                lotsHint.setAttribute('data-position-lots-hint', '1');
+                var updateLotsHint = function() {
+                    var v = parseInt(input.value) || 0;
+                    lotsHint.textContent = '≈ ' + (v / 100).toFixed(0) + ' 手 (1手=100股)';
+                };
+                input.addEventListener('input', updateLotsHint);
+                updateLotsHint();
+                row.appendChild(lotsHint);
+            }
+        } else if (f.type === 'boolean') {
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('data-field', f.key);
+            checkbox.checked = formData[f.key] === true;
+            checkbox.style.cssText = 'width:18px;height:18px;accent-color:#4f7eff;cursor:pointer;';
+            row.style.cssText = 'margin-bottom:12px;display:flex;align-items:center;gap:10px;';
+            row.innerHTML = '';  // clear label, rebuild
+            var cbLabel = document.createElement('span');
+            cbLabel.style.cssText = 'color:#9aa9cc;font-size:12px;';
+            cbLabel.textContent = f.label;
+            row.appendChild(checkbox);
+            row.appendChild(cbLabel);
         }
 
         body.appendChild(row);
     });
 
-    // Action toggle for non-position, non-stop-loss cards
-    if (card.type !== 'position' && card.type !== 'stop_loss_profit') {
+    // Action toggle for non-position, non-stop-loss, non-index_sentiment cards
+    if (card.type !== 'position' && card.type !== 'stop_loss_profit' && card.type !== 'index_sentiment') {
         var actionRow = document.createElement('div');
         actionRow.style.cssText = 'margin-top:16px;display:flex;gap:8px;align-items:center;';
         actionRow.innerHTML = '<span style="color:#9aa9cc;font-size:12px;">交易方向：</span>';
@@ -588,6 +689,8 @@ function showEditCardModal(card, index) {
                     if (isNaN(val)) val = f.default;
                     if (f.min !== undefined && val < f.min) val = f.min;
                     if (f.max !== undefined && val > f.max) val = f.max;
+                } else if (f.type === 'boolean') {
+                    val = el.checked;
                 } else {
                     val = el.value;
                 }
@@ -601,6 +704,18 @@ function showEditCardModal(card, index) {
         if (buyEl && sellEl) {
             if (buyEl.getAttribute('data-selected') === 'true') newAction = 'buy';
             if (sellEl.getAttribute('data-selected') === 'true') newAction = 'sell';
+        }
+        // 归一化仓位参数: 从当前可见的 UI 控件读取 position_value
+        if (card.type === 'position') {
+            if (newParams.position_mode === 'percentage') {
+                newParams.position_value = newParams.position_pct;
+            } else if (newParams.position_mode === 'fixed_quantity') {
+                newParams.position_value = newParams.position_shares;
+            }
+            newParams.quantity_unit = 'shares';
+            // 清理仅用于 UI 的临时字段
+            delete newParams.position_pct;
+            delete newParams.position_shares;
         }
         card.params = newParams;
         card.action = newAction;
@@ -1025,86 +1140,120 @@ function showBacktestModal() {
                     slippage_cost_type: slippageCostTypeVal, slippage_cost_value: slippageCostValueVal,
                     benchmark_code: benchmarkCode2 || null };
                 bridge.run_multi_backtest(JSON.stringify(multiParams)).then(function(jsonStr) {
-                    var res = JSON.parse(jsonStr);
-                    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                    if (!res.success) {
-                        addLog('error', '多股回测失败: ' + (res.error || '未知错误'));
-                        finalizeError(new Error(res.error || '未知错误'));
+                    var startRes = JSON.parse(jsonStr);
+                    if (!startRes.success) {
+                        addLog('error', '多股回测失败: ' + (startRes.error || '未知错误'));
+                        finalizeError(new Error(startRes.error || '未知错误'));
                         return;
                     }
-                    if (res.logs && res.logs.length > 0) {
-                        res.logs.slice(-30).forEach(function(l) {
-                            if (l.indexOf('[WARN]') !== -1) {
-                                addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
-                            } else if (l.indexOf('[ERROR]') !== -1) {
-                                addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
-                            } else {
-                                addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+
+                    var jobId = startRes.job_id;
+                    var pollInterval = setInterval(function() {
+                        bridge.get_backtest_progress(jobId).then(function(progStr) {
+                            var prog = JSON.parse(progStr);
+                            if (prog.status === 'cancelled' || prog.status === 'cancelling') {
+                                clearInterval(pollInterval);
+                                finalizeError(new Error('回测已被取消'));
+                                return;
                             }
+                            if (prog.status === 'finished') {
+                                clearInterval(pollInterval);
+                                bridge.get_backtest_result(jobId).then(function(resStr) {
+                                    var resObj = JSON.parse(resStr);
+                                    if (!resObj.ready) {
+                                        finalizeError(new Error('获取多股回测结果失败'));
+                                        return;
+                                    }
+                                    var res = resObj.result;
+                                    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                                    if (!res.success) {
+                                        addLog('error', '多股回测失败: ' + (res.error || '未知错误'));
+                                        finalizeError(new Error(res.error || '未知错误'));
+                                        return;
+                                    }
+                                    if (res.logs && res.logs.length > 0) {
+                                        res.logs.slice(-30).forEach(function(l) {
+                                            if (l.indexOf('[WARN]') !== -1) {
+                                                addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
+                                            } else if (l.indexOf('[ERROR]') !== -1) {
+                                                addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
+                                            } else {
+                                                addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+                                            }
+                                        });
+                                    }
+
+                                    var signals = res.signals || [];
+                                    var equityCurve = res.equity_curve || [];
+                                    var metrics = res.metrics || {};
+                                    var stockPerformance = res.stock_performance || [];
+
+                                    var finalResult = {
+                                        success: true,
+                                        signals: signals,
+                                        equity_curve: equityCurve,
+                                        metrics: metrics,
+                                        stock_performance: stockPerformance,
+                                        benchmark_equity_curve: res.benchmark_equity_curve || null,
+                                        benchmark_code: res.benchmark_code || null
+                                    };
+                                    window._lastBacktestResult = finalResult;
+                                    window.strategySignals = signals;
+                                    window._lastBacktestError = null;
+                                    window.strategyStartDate = start;
+                                    window.strategyEndDate = end;
+
+                                    saveCurrentBacktestResult(finalResult, sName, stockCodes, start, end, cashVal);
+
+                                    var posMap = {};
+                                    signals.forEach(function(s) {
+                                        var c = s.code || '';
+                                        if (!posMap[c]) posMap[c] = 0;
+                                        if (s.type === 'buy') posMap[c] += (s.price || 0) * (s.shares || 0);
+                                        else posMap[c] -= (s.price || 0) * (s.shares || 0);
+                                    });
+                                    var posEntries2 = Object.keys(posMap).map(function(k) { return { code: k, value: posMap[k] }; });
+                                    posEntries2.sort(function(a, b) { return b.value - a.value; });
+                                    window.topPositionCodes = posEntries2.slice(0, 6).map(function(e) { return e.code; });
+
+                                    var unknownCodes2 = [];
+                                    var seenCodes2 = {};
+                                    signals.forEach(function(s) {
+                                        var c = s.code || '';
+                                        if (c && !stockNameMap[c] && !seenCodes2[c]) {
+                                            seenCodes2[c] = true;
+                                            unknownCodes2.push(c);
+                                        }
+                                    });
+                                    if (unknownCodes2.length > 0) {
+                                        addLog('info', '正在加载 ' + unknownCodes2.length + ' 只股票的名称...');
+                                        var namePromises2 = unknownCodes2.map(function(c) { return fetchStockName(c, bridge); });
+                                        Promise.all(namePromises2).then(function() {
+                                            addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                                            if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
+                                            addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
+                                            overlay.remove();
+                                            modal.remove();
+                                            showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
+                                        });
+                                    } else {
+                                        addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
+                                        if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
+                                        addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
+                                        overlay.remove();
+                                        modal.remove();
+                                        showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
+                                    }
+                                }).catch(function(err) {
+                                    clearInterval(pollInterval);
+                                    finalizeError(err);
+                                });
+                            }
+                        }).catch(function(err) {
+                            clearInterval(pollInterval);
+                            finalizeError(err);
                         });
-                    }
-
-                    var signals = res.signals || [];
-                    var equityCurve = res.equity_curve || [];
-                    var metrics = res.metrics || {};
-                    var stockPerformance = res.stock_performance || [];
-
-                    var finalResult = {
-                        success: true,
-                        signals: signals,
-                        equity_curve: equityCurve,
-                        metrics: metrics,
-                        stock_performance: stockPerformance,
-                        benchmark_equity_curve: res.benchmark_equity_curve || null,
-                        benchmark_code: res.benchmark_code || null
-                    };
-                    window._lastBacktestResult = finalResult;
-                    window.strategySignals = signals;
-                    window._lastBacktestError = null;
-                    window.strategyStartDate = start;
-                    window.strategyEndDate = end;
-
-                    saveCurrentBacktestResult(finalResult, sName, stockCodes, start, end, cashVal);
-
-                    var posMap = {};
-                    signals.forEach(function(s) {
-                        var c = s.code || '';
-                        if (!posMap[c]) posMap[c] = 0;
-                        if (s.type === 'buy') posMap[c] += (s.price || 0) * (s.shares || 0);
-                        else posMap[c] -= (s.price || 0) * (s.shares || 0);
-                    });
-                    var posEntries2 = Object.keys(posMap).map(function(k) { return { code: k, value: posMap[k] }; });
-                    posEntries2.sort(function(a, b) { return b.value - a.value; });
-                    window.topPositionCodes = posEntries2.slice(0, 6).map(function(e) { return e.code; });
-
-                    var unknownCodes2 = [];
-                    var seenCodes2 = {};
-                    signals.forEach(function(s) {
-                        var c = s.code || '';
-                        if (c && !stockNameMap[c] && !seenCodes2[c]) {
-                            seenCodes2[c] = true;
-                            unknownCodes2.push(c);
-                        }
-                    });
-                    if (unknownCodes2.length > 0) {
-                        addLog('info', '正在加载 ' + unknownCodes2.length + ' 只股票的名称...');
-                        var namePromises2 = unknownCodes2.map(function(c) { return fetchStockName(c, bridge); });
-                        Promise.all(namePromises2).then(function() {
-                            addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
-                            if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
-                            addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
-                            overlay.remove();
-                            modal.remove();
-                            showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
-                        });
-                    } else {
-                        addLog('success', '✅ 回测完成，总信号 ' + signals.length + ' 个，耗时 ' + elapsed + ' 秒');
-                        if (signals.length === 0) addLog('warn', '回测区间内无信号产生，请检查条件参数或回测区间是否合理');
-                        addLog('info', '💡 请前往【策略详情】查看详细结果，或切换至【买卖点成交图】查看K线信号');
-                        overlay.remove();
-                        modal.remove();
-                        showToast('✅ 回测完成 | ' + stockCodes.length + '只股票 | 耗时' + elapsed + '秒 | 信号' + signals.length + '个', false);
-                    }
+                    }, 500);
                 }).catch(function(err) {
                     finalizeError(err);
                 });
@@ -1123,27 +1272,61 @@ function showBacktestModal() {
                     slippage_cost_type: slippageCostTypeVal2, slippage_cost_value: slippageCostValueVal2,
                     benchmark_code: benchmarkCode || null };
                 bridge.run_custom_backtest(JSON.stringify(params)).then(function(jsonStr) {
-                    var res = JSON.parse(jsonStr);
-                    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                    if (!res.success) {
-                        addLog('error', stock + ' 回测失败: ' + (res.error || '未知'));
-                        finalizeError(new Error(res.error || '未知错误'));
+                    var startRes = JSON.parse(jsonStr);
+                    if (!startRes.success) {
+                        addLog('error', stock + ' 回测失败: ' + (startRes.error || '未知'));
+                        finalizeError(new Error(startRes.error || '未知错误'));
                         return;
                     }
-                    var sigCount = (res.signals && res.signals.length) || 0;
-                    addLog('success', stock + ' 回测完成，信号 ' + sigCount + ' 个');
-                    if (res.logs && res.logs.length > 0) {
-                        res.logs.slice(-10).forEach(function(l) {
-                            if (l.indexOf('[WARN]') !== -1) {
-                                addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
-                            } else if (l.indexOf('[ERROR]') !== -1) {
-                                addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
-                            } else {
-                                addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+
+                    var jobId = startRes.job_id;
+                    var pollInterval = setInterval(function() {
+                        bridge.get_backtest_progress(jobId).then(function(progStr) {
+                            var prog = JSON.parse(progStr);
+                            if (prog.status === 'cancelled' || prog.status === 'cancelling') {
+                                clearInterval(pollInterval);
+                                finalizeError(new Error('回测已被取消'));
+                                return;
                             }
+                            if (prog.status === 'finished') {
+                                clearInterval(pollInterval);
+                                bridge.get_backtest_result(jobId).then(function(resStr) {
+                                    var resObj = JSON.parse(resStr);
+                                    if (!resObj.ready) {
+                                        finalizeError(new Error('获取回测结果失败'));
+                                        return;
+                                    }
+                                    var res = resObj.result;
+                                    var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                                    if (!res.success) {
+                                        addLog('error', stock + ' 回测失败: ' + (res.error || '未知'));
+                                        finalizeError(new Error(res.error || '未知错误'));
+                                        return;
+                                    }
+                                    var sigCount = (res.signals && res.signals.length) || 0;
+                                    addLog('success', stock + ' 回测完成，信号 ' + sigCount + ' 个');
+                                    if (res.logs && res.logs.length > 0) {
+                                        res.logs.slice(-10).forEach(function(l) {
+                                            if (l.indexOf('[WARN]') !== -1) {
+                                                addLog('warn', '[后端] ' + l.replace('[WARN] ', ''));
+                                            } else if (l.indexOf('[ERROR]') !== -1) {
+                                                addLog('error', '[后端] ' + l.replace('[ERROR] ', ''));
+                                            } else {
+                                                addLog('info', '[后端] ' + l.replace('[INFO] ', ''));
+                                            }
+                                        });
+                                    }
+                                    processSingleStockResults([res], elapsed);
+                                }).catch(function(err) {
+                                    clearInterval(pollInterval);
+                                    finalizeError(err);
+                                });
+                            }
+                        }).catch(function(err) {
+                            clearInterval(pollInterval);
+                            finalizeError(err);
                         });
-                    }
-                    processSingleStockResults([res], elapsed);
+                    }, 500);
                 }).catch(function(err) {
                     finalizeError(err);
                 });
@@ -1198,7 +1381,11 @@ function saveCurrentStrategy() {
     var stampTax = parseFloat(document.getElementById('stampTaxRate').value) || 0.001;
     var slippageCostType = document.getElementById('slippageCostType').getAttribute('data-value') || 'percent';
     var slippageCostValue = parseFloat(document.getElementById('slippageCostValue').value) || 0.1;
-    var jsonConfig = serializeConfig(cards, cap, sDate, eDate, sp, sl, commission, stampTax, slippageCostType, slippageCostValue);
+    var entryLogicEl = document.getElementById('entryLogicSelect');
+    var exitLogicEl = document.getElementById('exitLogicSelect');
+    var entryLogic = entryLogicEl ? (entryLogicEl.getAttribute('data-value') || 'all') : 'all';
+    var exitLogic = exitLogicEl ? (exitLogicEl.getAttribute('data-value') || 'any') : 'any';
+    var jsonConfig = serializeConfig(cards, cap, sDate, eDate, sp, sl, commission, stampTax, slippageCostType, slippageCostValue, entryLogic, exitLogic);
     // Attach pool config
     var poolConfig = {
         poolSource: poolSource,
@@ -1245,6 +1432,15 @@ function loadStrategyById(id) {
             return;
         }
         cards = config.cards;
+        // 向后兼容：将旧格式仓位卡片转为新格式
+        cards.forEach(function(c) {
+            if (c.type === 'position' && !c.params.position_mode) {
+                var oldPct = c.params.fixedPercent;
+                c.params.position_mode = 'percentage';
+                c.params.position_value = (oldPct !== undefined) ? oldPct * 100 : 100;
+                c.params.quantity_unit = 'shares';
+            }
+        });
         strategyName = obj.name;
         strategyId = obj.id;
         initialCapital = config.capital || 1000000;
@@ -1252,6 +1448,8 @@ function loadStrategyById(id) {
         endDate = config.endDate || new Date().toISOString().slice(0, 10);
         stockPool = config.stockPool || '';
         slippage = config.slippage || 'close';
+        entryLogic = config.entry_logic || 'all';
+        exitLogic = config.exit_logic || 'any';
         window.currentStrategyName = obj.name;
 
         // Restore pool config
@@ -1311,6 +1509,19 @@ function loadStrategyById(id) {
             slInput.value = slOpts[slippage] || '收盘价成交（回测默认）';
             slInput.setAttribute('data-value', slippage || 'close');
         }
+        var entryLogicEl = document.getElementById('entryLogicSelect');
+        if (entryLogicEl) {
+            var ev = config.entry_logic || 'all';
+            entryLogicEl.value = ev === 'all' ? '全部满足（AND）' : '任一满足（OR）';
+            entryLogicEl.setAttribute('data-value', ev);
+        }
+        var exitLogicEl = document.getElementById('exitLogicSelect');
+        if (exitLogicEl) {
+            var xv = config.exit_logic || 'any';
+            exitLogicEl.value = xv === 'all' ? '全部满足（AND）' : '任一满足（OR）';
+            exitLogicEl.setAttribute('data-value', xv);
+        }
+
         if (config.commission_rate !== undefined) {
             var commEl = document.getElementById('commissionRate');
             if (commEl) commEl.value = config.commission_rate;
@@ -1350,6 +1561,8 @@ function newStrategy() {
     poolFloatSharesMax = '';
     currentStockPool = [];
     slippage = 'close';
+    entryLogic = 'all';
+    exitLogic = 'any';
     window.currentStrategyName = undefined;
     window.currentStrategyCode = undefined;
     window._defaultStockFromTemplate = undefined;
@@ -1381,6 +1594,10 @@ function newStrategy() {
         slInput.value = '收盘价成交（回测默认）';
         slInput.setAttribute('data-value', 'close');
     }
+    var el = document.getElementById('entryLogicSelect');
+    if (el) { el.value = '全部满足（AND）'; el.setAttribute('data-value', 'all'); }
+    el = document.getElementById('exitLogicSelect');
+    if (el) { el.value = '任一满足（OR）'; el.setAttribute('data-value', 'any'); }
     var commEl = document.getElementById('commissionRate');
     if (commEl) commEl.value = '0.0003';
     var stEl = document.getElementById('stampTaxRate');
@@ -1427,6 +1644,8 @@ export function renderStrategyPage(container) {
             endDate = config.endDate || new Date().toISOString().slice(0, 10);
             stockPool = config.stockPool || '';
             slippage = config.slippage || 'close';
+            entryLogic = config.entry_logic || 'all';
+            exitLogic = config.exit_logic || 'any';
             // Restore pool config from saved strategy
             if (config.poolConfig) {
                 var pc = config.poolConfig;
@@ -1528,6 +1747,18 @@ export function renderStrategyPage(container) {
         '<span>结束日期:</span>' +
         '<input type="text" class="datepicker-input" id="strategyEndDate" value="' + (endDate || today) + '" readonly ' +
         'style="width:120px;background:#1e253b;border:1px solid #323d5a;border-radius:30px;color:#fff;padding:6px 10px;">' +
+        '</div>' +
+        '<div class="metric-row" style="margin-top:8px;">' +
+        '<span>入场条件逻辑:</span>' +
+        '<input type="text" id="entryLogicSelect" readonly data-value="' + entryLogic + '" ' +
+        'value="' + (entryLogic === 'all' ? '全部满足（AND）' : '任一满足（OR）') + '" ' +
+        'style="width:180px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 28px 6px 10px; font-size:13px; cursor:pointer; ' +
+        'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center;">' +
+        '<span style="margin-left:16px;">离场条件逻辑:</span>' +
+        '<input type="text" id="exitLogicSelect" readonly data-value="' + exitLogic + '" ' +
+        'value="' + (exitLogic === 'all' ? '全部满足（AND）' : '任一满足（OR）') + '" ' +
+        'style="width:180px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 28px 6px 10px; font-size:13px; cursor:pointer; ' +
+        'background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2010%2010%22%3E%3Cpath%20d%3D%22M0%203l5%205%205-5z%22%20fill%3D%22%239aa9cc%22%2F%3E%3C%2Fsvg%3E); background-repeat:no-repeat; background-position:right 10px center;">' +
         '<span>成交价:</span>' +
         '<input type="text" id="slippageInput" value="收盘价成交（回测默认）" readonly data-value="close" ' +
         'style="width:180px; background:#1e253b; border:1px solid #323d5a; border-radius:30px; color:#fff; padding:6px 30px 6px 10px; font-size:13px; cursor:pointer; ' +
@@ -1566,6 +1797,7 @@ export function renderStrategyPage(container) {
         '<button id="toggleCodePreviewBtn" style="background:transparent;border:1px solid #323d5a;color:#9aa9cc;padding:6px 14px;border-radius:20px;cursor:pointer;">📝 预览代码</button>' +
         '<button id="runBacktestBtn" style="background:#4f7eff;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;">▶ 运行回测</button>' +
         '<button id="compareBacktestBtn" style="background:transparent;border:1px solid #f2c94c;padding:6px 16px;border-radius:30px;color:#f2c94c;font-weight:600;cursor:pointer;">🔬 对比回测</button>' +
+        "<button id=\"openOptPanelBtn\" style=\"background:#2d3a5e;border:none;padding:6px 16px;border-radius:30px;color:#fff;cursor:pointer;font-size:13px;\">🔍 参数优化</button>" +
         '<button id="startRealtimeBtn" style="background:#22c55e;border:none;padding:6px 16px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;margin-left:6px;">▶ 实时模拟</button>' +
         '<button id="stopRealtimeBtn" style="background:transparent;border:1px solid #ef4444;padding:6px 16px;border-radius:30px;color:#ef4444;font-weight:600;cursor:pointer;margin-left:6px;">⏹ 停止实时</button>' +
         '</div>' +
@@ -1636,6 +1868,28 @@ export function renderStrategyPage(container) {
         });
     }
 
+    // Entry logic dropdown — custom select panel
+    var entryLogicInput = document.getElementById('entryLogicSelect');
+    if (entryLogicInput) {
+        entryLogicInput.addEventListener('click', function() {
+            showCustomSelect(entryLogicInput, [
+                { value: 'all', label: '全部满足（AND）' },
+                { value: 'any', label: '任一满足（OR）' }
+            ], function(selectedValue) {});
+        });
+    }
+
+    // Exit logic dropdown — custom select panel
+    var exitLogicInput = document.getElementById('exitLogicSelect');
+    if (exitLogicInput) {
+        exitLogicInput.addEventListener('click', function() {
+            showCustomSelect(exitLogicInput, [
+                { value: 'all', label: '全部满足（AND）' },
+                { value: 'any', label: '任一满足（OR）' }
+            ], function(selectedValue) {});
+        });
+    }
+
     // Benchmark dropdown — custom select panel
     var staticBenchmarkOptions = [
         { value: '000300.SH', label: '沪深300' },
@@ -1698,6 +1952,13 @@ export function renderStrategyPage(container) {
 
     var runBtn = document.getElementById('runBacktestBtn');
     if (runBtn) runBtn.addEventListener('click', showBacktestModal);
+
+    var optBtn = document.getElementById('openOptPanelBtn');
+    if (optBtn) {
+        optBtn.addEventListener('click', function() {
+            validateAndOpenOptPanel();
+        });
+    }
 
     var compareBtn = document.getElementById('compareBacktestBtn');
     if (compareBtn) {
@@ -2226,4 +2487,374 @@ function updatePoolConceptCount() {
     } else {
         countEl.textContent = '';
     }
+}
+
+// ========== 参数优化面板 ==========
+
+var _optJobId = null;
+var _optPollTimer = null;
+var _optChartInstance = null;
+var _optParams = [];
+
+function validateAndOpenOptPanel() {
+    if (!window.__currentCards || window.__currentCards.length === 0) {
+        if (typeof cards !== 'undefined' && cards.length === 0) {
+            showToast('请先添加策略卡片', true);
+            return;
+        }
+    }
+    var activeCards = window.__currentCards || cards;
+    _optParams = extractParamsFromCards(activeCards);
+    if (_optParams.length === 0) {
+        showToast('当前策略没有可优化的数值参数', true);
+        return;
+    }
+    renderOptimizationPanel();
+}
+
+function renderOptimizationPanel() {
+    if (window._optPanelCleanup) {
+        window._optPanelCleanup();
+        window._optPanelCleanup = null;
+    }
+    _optHistoryData = [];
+    if (_optChartInstance) {
+        _optChartInstance.dispose();
+        _optChartInstance = null;
+    }
+
+    var container = document.getElementById('dynamicContent');
+    if (!container) return;
+
+    var defaultStock = (window.currentStockPool && window.currentStockPool.length > 0)
+        ? window.currentStockPool[0] : '000001';
+
+    // Build parameter rows
+    var paramsHtml = _optParams.map(function(p, i) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;padding:6px 8px;background:#151c2c;border-radius:6px;">' +
+            '<span style="color:#fff;font-size:12px;min-width:100px;">' + escapeHtml(p.label) + '</span>' +
+            '<span style="color:#6a7a9a;font-size:10px;min-width:30px;">' + p.type + '</span>' +
+            '<span style="display:flex;align-items:center;gap:4px;">' +
+            '<input type="number" id="optLow_' + i + '" value="' + p.low + '" step="' + (p.step || 1) + '" style="width:65px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:3px 6px;font-size:12px;text-align:center;">' +
+            '<span style="color:#9aa9cc;">~</span>' +
+            '<input type="number" id="optHigh_' + i + '" value="' + p.high + '" step="' + (p.step || 1) + '" style="width:65px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:3px 6px;font-size:12px;text-align:center;">' +
+            '</span>' +
+            '<label style="font-size:11px;color:#9aa9cc;display:flex;align-items:center;gap:4px;margin-left:8px;">' +
+            '<input type="checkbox" id="optEnable_' + i + '" checked style="accent-color:#4f7eff;"> 搜索' +
+            '</label>' +
+            '</div>';
+    }).join('');
+
+    container.innerHTML = '<div class="card" id="optimizationCard">' +
+        '<div class="card-title">🔍 参数优化 <span style="font-size:12px;color:#9aa9cc;">— Optuna TPE 智能搜索</span></div>' +
+        '<div class="opt-panel-layout">' +
+        // Left: settings
+        '<div class="opt-settings">' +
+        '<div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;">' +
+        '<div><span style="color:#9aa9cc;font-size:12px;">📈 股票</span><br><input type="text" id="optStockCode" value="' + defaultStock + '" style="width:100px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:4px 8px;font-size:12px;"></div>' +
+        '<div><span style="color:#9aa9cc;font-size:12px;">🎯 目标</span><br><select id="optObjective" style="background:#1e253b;border:1px solid #323d5a;color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;"><option value="sharpe_drawdown">稳健（回撤≤15%）</option><option value="sharpe">夏普优先</option><option value="return">纯收益率</option></select></div>' +
+        '<div><span style="color:#9aa9cc;font-size:12px;">🔢 试验次数</span><br><input type="number" id="optNTrials" value="100" min="20" max="500" style="width:70px;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:4px 8px;font-size:12px;"></div>' +
+        '</div>' +
+        '<div style="background:#0e1220;border:1px solid #2a3145;border-radius:8px;padding:10px;margin-bottom:10px;">' +
+        '<div style="color:#4f7eff;font-weight:600;margin-bottom:8px;font-size:13px;">🔧 搜索参数（可修改范围、取消勾选）</div>' +
+        paramsHtml +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+        '<button id="startOptBtn" style="background:#4f7eff;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;">🚀 开始优化搜索</button>' +
+        '<button id="stopOptBtn" style="background:#e74c3c;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;display:none;">⏹ 停止</button>' +
+        '</div>' +
+        '</div>' +
+        // Right: results
+        '<div class="opt-results">' +
+        '<div class="opt-status-row" style="display:flex;gap:8px;margin-bottom:10px;">' +
+        '<div class="opt-status-card"><div class="opt-stat-label">状态</div><div class="opt-stat-value" id="optStatus" style="color:#9aa9cc;">等待开始</div></div>' +
+        '<div class="opt-status-card"><div class="opt-stat-label">已完成</div><div class="opt-stat-value" id="optProgress" style="color:#fff;">0 / 100</div></div>' +
+        '<div class="opt-status-card"><div class="opt-stat-label">当前最优</div><div class="opt-stat-value" id="optBestValue" style="color:#27ae60;">--</div></div>' +
+        '</div>' +
+        '<div id="optHistoryChart" style="height:180px;background:#0e1220;border-radius:8px;margin-bottom:8px;"></div>' +
+        '<div id="optImportanceChart" style="height:120px;background:#0e1220;border-radius:8px;margin-bottom:8px;"></div>' +
+        '<div id="optBestParamsTable" style="background:#0e1220;border-radius:8px;padding:10px;font-size:12px;"></div>' +
+        '</div>' +
+        '</div></div>';
+
+    bindOptimizationEvents();
+    window._optPanelActive = true;
+}
+
+function bindOptimizationEvents() {
+    var startBtn = document.getElementById('startOptBtn');
+    var stopBtn = document.getElementById('stopOptBtn');
+    if (startBtn) startBtn.addEventListener('click', startOptimization);
+    if (stopBtn) stopBtn.addEventListener('click', stopOptimization);
+}
+
+function stopOptimization() {
+    if (_optJobId && bridge && typeof bridge.cancel_optimization === 'function') {
+        bridge.cancel_optimization(_optJobId);
+    }
+    stopOptimizationPolling();
+    var statusEl = document.getElementById('optStatus');
+    if (statusEl) { statusEl.textContent = '已停止'; statusEl.style.color = '#f2c94c'; }
+    var sb = document.getElementById('startOptBtn');
+    var stb = document.getElementById('stopOptBtn');
+    if (sb) sb.style.display = '';
+    if (stb) stb.style.display = 'none';
+}
+
+function startOptimization() {
+    if (!bridge || typeof bridge.start_optimization !== 'function') {
+        showToast('Bridge 未连接或接口不可用', true);
+        return;
+    }
+
+    // Collect enabled params
+    var paramsToSearch = [];
+    var fixedParams = {};
+    _optParams.forEach(function(p, i) {
+        var cb = document.getElementById('optEnable_' + i);
+        if (cb && cb.checked) {
+            var lowEl = document.getElementById('optLow_' + i);
+            var highEl = document.getElementById('optHigh_' + i);
+            paramsToSearch.push({
+                name: p.name,
+                type: p.type,
+                low: lowEl ? (parseFloat(lowEl.value) || p.low) : p.low,
+                high: highEl ? (parseFloat(highEl.value) || p.high) : p.high,
+                step: p.step || undefined,
+            });
+        } else {
+            fixedParams[p.name] = p.default;
+        }
+    });
+
+    if (paramsToSearch.length === 0) {
+        showToast('请至少勾选一个参数进行搜索', true);
+        return;
+    }
+
+    var stockEl = document.getElementById('optStockCode');
+    var objEl = document.getElementById('optObjective');
+    var trialsEl = document.getElementById('optNTrials');
+
+    var params = {
+        strategy_code: window.currentStrategyCode || (typeof generateCode === 'function' ? generateCode(window.__currentCards || cards) : ''),
+        stock: stockEl ? stockEl.value.trim() : '000001',
+        start: window.strategyStartDate || '2010-01-01',
+        end: window.strategyEndDate || new Date().toISOString().slice(0, 10),
+        cash: window.initialCapital || 1000000,
+        objective: objEl ? objEl.value : 'sharpe_drawdown',
+        n_trials: trialsEl ? (parseInt(trialsEl.value) || 100) : 100,
+        params_to_search: paramsToSearch,
+        fixed_params: fixedParams,
+    };
+
+    bridge.start_optimization(JSON.stringify(params)).then(function(jsonStr) {
+        var res = JSON.parse(jsonStr);
+        if (res.success) {
+            _optJobId = res.job_id;
+            var statusEl = document.getElementById('optStatus');
+            if (statusEl) { statusEl.textContent = '⏳ 搜索中...'; statusEl.style.color = '#f2c94c'; }
+            var sb = document.getElementById('startOptBtn');
+            var stb = document.getElementById('stopOptBtn');
+            if (sb) sb.style.display = 'none';
+            if (stb) stb.style.display = '';
+            startOptimizationPolling();
+        } else {
+            showToast('启动失败: ' + (res.error || '未知错误'), true);
+        }
+    }).catch(function(err) {
+        showToast('启动失败: ' + err.message, true);
+    });
+}
+
+function startOptimizationPolling() {
+    window._optPanelCleanup = function() {
+        stopOptimizationPolling();
+        if (_optChartInstance) {
+            _optChartInstance.dispose();
+            _optChartInstance = null;
+        }
+        _optJobId = null;
+    };
+    if (_optPollTimer) clearInterval(_optPollTimer);
+    _optPollTimer = setInterval(function() {
+        if (!_optJobId || !bridge) return;
+        bridge.get_optimization_progress(_optJobId).then(function(jsonStr) {
+            var data = JSON.parse(jsonStr);
+            if (data.status === 'finished' || data.status === 'cancelled') {
+                stopOptimizationPolling();
+                loadOptimizationResult();
+                return;
+            }
+            if (data.status === 'not_found') {
+                stopOptimizationPolling();
+                return;
+            }
+            updateOptimizationProgress(data);
+        }).catch(function() {});
+    }, 800);
+}
+
+function stopOptimizationPolling() {
+    if (_optPollTimer) {
+        clearInterval(_optPollTimer);
+        _optPollTimer = null;
+    }
+}
+
+var _optHistoryData = [];
+
+function updateOptimizationProgress(data) {
+    var prog = data.progress;
+    if (!prog) return;
+
+    var progressEl = document.getElementById('optProgress');
+    if (progressEl) progressEl.textContent = prog.current + ' / ' + prog.total;
+
+    if (prog.best_value != null) {
+        var bestEl = document.getElementById('optBestValue');
+        if (bestEl) bestEl.textContent = (prog.best_value >= 0 ? '+' : '') + prog.best_value.toFixed(2);
+    }
+
+    if (prog.last_trial) {
+        _optHistoryData.push({
+            number: prog.last_trial.number,
+            value: prog.last_trial.value,
+            state: prog.last_trial.state,
+        });
+        drawOptHistoryChart();
+    }
+}
+
+function drawOptHistoryChart() {
+    var dom = document.getElementById('optHistoryChart');
+    if (!dom || typeof echarts === 'undefined') return;
+    if (!_optChartInstance) _optChartInstance = echarts.init(dom);
+
+    var completedData = [];
+    var prunedData = [];
+    var bestLine = [];
+    var bestSoFar = -Infinity;
+
+    _optHistoryData.forEach(function(d) {
+        if (d.state !== 'FAIL') {
+            completedData.push([d.number, d.value]);
+            if (d.value != null && d.value > bestSoFar) bestSoFar = d.value;
+        }
+        if (d.state === 'PRUNED') prunedData.push([d.number, d.value]);
+        bestLine.push(bestSoFar > -Infinity ? bestSoFar : null);
+    });
+
+    _optChartInstance.setOption({
+        grid: { top: 12, right: 16, bottom: 24, left: 50 },
+        tooltip: { trigger: 'axis', appendToBody: true },
+        xAxis: { type: 'value', name: '试验序号', nameTextStyle: { color: '#9aa9cc' }, axisLabel: { color: '#9aa9cc' } },
+        yAxis: { type: 'value', axisLabel: { color: '#9aa9cc' }, splitLine: { lineStyle: { color: '#242a40' } } },
+        series: [
+            { name: '最优值', type: 'line', data: bestLine, lineStyle: { color: '#4f7eff', width: 2 }, showSymbol: false, smooth: true },
+            { name: '已完成', type: 'scatter', data: completedData, symbolSize: 6, itemStyle: { color: '#27ae60' } },
+            { name: '已剪枝', type: 'scatter', data: prunedData, symbolSize: 4, itemStyle: { color: '#6a7a9a' } },
+        ],
+        legend: { data: ['最优值', '已完成', '已剪枝'], textStyle: { color: '#ffffff' }, top: 0 },
+    }, true);
+}
+
+function loadOptimizationResult() {
+    if (!_optJobId || !bridge) return;
+    bridge.get_optimization_result(_optJobId).then(function(jsonStr) {
+        var data = JSON.parse(jsonStr);
+        if (!data.ready) return;
+
+        var statusEl = document.getElementById('optStatus');
+        if (statusEl) { statusEl.textContent = '✅ 完成'; statusEl.style.color = '#27ae60'; }
+
+        var sb = document.getElementById('startOptBtn');
+        var stb = document.getElementById('stopOptBtn');
+        if (sb) sb.style.display = '';
+        if (stb) stb.style.display = 'none';
+
+        var result = data.result;
+        if (!result.success) {
+            showToast('优化失败: ' + (result.error || '未知错误'), true);
+            return;
+        }
+
+        drawOptImportanceChart(result.param_importance);
+        renderBestParamsTable(result);
+        _optJobId = null;
+    }).catch(function() {});
+}
+
+function renderBestParamsTable(result) {
+    var tableDiv = document.getElementById('optBestParamsTable');
+    if (!tableDiv) return;
+
+    var bestParams = result.best_params || {};
+    var html = '<div style="color:#4f7eff;font-weight:600;margin-bottom:6px;font-size:13px;">📋 最优参数</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<tr style="color:#9aa9cc;"><th style="text-align:left;padding:4px 8px;">参数</th><th style="text-align:left;padding:4px 8px;">最优值</th><th style="text-align:left;padding:4px 8px;">原值</th></tr>';
+
+    _optParams.forEach(function(p) {
+        var bestVal = bestParams[p.name];
+        html += '<tr>' +
+            '<td style="padding:4px 8px;color:#fff;">' + escapeHtml(p.label) + '</td>' +
+            '<td style="padding:4px 8px;color:#27ae60;font-weight:600;">' + (bestVal != null ? bestVal : '--') + '</td>' +
+            '<td style="padding:4px 8px;color:#9aa9cc;">' + p.default + '</td>' +
+            '</tr>';
+    });
+    html += '</table>';
+    html += '<button id="applyOptParamsBtn" style="margin-top:8px;background:#27ae60;border:none;padding:6px 18px;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;font-size:13px;">✅ 应用最优参数</button>';
+    html += '<span id="applyOptStatus" style="margin-left:10px;color:#27ae60;font-size:11px;"></span>';
+
+    tableDiv.innerHTML = html;
+
+    var applyBtn = document.getElementById('applyOptParamsBtn');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+            var best = result.best_params || {};
+            var changed = 0;
+            var activeCards = window.__currentCards || (typeof cards !== 'undefined' ? cards : []);
+            activeCards.forEach(function(card) {
+                if (!card.params) return;
+                Object.keys(best).forEach(function(key) {
+                    if (card.params.hasOwnProperty(key)) {
+                        card.params[key] = best[key];
+                        changed++;
+                    }
+                });
+            });
+            var statusSpan = document.getElementById('applyOptStatus');
+            if (statusSpan) statusSpan.textContent = '已应用 ' + changed + ' 个参数';
+            // Refresh the strategy page to show updated values
+            if (typeof renderStrategyPage === 'function') {
+                renderStrategyPage(document.getElementById('dynamicContent'));
+            }
+        });
+    }
+}
+
+function drawOptImportanceChart(importance) {
+    var dom = document.getElementById('optImportanceChart');
+    if (!dom || typeof echarts === 'undefined') return;
+
+    var chart = echarts.getInstanceByDom(dom) || echarts.init(dom);
+    var keys = Object.keys(importance || {});
+    var values = keys.map(function(k) { return importance[k]; });
+
+    if (keys.length === 0) {
+        dom.innerHTML = '<div style="color:#9aa9cc;text-align:center;padding-top:40px;">参数重要性分析需要 ≥10 次试验</div>';
+        return;
+    }
+
+    chart.setOption({
+        grid: { top: 8, right: 16, bottom: 24, left: 40 },
+        tooltip: { trigger: 'axis', appendToBody: true },
+        xAxis: { type: 'category', data: keys, axisLabel: { color: '#9aa9cc', fontSize: 11 } },
+        yAxis: { type: 'value', name: '重要性', nameTextStyle: { color: '#9aa9cc' } },
+        series: [{
+            type: 'bar', data: values,
+            itemStyle: { color: '#4f7eff', borderRadius: [4, 4, 0, 0] },
+            label: { show: true, position: 'top', color: '#fff', fontSize: 11, formatter: function(p) { return (p.value || 0).toFixed(2); } },
+        }],
+    }, true);
 }
