@@ -46,7 +46,7 @@ def inject_params(strategy_code, sampled_params):
     code = strategy_code
     for name, value in sampled_params.items():
         # 替换 context.<name> = <原值> → context.<name> = <新值>
-        pattern = rf'(context\.{name}\s*=\s*)([\d.]+)'
+        pattern = rf'(context\.{name}\s*=\s*)(-?[\d.]+)'
         code = re.sub(pattern, rf'\g<1>{value}', code)
     return code
 
