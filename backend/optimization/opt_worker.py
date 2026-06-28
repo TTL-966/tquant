@@ -38,6 +38,16 @@ class OptunaWorker(QThread):
         try:
             p = self.params
 
+            # 多股模式：提取股票列表，计算调整后的 trial 数
+            stock_codes = p.get("stock_codes")
+            if stock_codes and isinstance(stock_codes, list) and len(stock_codes) > 1:
+                base_trials = p.get("n_trials", 100)
+                import math
+                adjusted = max(30, int(base_trials / math.sqrt(len(stock_codes))))
+            else:
+                stock_codes = None
+                adjusted = p.get("n_trials", 100)
+
             # 创建 study
             study = optuna.create_study(
                 sampler=TPESampler(seed=42),
@@ -74,8 +84,10 @@ class OptunaWorker(QThread):
 
                 self.progress.emit({
                     "current": len(results),
-                    "total": p.get("n_trials", 100),
+                    "total": adjusted,
                     "best_value": best_val,
+                    "mode": "multi" if stock_codes else "single",
+                    "stock_count": len(stock_codes) if stock_codes else 1,
                     "last_trial": {
                         "number": trial.number,
                         "value": val if val == val else None,
@@ -107,11 +119,12 @@ class OptunaWorker(QThread):
                     slippage_cost_value=p.get("slippage_cost_value", 0.1),
                     benchmark_code=p.get("benchmark_code"),
                     objective_type=p.get("objective", "sharpe_drawdown"),
+                    stock_codes=stock_codes,
                 )
 
             study.optimize(
                 objective,
-                n_trials=p.get("n_trials", 100),
+                n_trials=adjusted,
                 callbacks=[callback],
                 n_jobs=1,  # 单线程，避免 DataFeed 共享状态冲突
             )
@@ -133,6 +146,8 @@ class OptunaWorker(QThread):
                 ),
                 "trials": results,
                 "param_importance": importance,
+                "mode": "multi" if stock_codes else "single",
+                "stock_count": len(stock_codes) if stock_codes else 1,
             }
 
             self.finished.emit(result)
