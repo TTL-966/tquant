@@ -93,7 +93,7 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
                   stock_code, start, end, cash, slippage,
                   commission_rate, stamp_tax_rate, slippage_cost_type,
                   slippage_cost_value, benchmark_code, objective_type,
-                  data_feed=None):
+                  data_feed=None, stock_codes=None):
     """Optuna objective 函数。
 
     每被 Optuna 调用一次，就跑一次完整回测。
@@ -117,33 +117,55 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
     _own_feed = data_feed is None
     if _own_feed:
         data_feed = DataFeed()
-    executor = None
-    try:
-        executor = BacktestExecutor(data_feed)
-        result = executor.run(
-        user_code=code,
-        stock_code=stock_code,
-        start_date=start,
-        end_date=end,
-        initial_cash=cash,
-        slippage=slippage,
-        commission_rate=commission_rate,
-        stamp_tax_rate=stamp_tax_rate,
-        slippage_cost_type=slippage_cost_type,
-        slippage_cost_value=slippage_cost_value,
-        benchmark_code=benchmark_code,
-    )
 
-        # 5. 错误处理 → 返回 NaN（Optuna 自动跳过）
-        if result.get("status") == "error":
-            return float("nan")
-
-        metrics = result.get("metrics", {})
-
-        # 6. 计算目标值
-        return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
-    finally:
-        if executor is not None:
+    if stock_codes and len(stock_codes) > 1:
+        # 多股模式：共享资金池
+        from backend.multi_backtest_executor import MultiBacktestExecutor
+        executor = MultiBacktestExecutor(data_feed)
+        try:
+            result = executor.run(
+                user_code=code,
+                stock_codes=stock_codes,
+                start_date=start,
+                end_date=end,
+                initial_cash=cash,
+                slippage=slippage,
+                commission_rate=commission_rate,
+                stamp_tax_rate=stamp_tax_rate,
+                slippage_cost_type=slippage_cost_type,
+                slippage_cost_value=slippage_cost_value,
+                benchmark_code=benchmark_code,
+            )
+            if not result.get("success"):
+                return float("nan")
+            metrics = result.get("metrics", {})
+            return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
+        finally:
             del executor
-        if _own_feed and data_feed is not None:
-            del data_feed
+            if _own_feed and data_feed is not None:
+                del data_feed
+    else:
+        # 单股模式（现有逻辑）
+        executor = BacktestExecutor(data_feed)
+        try:
+            result = executor.run(
+                user_code=code,
+                stock_code=stock_code,
+                start_date=start,
+                end_date=end,
+                initial_cash=cash,
+                slippage=slippage,
+                commission_rate=commission_rate,
+                stamp_tax_rate=stamp_tax_rate,
+                slippage_cost_type=slippage_cost_type,
+                slippage_cost_value=slippage_cost_value,
+                benchmark_code=benchmark_code,
+            )
+            if result.get("status") == "error":
+                return float("nan")
+            metrics = result.get("metrics", {})
+            return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
+        finally:
+            del executor
+            if _own_feed and data_feed is not None:
+                del data_feed
