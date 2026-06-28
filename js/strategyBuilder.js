@@ -2636,9 +2636,15 @@ function startOptimization() {
     var objEl = document.getElementById('optObjective');
     var trialsEl = document.getElementById('optNTrials');
 
+    var code = window.currentStrategyCode || (typeof generateCode === 'function' ? generateCode(window.__currentCards || cards) : '');
+    var stock = stockEl ? stockEl.value.trim() : '000001';
+    if (code && stock) {
+        code = code.replace(/"STOCK_CODE_PLACEHOLDER"/g, '"' + stock + '"');
+    }
+
     var params = {
-        strategy_code: window.currentStrategyCode || (typeof generateCode === 'function' ? generateCode(window.__currentCards || cards) : ''),
-        stock: stockEl ? stockEl.value.trim() : '000001',
+        strategy_code: code,
+        stock: stock,
         start: window.strategyStartDate || '2010-01-01',
         end: window.strategyEndDate || new Date().toISOString().slice(0, 10),
         cash: window.initialCapital || 1000000,
@@ -2646,6 +2652,11 @@ function startOptimization() {
         n_trials: trialsEl ? (parseInt(trialsEl.value) || 100) : 100,
         params_to_search: paramsToSearch,
         fixed_params: fixedParams,
+        slippage: window._slippageMode || 'close',
+        commission_rate: window._commissionRate || 0.0003,
+        stamp_tax_rate: window._stampTaxRate || 0.001,
+        slippage_cost_type: window._slippageCostType || 'percent',
+        slippage_cost_value: window._slippageCostValue || 0.1,
     };
 
     bridge.start_optimization(JSON.stringify(params)).then(function(jsonStr) {

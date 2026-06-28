@@ -2143,7 +2143,7 @@ class WebBridge(QObject):
             return json.dumps({"success": False, "error": "job not found"})
         if job["worker"]:
             job["worker"].cancel()
-        job["status"] = "cancelled"
+        del self._optimization_jobs[job_id]
         return json.dumps({"success": True})
 
     # ---------- 报告导出 ----------

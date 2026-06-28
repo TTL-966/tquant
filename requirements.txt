@@ -17,3 +17,6 @@ beautifulsoup4
 # Automation
 pyautogui
 pygetwindow
+
+# Optimization
+optuna>=3.0
