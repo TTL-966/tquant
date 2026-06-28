@@ -62,14 +62,14 @@ def test_suggest_for_param_float():
 
 
 def test_compute_objective_sharpe_drawdown_ok():
-    metrics = {"max_drawdown": -8.5, "sharpe_ratio": 1.5, "total_return": 20.0}
+    metrics = {"max_drawdown": -8.5, "sharpe_ratio": 1.5, "total_return": 20.0, "total_trades": 15}
     val = compute_objective(metrics, "sharpe_drawdown")
     assert val == 1.5 * 0.7 + 20.0 * 0.3
 
 
 def test_compute_objective_sharpe_drawdown_prunes():
     import optuna
-    metrics = {"max_drawdown": -20.0, "sharpe_ratio": 1.0, "total_return": 10.0}
+    metrics = {"max_drawdown": -20.0, "sharpe_ratio": 1.0, "total_return": 10.0, "total_trades": 8}
     try:
         compute_objective(metrics, "sharpe_drawdown")
         assert False, "should have raised TrialPruned"
@@ -78,10 +78,32 @@ def test_compute_objective_sharpe_drawdown_prunes():
 
 
 def test_compute_objective_sharpe():
-    metrics = {"sharpe_ratio": 2.1, "total_return": 15.0}
+    metrics = {"sharpe_ratio": 2.1, "total_return": 15.0, "total_trades": 20}
     assert compute_objective(metrics, "sharpe") == 2.1
 
 
+
+
+def test_compute_objective_penalizes_few_trades():
+    """交易不足最低次数 → -999 惩罚"""
+    metrics = {"total_return": 25.0, "total_trades": 2}
+    val = compute_objective(metrics, "return", min_trades=5)
+    assert val == -999
+
+
+def test_compute_objective_allows_enough_trades():
+    """交易次数达标 → 正常返回"""
+    metrics = {"total_return": 25.0, "total_trades": 5}
+    val = compute_objective(metrics, "return", min_trades=5)
+    assert val == 25.0
+
+
+def test_compute_objective_default_min_trades():
+    """默认 min_trades=5"""
+    metrics = {"total_return": 10.0, "sharpe_ratio": 1.0, "total_trades": 3}
+    val = compute_objective(metrics, "sharpe")
+    assert val == -999
+
 def test_compute_objective_return():
-    metrics = {"total_return": 35.0}
+    metrics = {"total_return": 35.0, "total_trades": 12}
     assert compute_objective(metrics, "return") == 35.0

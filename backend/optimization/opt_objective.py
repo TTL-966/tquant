@@ -49,12 +49,13 @@ def inject_params(strategy_code, sampled_params):
             code = re.sub(pat2, rf'\g<1>{value}', code)
     return code
 
-def compute_objective(metrics, objective_type):
+def compute_objective(metrics, objective_type, min_trades=5):
     """从回测指标计算目标值。
 
     Args:
         metrics: BacktestExecutor.run() 返回的 metrics dict
         objective_type: "sharpe_drawdown" | "sharpe" | "return"
+        min_trades: 最低交易次数，低于此数返回 -999 惩罚（防低频策略钻空子）
 
     Returns:
         float 目标值（越大越好）
@@ -63,6 +64,12 @@ def compute_objective(metrics, objective_type):
         optuna.TrialPruned: 剪枝信号（回撤超标）
     """
     import optuna
+
+    total_trades = metrics.get("total_trades", 0)
+
+    # 交易次数不足 → 极低惩罚分，防止 Optuna 偏爱低频策略
+    if total_trades < min_trades:
+        return float(-999)
 
     if objective_type == "sharpe_drawdown":
         drawdown = metrics.get("max_drawdown", 0)
@@ -127,4 +134,4 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
     metrics = result.get("metrics", {})
 
     # 6. 计算目标值
-    return compute_objective(metrics, objective_type)
+    return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
