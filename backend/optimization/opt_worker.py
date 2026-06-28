@@ -42,7 +42,7 @@ class OptunaWorker(QThread):
 
             def callback(study, trial):
                 """每次 trial 完成时调用（从 Optuna 线程）"""
-                val = trial.value if trial.value is not None else float("nan")
+                val = float(trial.value) if trial.value is not None else float("nan")
                 state = "COMPLETE"
                 if trial.state == optuna.trial.TrialState.PRUNED:
                     state = "PRUNED"

@@ -72,13 +72,13 @@ def compute_objective(metrics, objective_type):
             )
         sharpe = metrics.get("sharpe_ratio", 0)
         total_ret = metrics.get("total_return", 0)
-        return sharpe * 0.7 + total_ret * 0.3
+        return float(sharpe * 0.7 + total_ret * 0.3)
 
     elif objective_type == "sharpe":
-        return metrics.get("sharpe_ratio", 0)
+        return float(metrics.get("sharpe_ratio", 0))
 
     else:  # "return"
-        return metrics.get("total_return", 0)
+        return float(metrics.get("total_return", 0))
 
 
 def run_objective(trial, params_to_search, fixed_params, strategy_code,
