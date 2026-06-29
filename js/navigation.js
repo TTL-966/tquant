@@ -12,6 +12,7 @@ import { renderTroubleshootPage } from './troubleshoot.js';
 import { CARD_TYPE_META } from './strategyTemplates.js';
 import { renderCompareView } from './compareView.js';
 import { renderScreenerPage } from './stockScreener.js';
+import { renderSectorHeatPage } from './sectorDashboard.js';
 import { renderRealtimeSimPage, resumeUIIfEngineRunning } from './realtimeSim.js';
 import { renderSettingsPage } from './settings.js';
 
@@ -342,6 +343,9 @@ export function loadPage(pageId) {
     } else if (pageId === 'screener') {
         container.innerHTML = '';
         renderScreenerPage(container);
+    } else if (pageId === 'sectorHeat') {
+        container.innerHTML = '';
+        renderSectorHeatPage(container);
     } else if (pageId === 'settings') {
         renderSettingsPage(container);
     }
