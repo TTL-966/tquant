@@ -50,8 +50,17 @@ _lock = threading.Lock()
 
 
 def load_config():
-    """读取配置，缺失字段自动补默认值。"""
+    """读取配置，缺失字段自动补默认值。
+
+    打包环境首次启动：从 config.example.json 复制到 config.json。
+    """
     if not os.path.exists(_CONFIG_PATH):
+        _example = os.path.join(get_app_dir(), 'config.example.json')
+        if os.path.exists(_example):
+            import shutil
+            shutil.copy(_example, _CONFIG_PATH)
+            # 重新读一次，走正常流程
+            return load_config()
         return dict(DEFAULT_CONFIG)
     try:
         with open(_CONFIG_PATH, 'r', encoding='utf-8') as f:

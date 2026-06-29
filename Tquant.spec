@@ -27,9 +27,18 @@ datas = [
     (str(ROOT / 'js'), 'js'),
     (str(ROOT / 'img'), 'img'),
     (str(ROOT / 'resources'), 'resources'),
-    (str(ROOT / 'strategies'), 'strategies'),
-    (str(ROOT / 'config.json'), '.'),
+    # 用示例配置，不含真实 Token
+    (str(ROOT / 'config.example.json'), '.'),
 ]
+
+# ----- 干净策略目录（空数组，不含开发者保存的策略）-----
+import tempfile as _tempfile, json as _json, shutil as _shutil
+_CLEAN_STRATEGIES_DIR = _tempfile.mkdtemp(prefix='tquant_clean_strategies_')
+_strat_json = _os.path.join(_CLEAN_STRATEGIES_DIR, 'strategies.json')
+with open(_strat_json, 'w', encoding='utf-8') as _f:
+    _json.dump([], _f)
+datas.append((_strat_json, 'strategies'))
+print(f"[SPEC] 打包干净策略目录: {_CLEAN_STRATEGIES_DIR}")
 
 # ----- 收集 akshare 数据文件 -----
 try:
@@ -150,8 +159,6 @@ excludes = [
     'tkinter',
     '_tkinter',
     'scipy',
-    'PIL',
-    'Pillow',
     'cv2',
     'opencv',
     'notebook',
