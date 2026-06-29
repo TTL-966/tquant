@@ -192,6 +192,16 @@ a = Analysis(
     optimize=0,
 )
 
+# ----- 剔除系统 DLL（Windows 自带，打包进去反被 Defender 拦截）-----
+_SYS_DLL_PREFIXES = (
+    'CONCRT140', 'MSVCP140', 'VCRUNTIME140', 'VCRUNTIME140_1',
+    'api-ms-win-', 'ext-ms-win-',
+)
+a.binaries = [
+    b for b in a.binaries
+    if not any(b[0].startswith(p) for p in _SYS_DLL_PREFIXES)
+]
+
 # ----- PYZ（Python 字节码打包）-----
 pyz = PYZ(a.pure)
 
