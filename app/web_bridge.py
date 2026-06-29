@@ -2148,6 +2148,17 @@ class WebBridge(QObject):
         del self._optimization_jobs[job_id]
         return json.dumps({"success": True})
 
+    @Slot(result=str)
+    def clean_first_launch(self):
+        """首次启动清理：清空回测历史记录表。"""
+        try:
+            with self.db.engine.connect() as conn:
+                conn.execute(text("DELETE FROM backtest_history"))
+                conn.commit()
+            return json.dumps({"success": True})
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
     # ---------- 报告导出 ----------
     @Slot(str, result=str)
     def export_report(self, data_json):

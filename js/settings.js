@@ -143,17 +143,23 @@ export function checkFirstLaunch() {
                 try {
                     const cfg = JSON.parse(jsonStr);
                     if (cfg.success) {
-                        // 有效配置：baostock 永远有效；tushare 且 token 非空
+                        // 有效配置：baostock 有效；tushare 需要真实 token（非占位符）
+                        const isPlaceholder = !cfg.tushare_token || cfg.tushare_token === 'YOUR_TUSHARE_TOKEN_HERE';
                         const isValid = (cfg.data_source === 'baostock') ||
-                                        (cfg.data_source === 'tushare' && cfg.tushare_token && cfg.tushare_token.trim() !== '');
+                                        (cfg.data_source === 'tushare' && cfg.tushare_token && !isPlaceholder);
                         if (isValid) {
-                            // 同步设置 localStorage，以便下次快速判断（但不再作为唯一依据）
                             localStorage.setItem('tquant_datasource_configured', '1');
-                            return; // 配置有效，不弹窗
+                            return;
+                        }
+                        // 首次启动：清理旧回测历史
+                        if (!localStorage.getItem('tquant_first_clean_done')) {
+                            localStorage.setItem('tquant_first_clean_done', '1');
+                            if (bridge && typeof bridge.clean_first_launch === 'function') {
+                                bridge.clean_first_launch();
+                            }
                         }
                     }
                 } catch (e) {}
-                // 无效配置，弹窗
                 setTimeout(() => openDataSourceModal(), 800);
             }).catch(function() {
                 setTimeout(() => openDataSourceModal(), 800);

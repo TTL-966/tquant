@@ -2152,17 +2152,14 @@ function executeSignalsToSimulation(signals, container) {
                     console.error('[模拟盘] 失败: ' + sig.code + ' ' + action + ' - ' + res.error);
                 } else {
                     successCount++;
-                    console.log('[模拟盘] 成功: ' + sig.code + ' ' + action + ' - ' + (res.message || 'OK'));
                 }
             } catch (e) {
                 successCount++;
-                console.log('[模拟盘] 完成: ' + sig.code + ' ' + action);
             }
-            executeNext(index + 1);
+            setTimeout(function() { executeNext(index + 1); }, 50);
         }).catch(function(err) {
             failCount++;
-            console.error('[模拟盘] 异常: ' + sig.code + ' ' + action + ' - ' + (err.message || err));
-            executeNext(index + 1);
+            setTimeout(function() { executeNext(index + 1); }, 50);
         });
     }
 
