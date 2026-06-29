@@ -1,0 +1,60 @@
+=== Tquant 项目会话总结 (2026-06-28) ===
+
+## 完成的功能
+
+### 1. Optuna 策略参数优化（核心新功能）
+- 后端: backend/optimization/opt_objective.py (参数注入/目标函数)
+         backend/optimization/opt_worker.py (QThread + TPE采样器)
+- Bridge: app/web_bridge.py 新增4个Slot (start/get_progress/get_result/cancel_optimization)
+- 前端: js/strategyBuilder.js 优化面板UI + ECharts实时进度
+         js/strategyUtils.js extractParamsFromCards() 参数自动提取
+- 测试: tests/test_opt_objective.py 13个测试全部通过
+- 依赖: requirements.txt 新增 optuna>=3.0
+
+### 2. 概念/行业数据更新
+- settings.js 新增"手动更新概念题材"和"手动更新行业分类"按钮
+- web_bridge.py 新增 ConceptUpdateWorker/IndustryUpdateWorker QThread
+- 数据更新后在 config.json 记录时间戳, 个股资料弹窗显示各数据源更新时间
+
+### 3. Bug修复
+- inject_params 正则匹配 card-indexed 变量名 (context.c0_fastPeriod)
+- 负值默认参数范围 low>high 自动交换
+- numpy float64 强制转 Python float 防 JSON 序列化崩溃
+- cancel_optimization 用 try/except RuntimeError 安全取消
+- 副图 tooltip appendToBody 防被K线图遮挡
+- loadPage 同页面跳过重建防卡顿
+- 个股资料弹窗显示行业/概念更新时间
+- 仓位卡参数改名 (position_pct→position_value) 已在 extractParamsFromCards 跳过
+- min_trades 约束防低频策略钻空子 (默认5笔, 缺1笔扣200分渐进惩罚)
+- MKL/OMP/NUMEXPR 线程强制单核 (main.py 最前面设置)
+- 单 DataFeed 实例复用所有 trial (避免100个SQLite连接累积)
+- gc.collect() 每5个trial
+
+### 4. 文件清单
+新增: backend/optimization/__init__.py, opt_objective.py, opt_worker.py,
+      tests/test_opt_objective.py,
+      backend/data_updater/concept_updater.py,
+      docs/superpowers/specs/2026-06-28-optuna-param-search-design.md,
+      docs/superpowers/plans/2026-06-28-optuna-param-search.md
+
+修改: main.py (MKL env vars), app/web_bridge.py (Slots),
+       js/strategyBuilder.js (优化面板), js/strategyUtils.js (参数提取),
+       js/settings.js (数据更新按钮), js/navigation.js (同页面守卫/副图toolbar),
+       js/chartRenderer.js (appendToBody), js/SubChartManager.js (tooltip),
+       Tquant.html (CSS), requirements.txt
+
+### 5. 已知待处理
+- 仓位卡参数搜索实现（需在 generateCode 中让 position_value 走 cN_paramName 模式）
+- Phase 2 多股票聚合搜索
+- 优化历史记录前端页面
+- min_trades 前端可配置
+
+### 6. Git
+当前分支: master
+最后提交: 7bc1867 fix: set MKL env vars before all imports, reuse single DataFeed across trials
+所有变更已提交
+
+### 7. 运行方式
+python main.py
+→ 策略页 → 搭建策略卡片 → 点"🔍 参数优化" → 点"开始优化搜索"
+→ 等待100 trial完成 → 查看最优参数表 → 点"应用最优参数"

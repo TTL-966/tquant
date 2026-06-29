@@ -29,7 +29,7 @@ class DataUpdateScheduler(QObject):
         temp_updater._release_lock()
         QTimer.singleShot(10000, self._check_index_update)
         # 资金流向：启动 10 秒后首次更新，之后每日 18:00
-        QTimer.singleShot(10000, self._run_fund_flow_update)
+        #QTimer.singleShot(10000, self._run_fund_flow_update)
 
     def _schedule_daily(self):
         """计算到下一个 18:00 的毫秒数并启动定时器"""

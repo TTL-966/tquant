@@ -1,0 +1,101 @@
+<h2>策略参数优化 — 页面布局</h2>
+<p class="subtitle">新页面 "参数优化"，从策略页点击按钮进入</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">📊 优化设置面板（上半部分）</div>
+    <div class="mockup-body" style="font-size:13px;line-height:1.6;">
+      <div style="display:flex;gap:12px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <span style="color:#9aa9cc;">📈 股票代码</span><br>
+          <input class="mock-input" value="000001" style="width:120px;">
+        </div>
+        <div style="flex:1;">
+          <span style="color:#9aa9cc;">🎯 优化目标</span><br>
+          <select style="background:#1e253b;border:1px solid #323d5a;color:#fff;padding:4px 8px;border-radius:6px;">
+            <option>稳健（夏普≥1 + 回撤≤15%）</option>
+            <option>夏普优先</option>
+            <option>纯收益率</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <span style="color:#9aa9cc;">🔢 试验次数</span><br>
+          <input class="mock-input" value="100" style="width:60px;">
+        </div>
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <span style="color:#9aa9cc;">📅 回测区间</span>
+        <div style="display:flex;gap:8px;">
+          <input class="mock-input" value="2023-01-01" style="width:110px;">
+          <span style="color:#9aa9cc;">~</span>
+          <input class="mock-input" value="2026-06-28" style="width:110px;">
+        </div>
+      </div>
+
+      <div style="background:#0e1220;border:1px solid #2a3145;border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="color:#4f7eff;font-weight:600;margin-bottom:6px;">🔧 搜索参数（自动提取，可调范围）</div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;padding:4px 6px;background:#151c2c;border-radius:4px;">
+          <span style="color:#fff;">MA快线周期</span>
+          <span style="color:#9aa9cc;font-size:11px;">整数</span>
+          <span style="color:#4f7eff;">3 ~ 30</span>
+          <label style="font-size:11px;color:#9aa9cc;"><input type="checkbox" checked style="accent-color:#4f7eff;"> 搜索</label>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;padding:4px 6px;background:#151c2c;border-radius:4px;">
+          <span style="color:#fff;">MA慢线周期</span>
+          <span style="color:#9aa9cc;font-size:11px;">整数</span>
+          <span style="color:#4f7eff;">10 ~ 120</span>
+          <label style="font-size:11px;color:#9aa9cc;"><input type="checkbox" checked style="accent-color:#4f7eff;"> 搜索</label>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;padding:4px 6px;background:#151c2c;border-radius:4px;">
+          <span style="color:#fff;">仓位比例</span>
+          <span style="color:#9aa9cc;font-size:11px;">浮点</span>
+          <span style="color:#4f7eff;">0.3 ~ 1.0</span>
+          <label style="font-size:11px;color:#9aa9cc;"><input type="checkbox" style="accent-color:#4f7eff;"> 搜索</label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="mock-button" style="background:#4f7eff;">🚀 开始优化搜索</button>
+        <button class="mock-button" style="background:#2d3a5e;">⏹ 停止</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">📈 结果面板（下半部分）</div>
+    <div class="mockup-body" style="font-size:13px;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <div class="placeholder" style="flex:1;text-align:center;padding:16px;background:#0e1220;border-radius:8px;">
+          <div style="color:#9aa9cc;font-size:11px;">状态</div>
+          <div style="color:#f2c94c;font-size:16px;font-weight:700;">⏳ 搜索中...</div>
+        </div>
+        <div class="placeholder" style="flex:1;text-align:center;padding:16px;background:#0e1220;border-radius:8px;">
+          <div style="color:#9aa9cc;font-size:11px;">已完成</div>
+          <div style="color:#fff;font-size:16px;font-weight:700;">42 / 100</div>
+        </div>
+        <div class="placeholder" style="flex:1;text-align:center;padding:16px;background:#0e1220;border-radius:8px;">
+          <div style="color:#9aa9cc;font-size:11px;">当前最优</div>
+          <div style="color:#27ae60;font-size:16px;font-weight:700;">+23.5%</div>
+        </div>
+      </div>
+
+      <div class="placeholder" style="height:120px;display:flex;align-items:center;justify-content:center;background:#0e1220;border-radius:8px;margin-bottom:8px;flex-direction:column;">
+        <span style="color:#9aa9cc;">📉 优化历史曲线</span>
+        <span style="color:#6a7a9a;font-size:11px;">x=试验序号, y=目标值, 蓝线=当前最优</span>
+      </div>
+
+      <div class="placeholder" style="height:100px;display:flex;align-items:center;justify-content:center;background:#0e1220;border-radius:8px;margin-bottom:8px;flex-direction:column;">
+        <span style="color:#9aa9cc;">📊 参数重要性图</span>
+        <span style="color:#6a7a9a;font-size:11px;">Optuna 自动分析, 柱状图显示哪个参数最影响收益</span>
+      </div>
+
+      <div class="placeholder" style="height:80px;display:flex;align-items:center;justify-content:center;background:#0e1220;border-radius:8px;">
+        <span style="color:#9aa9cc;">📋 最优参数组合 → 一键应用到策略</span>
+      </div>
+    </div>
+  </div>
+</div>

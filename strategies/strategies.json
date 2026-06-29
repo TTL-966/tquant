@@ -23,5 +23,10 @@
     "id": 5,
     "name": "1",
     "code": "{\"version\":1,\"cards\":[{\"id\":\"card_mpzk8coh_4pdwq7\",\"type\":\"yesterday_change\",\"action\":\"buy\",\"params\":{\"minChange\":2,\"maxChange\":10,\"includeLimitUp\":\"yes\",\"direction\":\"up\"}}],\"capital\":100000,\"startDate\":\"2025-01-01\",\"endDate\":\"2026-06-04\",\"stockPool\":\"\",\"slippage\":\"close\",\"commission_rate\":0.0003,\"stamp_tax_rate\":0.001,\"slippage_cost_type\":\"percent\",\"slippage_cost_value\":0.1,\"entry_logic\":\"all\",\"exit_logic\":\"any\",\"poolConfig\":{\"poolSource\":\"all\",\"customStockCodes\":\"\",\"poolIndustryFilter\":\"\",\"poolConceptFilter\":[],\"poolConceptMatchMode\":\"any\",\"poolMarketCapMin\":\"\",\"poolMarketCapMax\":\"\",\"poolFloatSharesMin\":\"\",\"poolFloatSharesMax\":\"\"}}"
+  },
+  {
+    "id": 6,
+    "name": "双均线交叉策略",
+    "code": "{\"version\":1,\"cards\":[{\"id\":\"card_mqxpgeuf_hm9xra\",\"type\":\"ma_cross\",\"action\":\"buy\",\"params\":{\"fastPeriod\":5,\"slowPeriod\":20,\"direction\":\"golden\"}},{\"id\":\"card_mqxpgeuf_m2ratx\",\"type\":\"ma_cross\",\"action\":\"sell\",\"params\":{\"fastPeriod\":5,\"slowPeriod\":20,\"direction\":\"death\"}},{\"id\":\"card_mqxpgeuf_9g8d1y\",\"type\":\"position\",\"action\":null,\"params\":{\"position_mode\":\"percentage\",\"position_value\":100,\"quantity_unit\":\"shares\"}}],\"capital\":100000,\"startDate\":\"2025-01-01\",\"endDate\":\"2026-06-28\",\"stockPool\":\"000001\",\"slippage\":\"close\",\"commission_rate\":0.0003,\"stamp_tax_rate\":0.001,\"slippage_cost_type\":\"percent\",\"slippage_cost_value\":0.1,\"entry_logic\":\"all\",\"exit_logic\":\"any\",\"poolConfig\":{\"poolSource\":\"hs300\",\"customStockCodes\":\"000001\",\"poolIndustryFilter\":\"\",\"poolConceptFilter\":[\"商业航天\"],\"poolConceptMatchMode\":\"any\",\"poolMarketCapMin\":\"\",\"poolMarketCapMax\":\"\",\"poolFloatSharesMin\":\"\",\"poolFloatSharesMax\":\"\"}}"
   }
 ]

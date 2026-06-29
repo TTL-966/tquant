@@ -43,7 +43,6 @@
 
   业务功能
     backend/stock_screener.py (91K)  选股器（最大单文件）
-    backend/sector_heat.py           板块热度计算（概念/行业资金流聚合）
     backend/report_exporter.py       回测/实盘报告导出
     backend/everydaystock.py         每日选股
     backend/industry.py              行业分类查询
@@ -58,7 +57,6 @@
     js/strategyUtils.js       策略工具函数
     js/strategyTemplates.js   策略模板
     js/stockScreener.js       选股器前端
-    js/sectorDashboard.js     板块热度仪表盘（概念/行业热力图+排行+详情）
     js/realtimeSim.js         实时策略模拟
     js/compareView.js         策略对比视图
     js/compareStrategy.js     策略对比逻辑

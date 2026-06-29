@@ -1,0 +1,130 @@
+# Tquant 对比回测 - 变体策略代码
+# 导出时间: 2026/5/21 20:26:16
+# 股票代码: 000001
+# 变体数量: 2
+
+# ===== ============================================================
+# 变体 #1: 默认参数
+# ===== ============================================================
+
+import numpy as np
+import pandas as pd
+
+def initialize(context):
+    context.stock = "000001"
+    context.c0_fastPeriod = 5
+    context.c0_slowPeriod = 20
+    context.c0_direction = "golden"
+    context.c1_fastPeriod = 5
+    context.c1_slowPeriod = 20
+    context.c1_direction = "death"
+    context.c2_positionType = "fixed"
+    context.c2_fixedPercent = 1
+
+def handle_bar(context, bar_dict):
+    stock = context.stock
+    entry_signals = []
+    exit_signals = []
+
+    # Card 0: 均线交叉
+    c0_fast = history_bars(stock, context.c0_fastPeriod + 1, '1d', 'close')
+    c0_slow = history_bars(stock, context.c0_slowPeriod + 1, '1d', 'close')
+    if len(c0_fast) < context.c0_fastPeriod + 1 or len(c0_slow) < context.c0_slowPeriod + 1:
+        entry_signals.append(False)
+    else:
+        c0_fast_ma = c0_fast[-context.c0_fastPeriod:].mean()
+        c0_slow_ma = c0_slow[-context.c0_slowPeriod:].mean()
+        c0_fast_ma_prev = c0_fast[:-1][-context.c0_fastPeriod:].mean()
+        c0_slow_ma_prev = c0_slow[:-1][-context.c0_slowPeriod:].mean()
+        entry_signals.append(c0_fast_ma_prev <= c0_slow_ma_prev and c0_fast_ma > c0_slow_ma)
+
+    # Card 1: 均线交叉
+    c1_fast = history_bars(stock, context.c1_fastPeriod + 1, '1d', 'close')
+    c1_slow = history_bars(stock, context.c1_slowPeriod + 1, '1d', 'close')
+    if len(c1_fast) < context.c1_fastPeriod + 1 or len(c1_slow) < context.c1_slowPeriod + 1:
+        exit_signals.append(False)
+    else:
+        c1_fast_ma = c1_fast[-context.c1_fastPeriod:].mean()
+        c1_slow_ma = c1_slow[-context.c1_slowPeriod:].mean()
+        c1_fast_ma_prev = c1_fast[:-1][-context.c1_fastPeriod:].mean()
+        c1_slow_ma_prev = c1_slow[:-1][-context.c1_slowPeriod:].mean()
+        exit_signals.append(c1_fast_ma_prev >= c1_slow_ma_prev and c1_fast_ma < c1_slow_ma)
+
+    target_percent = 1
+
+    # 执行入场信号
+    if len(entry_signals) > 0 and all(entry_signals):
+        context._last_signal_reason = "MA5上穿MA20金叉买入"
+        order_target_percent(stock, target_percent)
+        log.info("买入信号触发")
+
+    # 执行离场信号
+    if len(exit_signals) > 0 and all(exit_signals):
+        context._last_signal_reason = "MA5下穿MA20死叉卖出"
+        order_target_percent(stock, 0)
+        log.info("卖出信号触发")
+
+
+
+# ===== ============================================================
+# 变体 #2: 变体2
+# ===== ============================================================
+
+import numpy as np
+import pandas as pd
+
+def initialize(context):
+    context.stock = "000001"
+    context.c0_fastPeriod = 5
+    context.c0_slowPeriod = 20
+    context.c0_direction = "golden"
+    context.c1_fastPeriod = 5
+    context.c1_slowPeriod = 20
+    context.c1_direction = "death"
+    context.c2_positionType = "fixed"
+    context.c2_fixedPercent = 1
+
+def handle_bar(context, bar_dict):
+    stock = context.stock
+    entry_signals = []
+    exit_signals = []
+
+    # Card 0: 均线交叉
+    c0_fast = history_bars(stock, context.c0_fastPeriod + 1, '1d', 'close')
+    c0_slow = history_bars(stock, context.c0_slowPeriod + 1, '1d', 'close')
+    if len(c0_fast) < context.c0_fastPeriod + 1 or len(c0_slow) < context.c0_slowPeriod + 1:
+        entry_signals.append(False)
+    else:
+        c0_fast_ma = c0_fast[-context.c0_fastPeriod:].mean()
+        c0_slow_ma = c0_slow[-context.c0_slowPeriod:].mean()
+        c0_fast_ma_prev = c0_fast[:-1][-context.c0_fastPeriod:].mean()
+        c0_slow_ma_prev = c0_slow[:-1][-context.c0_slowPeriod:].mean()
+        entry_signals.append(c0_fast_ma_prev <= c0_slow_ma_prev and c0_fast_ma > c0_slow_ma)
+
+    # Card 1: 均线交叉
+    c1_fast = history_bars(stock, context.c1_fastPeriod + 1, '1d', 'close')
+    c1_slow = history_bars(stock, context.c1_slowPeriod + 1, '1d', 'close')
+    if len(c1_fast) < context.c1_fastPeriod + 1 or len(c1_slow) < context.c1_slowPeriod + 1:
+        exit_signals.append(False)
+    else:
+        c1_fast_ma = c1_fast[-context.c1_fastPeriod:].mean()
+        c1_slow_ma = c1_slow[-context.c1_slowPeriod:].mean()
+        c1_fast_ma_prev = c1_fast[:-1][-context.c1_fastPeriod:].mean()
+        c1_slow_ma_prev = c1_slow[:-1][-context.c1_slowPeriod:].mean()
+        exit_signals.append(c1_fast_ma_prev >= c1_slow_ma_prev and c1_fast_ma < c1_slow_ma)
+
+    target_percent = 1
+
+    # 执行入场信号
+    if len(entry_signals) > 0 and all(entry_signals):
+        context._last_signal_reason = "MA5上穿MA20金叉买入"
+        order_target_percent(stock, target_percent)
+        log.info("买入信号触发")
+
+    # 执行离场信号
+    if len(exit_signals) > 0 and all(exit_signals):
+        context._last_signal_reason = "MA5下穿MA20死叉卖出"
+        order_target_percent(stock, 0)
+        log.info("卖出信号触发")
+
+

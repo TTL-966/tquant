@@ -31,7 +31,6 @@ from backend.auto_trade_config import load_auto_trade_config, save_auto_trade_co
 from backend.backtest_worker import BacktestWorker
 from backend.backtest_job_manager import BacktestJobManager
 from backend.optimization import OptunaWorker
-from backend.sector_heat import SectorHeatCalculator
 from sqlalchemy import text
 import threading
 import time
@@ -2148,46 +2147,6 @@ class WebBridge(QObject):
             job["worker"].cancel()
         del self._optimization_jobs[job_id]
         return json.dumps({"success": True})
-
-    # ---------- 板块热度仪表盘 ----------
-
-    @Slot(str, str, int, bool, result=str)
-    def get_sector_heat(self, sector_type="concept", metric="heat_score", days=5, realtime=False):
-        """Return sector heat ranking data.
-
-        Args:
-            sector_type: 'concept' or 'industry'
-            metric: 'heat_score' | 'change_pct' | 'fund_flow' | 'volume_ratio' | 'advance_decline'
-            days: lookback window
-            realtime: if True, use realtime quotes (not yet implemented)
-        Returns:
-            JSON string: {sectors: [{name, stock_count, avg_change_pct, ...}]}
-        """
-        try:
-            calc = SectorHeatCalculator(self.db.engine)
-            sectors = calc.compute(sector_type, metric, days, realtime=realtime)
-            return json.dumps({"sectors": sectors})
-        except Exception as e:
-            traceback.print_exc()
-            return json.dumps({"sectors": [], "error": str(e)})
-
-    @Slot(str, str, result=str)
-    def get_sector_detail(self, sector_type, sector_name):
-        """Return top component stocks for a sector.
-
-        Args:
-            sector_type: 'concept' or 'industry'
-            sector_name: e.g. '人工智能' or '银行'
-        Returns:
-            JSON string: {name, stocks: [{code, name, change_pct, fund_flow}]}
-        """
-        try:
-            calc = SectorHeatCalculator(self.db.engine)
-            result = calc.get_sector_detail(sector_type, sector_name)
-            return json.dumps(result)
-        except Exception as e:
-            traceback.print_exc()
-            return json.dumps({"name": sector_name, "stocks": [], "error": str(e)})
 
     # ---------- 报告导出 ----------
     @Slot(str, result=str)

@@ -1,12 +1,11 @@
 # Tquant 量化工作站
 
-基于 PySide6 + QtWebEngine 的桌面端量化交易平台，集成选股、回测、策略优化、板块热度分析与自动交易。
+基于 PySide6 + QtWebEngine 的桌面端量化交易平台，集成选股、回测、策略优化与自动交易。
 
 ## 功能概览
 
 ### 图表与分析
 - **K线图表** — 日K/周K/月K，支持副图指标叠加（MACD/RSI/KDJ/布林带/CCI/OBV 等 12+ 指标）
-- **板块热度仪表盘** — 概念/行业双维度资金流排名，Treemap 热力图 + 排行榜 + 详情弹窗
 - **个股详情** — 基本面数据（PE/PB/ROE）、概念/行业归属、资金流向历史
 
 ### 策略与回测
@@ -60,7 +59,6 @@ Tquant/
 │   ├── backtest_executor.py         # 单股回测引擎
 │   ├── multi_backtest_executor.py   # 多股组合回测引擎
 │   ├── stock_screener.py            # 股票筛选器（91K）
-│   ├── sector_heat.py               # 板块热度计算
 │   ├── realtime_strategy_engine.py  # 实时策略引擎（asyncio）
 │   ├── auto_trader.py               # 自动交易
 │   ├── trade_simulation.py          # 交易模拟
@@ -77,7 +75,6 @@ Tquant/
 │   ├── navigation.js                # 导航与路由
 │   ├── chartRenderer.js             # K线图表渲染
 │   ├── strategyBuilder.js           # 策略构建器 + 参数优化面板
-│   ├── sectorDashboard.js           # 板块热度仪表盘
 │   ├── stockScreener.js             # 筛选器界面
 │   ├── indicators.js                # 技术指标计算
 │   └── realtimeSim.js               # 实时策略模拟
