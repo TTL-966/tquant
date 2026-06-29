@@ -10,6 +10,8 @@
 - [1.16 股票筛选](#116-股票筛选)
 - [1.17 概念板块](#117-概念板块)
 - [1.18 批量实时行情](#118-批量实时行情)
+- [1.19 参数优化](#119-参数优化)
+- [1.20 板块热度仪表盘](#120-板块热度仪表盘)
 - [2. 策略编写 API](#2-策略编写-api)
 - [3. 数据格式](#3-数据格式)
 - [4. 错误码与异常](#4-错误码与异常)
@@ -1191,6 +1193,206 @@ bridge.trigger_financial_update().then(function(json) {
 #### `save_text_file(content, suggested_name)`
 
 文件保存对话框新增 CSV 格式支持（utf-8-sig 编码，确保 Excel 正确打开中文）。
+
+---
+
+### 1.19 参数优化
+
+Optuna TPE 超参搜索，支持单股/多股模式。
+
+#### `start_optimization(params_json)`
+
+启动 Optuna 参数优化搜索。
+
+**参数：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| strategy_code | str | 策略 Python 代码 |
+| stock | str | 股票代码（单股模式） |
+| stock_codes | list | 股票代码列表（多股模式，可选） |
+| start | str | 回测起始日期 |
+| end | str | 回测结束日期 |
+| cash | int | 初始资金 |
+| objective | str | 优化目标：`"sharpe_drawdown"` / `"sharpe"` / `"return"` |
+| n_trials | int | 搜索试验次数（多股模式自动按 sqrt 缩放） |
+| params_to_search | list | 待搜索参数 `[{name, type, low, high, step?}]` |
+| fixed_params | dict | 固定参数值 `{name: value}` |
+| slippage | str | 成交价模式 `"close"` |
+| commission_rate | float | 佣金率 |
+| stamp_tax_rate | float | 印花税率 |
+
+**返回：** `{ success: true, job_id: "<hex>" }`
+
+```javascript
+var params = {
+    strategy_code: code,
+    stock: "000001",
+    start: "2020-01-01", end: "2026-06-30",
+    cash: 1000000, objective: "sharpe_drawdown", n_trials: 100,
+    params_to_search: [{ name: "c0_fastPeriod", type: "int", low: 5, high: 30, step: 1 }],
+    fixed_params: { c0_slowPeriod: 20 }
+};
+bridge.start_optimization(JSON.stringify(params)).then(function(json) {
+    var res = JSON.parse(json);
+    // { success: true, job_id: "a1b2c3d4" }
+});
+```
+
+---
+
+#### `get_optimization_progress(job_id)`
+
+轮询优化进度。
+
+**返回：**
+```json
+{
+  "status": "running",
+  "progress": {
+    "current": 42, "total": 100, "best_value": 2.35,
+    "mode": "single", "stock_count": 1,
+    "last_trial": { "number": 41, "value": 1.82, "state": "COMPLETE", "params": {...} }
+  }
+}
+```
+
+```javascript
+var timer = setInterval(function() {
+    bridge.get_optimization_progress(jobId).then(function(json) {
+        var data = JSON.parse(json);
+        if (data.status === "finished" || data.status === "cancelled") {
+            clearInterval(timer);
+            // load result
+        }
+        updateProgressBar(data.progress);
+    });
+}, 800);
+```
+
+---
+
+#### `get_optimization_result(job_id)`
+
+获取优化完成结果（仅可调用一次，调用后清理 job）。
+
+**返回：**
+```json
+{
+  "ready": true,
+  "result": {
+    "success": true,
+    "best_params": { "c0_fastPeriod": 12 },
+    "best_value": 3.45,
+    "n_trials_completed": 98,
+    "trials": [{ "number": 0, "params": {...}, "value": 1.23, "state": "COMPLETE" }],
+    "param_importance": { "c0_fastPeriod": 0.72 },
+    "mode": "single", "stock_count": 1
+  }
+}
+```
+
+---
+
+#### `cancel_optimization(job_id)`
+
+取消正在运行的优化。
+
+```javascript
+bridge.cancel_optimization(jobId).then(function(json) {
+    var res = JSON.parse(json);
+    // { success: true }
+});
+```
+
+---
+
+### 1.20 板块热度仪表盘
+
+概念/行业板块资金流聚合排名 API。
+
+#### `get_sector_heat(sector_type, metric, days, realtime)`
+
+获取板块热度排行数据。
+
+**参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| sector_type | str | `"concept"` | 板块类型：`"concept"` / `"industry"` |
+| metric | str | `"heat_score"` | 排序指标：`"fund_flow"` / `"change_pct"` / `"volume_ratio"` / `"advance_decline"` / `"heat_score"` |
+| days | int | 5 | K线回看天数（fund_flow 指标忽略此参数） |
+| realtime | bool | false | 是否使用实时行情（暂未实现） |
+
+**返回：**
+```json
+{
+  "sectors": [
+    {
+      "name": "人工智能",
+      "stock_count": 156,
+      "avg_change_pct": 3.2,
+      "total_fund_flow": 12.5,
+      "volume_ratio": 1.8,
+      "advance_decline": 0.72,
+      "heat_score": 85.3,
+      "top_stock": { "code": "002230", "name": "科大讯飞", "change_pct": 8.5 }
+    }
+  ]
+}
+```
+
+```javascript
+bridge.get_sector_heat("concept", "fund_flow", 5, false).then(function(json) {
+    var data = JSON.parse(json);
+    data.sectors.forEach(function(s) {
+        console.log(s.name, s.total_fund_flow + "亿");
+    });
+});
+```
+
+**指标说明：**
+
+| metric | 含义 | 数据源 |
+|--------|------|--------|
+| `fund_flow` | 主力资金净流入聚合（万元→亿元） | fund_flow_history 表 |
+| `change_pct` | 成分股近N日平均涨跌幅 | daily_kline 表 |
+| `volume_ratio` | 近N日均量 / 前N日均量 | daily_kline 表 |
+| `advance_decline` | 上涨家数 / 总家数 | daily_kline 表 |
+| `heat_score` | 综合热度分 = 涨跌幅×0.4 + 资金流标准化×0.3 + 量比×0.15 + 涨跌比×0.15 | 综合 |
+
+---
+
+#### `get_sector_detail(sector_type, sector_name)`
+
+获取单个板块的成分股资金流明细（Top 20）。
+
+**参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| sector_type | str | `"concept"` / `"industry"` |
+| sector_name | str | 板块名称，如 `"人工智能"` |
+
+**返回：**
+```json
+{
+  "name": "人工智能",
+  "stocks": [
+    { "code": "002230", "name": "科大讯飞", "change_pct": 8.5, "fund_flow": 1.2 },
+    { "code": "300033", "name": "同花顺", "change_pct": 5.2, "fund_flow": 0.8 }
+  ]
+}
+```
+
+```javascript
+bridge.get_sector_detail("concept", "人工智能").then(function(json) {
+    var data = JSON.parse(json);
+    data.stocks.forEach(function(s) {
+        console.log(s.code, s.name, s.fund_flow + "亿");
+    });
+});
+```
 
 ---
 

@@ -1,5 +1,52 @@
 # 更新日志 (Changelog)
 
+## v1.6.0 (2026-06-29)
+
+### 新功能
+
+**Optuna 参数优化**
+- 策略构建器新增参数优化面板，TPE 智能超参搜索
+- 支持单股/多股双模式，多股模式使用 MultiBacktestExecutor 共享资金池
+- 试验次数自动缩放：`adjusted = max(30, base / sqrt(stock_count))`
+- ECharts 实时进度图 + 参数重要性分析 + 最优参数一键应用
+- 新增 `start_optimization` / `get_optimization_progress` / `get_optimization_result` / `cancel_optimization` API
+
+**板块热度仪表盘**
+- 概念/行业双维度板块资金流聚合排名
+- ECharts Treemap 热力图 + 排行榜表格 + 汇总卡片
+- 板块成分股详情弹窗（Top 20）
+- 多指标切换：资金流 / 涨跌幅 / 量比 / 涨跌比 / 综合热度
+- 后端 SQL 聚合计算，单次查询秒出结果
+- 新增 `get_sector_heat` / `get_sector_detail` API
+
+**数据更新增强**
+- 日线更新同时覆盖个股+指数（8个默认指数写入同一张表）
+- 资金流向增量更新：东方财富 API 每日最近 N 日，ThreadPoolExecutor 并发
+- 调度器新增资金流向定时任务 + 独立子进程隔离
+- 新增 `populate_fund_flow.py` 空表初始化脚本
+
+### 新文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/optimization/` | Optuna 参数优化模块 |
+| `backend/sector_heat.py` | 板块热度计算器（SQL聚合） |
+| `backend/populate_fund_flow.py` | 资金流向初次填充脚本 |
+| `js/sectorDashboard.js` | 板块热度仪表盘前端 |
+| `tests/test_opt_objective.py` | 参数优化测试 |
+| `tests/test_multi_opt_objective.py` | 多股优化测试 |
+| `tests/test_sector_heat.py` | 板块热度测试 |
+
+### 更新
+
+- `fund_flow_updater.py`：新增 `get_fund_flow_recent(code, days)` 多日方法
+- `standalone_updater.py`：新增 `--type fund_flow --days N` 分支
+- `scheduler.py`：新增 `_run_fund_flow_update()` 资金流调度
+- `strategyBuilder.js`：优化面板 + 单股/多股模式切换
+- `daily_kline_updater.py`：个股更新后自动追加指数更新
+
+---
+
 ## v1.5.0 (2026-06-07)
 
 ### 重大架构重构

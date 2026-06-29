@@ -12,13 +12,14 @@
     backend/db.py              SQLite 封装：建表、K线查询、股票基础信息
 
   数据获取（落库）
-    backend/data_updater/daily_kline_updater.py   日K线增量更新（Tushare Pro）
+    backend/data_updater/daily_kline_updater.py   日K线增量更新（Tushare/Baostock，含个股+指数）
     backend/data_updater/financial_updater.py     财务数据更新（PE/PB/ROE 等）
     backend/data_updater/concept_updater.py       概念板块更新
+    backend/data_updater/fund_flow_updater.py     资金流向更新（东方财富 API → 同花顺备用）
     backend/data_updater/index_updater_akshare.py 指数成分股更新
-    backend/data_updater/scheduler.py             定时调度器
+    backend/data_updater/scheduler.py             定时调度器（日K/财务/资金流/指数成分股）
     backend/base_updater.py                       更新器基类（日志/异常包装）
-    backend/standalone_updater.py                 命令行独立更新入口
+    backend/standalone_updater.py                 命令行独立更新入口（stock/index/financial/fund_flow）
 
   数据获取（在线，不落库）
     backend/data_feed.py           K线读取+进程级缓存+周期聚合（日/周/月）
@@ -27,29 +28,37 @@
 
   策略引擎
     backend/backtest_executor.py        单股回测引擎
-    backend/multi_backtest_executor.py  多股组合回测引擎
-    backend/backtest_worker.py          QThread 回测工作线程（异步，进度+取消）NEW
-    backend/backtest_job_manager.py     回测任务管理器（追踪/缓存/取消）NEW
-    backend/realtime_strategy_engine.py 实时策略引擎-单股（asyncio+aiohttp）v1.5重写
-    backend/multi_realtime_strategy_engine.py 实时策略引擎-多股（asyncio+aiohttp）v1.5重写
-    backend/async_quote_fetcher.py      异步行情获取器（aiohttp）NEW
+    backend/multi_backtest_executor.py  多股组合回测引擎（共享资金池）
+    backend/backtest_worker.py          QThread 回测工作线程（异步，进度+取消）
+    backend/backtest_job_manager.py     回测任务管理器（追踪/缓存/取消）
+    backend/realtime_strategy_engine.py 实时策略引擎-单股（asyncio+aiohttp）
+    backend/multi_realtime_strategy_engine.py 实时策略引擎-多股（asyncio+aiohttp）
+    backend/async_quote_fetcher.py      异步行情获取器（aiohttp）
     backend/trade_simulation.py         交易模拟
+
+  参数优化
+    backend/optimization/opt_objective.py Optuna 目标函数（参数注入/回测/评分）
+    backend/optimization/opt_worker.py    QThread + TPE 超参搜索
+    backend/optimization/__init__.py
 
   业务功能
     backend/stock_screener.py (91K)  选股器（最大单文件）
+    backend/sector_heat.py           板块热度计算（概念/行业资金流聚合）
     backend/report_exporter.py       回测/实盘报告导出
     backend/everydaystock.py         每日选股
     backend/industry.py              行业分类查询
     backend/sync_new_stocks.py       新股同步
+    backend/populate_fund_flow.py    资金流向初次填充脚本
 
   前端 JS（加载于 Tquant.html）
     js/main.js                前端主入口
     js/navigation.js (129K)   导航/UI 交互
     js/chartRenderer.js       ECharts K线图渲染
-    js/strategyBuilder.js     策略构建器
+    js/strategyBuilder.js     策略构建器（含参数优化面板 + 单股/多股模式切换）
     js/strategyUtils.js       策略工具函数
     js/strategyTemplates.js   策略模板
     js/stockScreener.js       选股器前端
+    js/sectorDashboard.js     板块热度仪表盘（概念/行业热力图+排行+详情）
     js/realtimeSim.js         实时策略模拟
     js/compareView.js         策略对比视图
     js/compareStrategy.js     策略对比逻辑
