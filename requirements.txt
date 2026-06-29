@@ -5,6 +5,7 @@ pyside6-webengine>=6.5
 # Data
 tushare
 baostock
+akshare
 pandas
 numpy
 sqlalchemy
@@ -13,10 +14,19 @@ sqlalchemy
 aiohttp
 requests
 beautifulsoup4
+curl_cffi
 
 # Automation
 pyautogui
 pygetwindow
+pywin32
 
 # Optimization
 optuna>=3.0
+
+# Export
+openpyxl
+reportlab
+
+# Packaging
+pyinstaller>=6.0
