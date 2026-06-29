@@ -27,6 +27,7 @@ optuna>=3.0
 # Export
 openpyxl
 reportlab
+matplotlib
 
 # Packaging
 pyinstaller>=6.0

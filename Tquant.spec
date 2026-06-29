@@ -124,6 +124,9 @@ hiddenimports = [
     'reportlab',
     'reportlab.graphics',
     'reportlab.pdfbase',
+    'matplotlib',
+    'matplotlib.backends.backend_agg',
+    'matplotlib.font_manager',
     # 系统
     'ctypes',
     'win32api',
@@ -146,8 +149,6 @@ hiddenimports = [
 excludes = [
     'tkinter',
     '_tkinter',
-    'matplotlib',
-    'matplotlib.backends',
     'scipy',
     'PIL',
     'Pillow',
