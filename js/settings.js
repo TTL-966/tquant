@@ -793,7 +793,9 @@ Ctrl+Shift+D     → 切换调试面板（右下角浮窗）</div>
                                     var pct = prog.percent || 0;
                                     document.getElementById('updateProgressBar').style.width = pct + '%';
                                     document.getElementById('updateProgressPercent').textContent = pct + '%';
-                                    var stepLabel = prog.step === 'turnover' ? '正在批量获取换手率...' : '正在更新K线...';
+                                    var stepLabel = prog.step === 'turnover' ? '正在批量获取换手率...'
+                                        : prog.step === 'index' ? '正在更新指数日线...'
+                                        : '正在更新K线...';
                                     document.getElementById('updateProgressLabel').textContent = '⏳ ' + stepLabel;
                                     var detail = '';
                                     if (prog.total_stocks > 0) {

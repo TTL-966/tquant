@@ -848,10 +848,13 @@ class StockDailyUpdater(BaseUpdater):
             else:
                 self.log(f"获取到 {len(valid_stocks)} 只有效股票")
 
+            # 查询个股最新日期。排除指数 ts_code（避免 000001.SH 上证指数 和 000001.SZ 平安银行 被 strip 后缀后合并为同一 code）
             sql = """
                 SELECT REPLACE(REPLACE(ts_code, '.SH', ''), '.SZ', '') as code,
                        MAX(trade_date) as max_date
                 FROM stock_daily_qfq_with_name
+                WHERE ts_code NOT IN ('000001.SH','000300.SH','399001.SZ','000905.SH',
+                                      '399006.SZ','000016.SH','399330.SZ','000852.SH')
                 GROUP BY code
                 ORDER BY code
             """
@@ -1024,9 +1027,111 @@ class StockDailyUpdater(BaseUpdater):
 
                     time.sleep(self.request_interval)
 
+            # ---- 阶段 4: 更新指数日线 ----
+            index_name_map = {
+                '000300.SH': '沪深300', '000001.SH': '上证指数', '399001.SZ': '深证成指',
+                '000905.SH': '中证500', '399006.SZ': '创业板指', '000016.SH': '上证50',
+                '399330.SZ': '深证100', '000852.SH': '中证1000',
+            }
+            default_indices = self.fetcher.get_default_indices()
+            idx_success = 0
+            idx_fail = 0
+            idx_skip = 0
+            idx_total = len(default_indices)
+            self.log(f"开始更新指数日线，共 {idx_total} 个指数")
+            self._write_progress("running", idx_total, 0, "index", 0)
+
+            for ii, (source_code, ts_code) in enumerate(default_indices):
+                # 查询该指数已有数据的最新日期（用完整 ts_code，不 strip 后缀）
+                try:
+                    existing = pd.read_sql(
+                        f"SELECT MAX(trade_date) as max_date FROM {self.table_name} "
+                        f"WHERE ts_code = '{ts_code}'",
+                        self.engine
+                    )
+                    max_existing = existing.iloc[0, 0] if not existing.empty else None
+                except Exception:
+                    max_existing = None
+
+                if max_existing and max_existing >= end_date:
+                    self.log(f"[指数 {ii+1}/{idx_total}] {ts_code} 数据已最新 ({max_existing})，跳过")
+                    idx_skip += 1
+                    continue
+
+                start = '2010-01-01'
+                if max_existing:
+                    start_dt = datetime.strptime(max_existing, '%Y-%m-%d') + timedelta(days=1)
+                    start = start_dt.strftime('%Y-%m-%d')
+                if start > end_date:
+                    idx_skip += 1
+                    continue
+
+                self.log(f"[指数 {ii+1}/{idx_total}] 更新 {ts_code} : {start} -> {end_date}")
+                idx_name = index_name_map.get(ts_code, ts_code)
+
+                # 需要重新 login（Baostock 可能超时断开）
+                if self.fetcher.source_name == 'baostock':
+                    try:
+                        self.fetcher.login()
+                    except Exception:
+                        pass
+
+                result = self.fetcher.fetch_index_data(source_code, start, end_date)
+
+                if result is None:
+                    idx_fail += 1
+                    self.log(f"  ✗ 指数 {ts_code} 拉取失败")
+                elif isinstance(result, str) and result == 'INVALID':
+                    self.log(f"  ✗ 指数代码 {source_code} 无效，跳过")
+                    idx_skip += 1
+                else:
+                    df = result
+                    df['ts_code'] = ts_code
+                    df['name'] = idx_name
+
+                    # 去重：只插入新日期
+                    try:
+                        existing_dates = pd.read_sql(
+                            f"SELECT trade_date FROM {self.table_name} WHERE ts_code = '{ts_code}'",
+                            self.engine
+                        )
+                        exist_set = set(existing_dates['trade_date'])
+                        df = df[~df['trade_date'].isin(exist_set)]
+                    except Exception:
+                        pass
+
+                    if df.empty:
+                        self.log(f"  ✓ 指数 {ts_code} 无新数据")
+                        idx_skip += 1
+                        continue
+
+                    # 确保列顺序匹配
+                    cols = ['trade_date', 'open', 'high', 'low', 'close', 'vol', 'amount', 'turnover_rate_f', 'ts_code', 'name']
+                    for col in cols:
+                        if col not in df.columns:
+                            df[col] = None
+                    df = df[cols]
+
+                    try:
+                        df.to_sql(self.table_name, self.engine, if_exists='append', index=False, method='multi')
+                        idx_success += 1
+                        self.log(f"  ✓ 写入 {len(df)} 条指数记录")
+                    except Exception as e:
+                        idx_fail += 1
+                        self.log(f"  ✗ 写入失败: {e}", "ERROR")
+
+                if ii < idx_total - 1:
+                    time.sleep(self.request_interval)
+
+                processed_idx = ii + 1
+                if processed_idx % 5 == 0:
+                    self._write_progress("running", idx_total, processed_idx, "index",
+                                         int(processed_idx / idx_total * 100))
+
             self.fetcher.logout()
-            self.log(f"更新完成: 成功 {success}, 失败 {fail}, 跳过无效 {skip_invalid}, 跳过重复 {skip_duplicate}, 跳过近期 {skip_recent}")
-            self._write_progress("done", total, total, "complete", 100)
+            idx_msg = f"指数更新: 成功 {idx_success}, 失败 {idx_fail}, 跳过 {idx_skip}"
+            self.log(f"更新完成: 成功 {success}, 失败 {fail}, 跳过无效 {skip_invalid}, 跳过重复 {skip_duplicate}, 跳过近期 {skip_recent} | {idx_msg}")
+            self._write_progress("done", idx_total, idx_total, "complete", 100)
             self._clear_checkpoint()
             return True, f"成功 {success}, 失败 {fail}, 跳过无效 {skip_invalid}, 跳过重复 {skip_duplicate}"
         finally:
