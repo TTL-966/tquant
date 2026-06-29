@@ -90,7 +90,7 @@ class FundFlowFetcher:
     # ==================================================================
 
     def get_fund_flow(self, code: str) -> Optional[Dict]:
-        """获取单只股票资金流向。
+        """获取单只股票最新交易日资金流向。
 
         Args:
             code: 股票代码，支持 '000001' / 'sz000001' / '000001.SZ' 等格式
@@ -98,33 +98,48 @@ class FundFlowFetcher:
         Returns:
             dict 或 None — 统一格式的资金流向数据
         """
+        result = self.get_fund_flow_recent(code, days=1)
+        if result:
+            return result[0]
+        return None
+
+    def get_fund_flow_recent(self, code: str, days: int = 5):
+        """获取单只股票最近 N 个交易日资金流向。
+
+        Args:
+            code: 股票代码
+            days: 取最近几个交易日，默认 5
+
+        Returns:
+            list[dict] 或 [] — 按日期升序排列的资金流向数据列表
+        """
         pure_code = self._normalize_code(code)
         if pure_code is None:
             print(f"[FundFlow] 无效的股票代码: {code}")
-            return None
+            return []
 
-        # 检查缓存
-        cached = self._cache_get(pure_code)
+        # 检查缓存（多日缓存 key = code_days）
+        cache_key = f"{pure_code}_{days}"
+        cached = self._cache_get(cache_key)
         if cached is not None:
-            print(f"[FundFlow] 缓存命中 {pure_code}")
-            return cached
+            return cached if isinstance(cached, list) else [cached]
 
         # 主源：东方财富 API
-        data = self._fetch_from_eastmoney(pure_code)
-        if data is not None:
-            self._cache_set(pure_code, data)
+        data = self._fetch_from_eastmoney(pure_code, days=days)
+        if data:
+            self._cache_set(cache_key, data)
             return data
 
-        # 备用源：同花顺
+        # 备用源：同花顺（只返回1天）
         print(f"[FundFlow] 东方财富获取 {pure_code} 失败，切换至同花顺")
         time.sleep(random.uniform(0.5, 1.0))
-        data = self._fetch_from_tonghuashun(pure_code)
-        if data is not None:
-            self._cache_set(pure_code, data)
-            return data
+        single = self._fetch_from_tonghuashun(pure_code)
+        if single is not None:
+            self._cache_set(cache_key, [single])
+            return [single]
 
         print(f"[FundFlow] 所有数据源均失败 {pure_code}")
-        return None
+        return []
 
     def get_batch_fund_flow(self, codes, max_workers=5):
         """批量获取资金流向。
@@ -180,10 +195,11 @@ class FundFlowFetcher:
     # 东方财富 API（主源）
     # ==================================================================
 
-    def _fetch_from_eastmoney(self, pure_code: str) -> Optional[Dict]:
+    def _fetch_from_eastmoney(self, pure_code: str, days: int = 1):
         """使用 curl_cffi 请求东方财富 API，获取资金流向数据。
 
         返回数据单位：元 → 内部转换为万元。
+        返回最近 days 个交易日的数据（list of dict），日期升序。
         """
         market = "0" if not pure_code.startswith("6") else "1"
         url = (
@@ -211,36 +227,39 @@ class FundFlowFetcher:
                 if not klines:
                     raise Exception("无 klines 数据")
 
-                latest = klines[-1].split(",")
-                if len(latest) < 6:
-                    raise Exception("字段不足")
+                # 截取最近 days 条（klines 已按日期升序排列）
+                recent = klines[-days:] if len(klines) >= days else klines
 
-                # 原始顺序（根据实际验证）：
-                # 0:日期, 1:主力净流入(元), 2:小单净流入(元), 3:中单净流入(元), 4:大单净流入(元), 5:超大单净流入(元)
                 def to_wan(val):
                     v = self._safe_float(val)
                     return round(v / 10000, 2) if v is not None else None
 
-                result = {
-                    "code": pure_code,
-                    "date": latest[0],
-                    "main_net": to_wan(latest[1]),
-                    "small_net": to_wan(latest[2]),   # 小单
-                    "medium_net": to_wan(latest[3]),  # 中单
-                    "big_net": to_wan(latest[4]),     # 大单
-                    "super_net": to_wan(latest[5]),   # 超大单
-                    "source": "eastmoney"
-                }
-                if result["main_net"] is not None:
-                    print(f"[FundFlow] 东方财富获取 {pure_code} 成功")
-                    return result
+                results = []
+                for line in recent:
+                    parts = line.split(",")
+                    if len(parts) < 6:
+                        continue
+                    results.append({
+                        "code": pure_code,
+                        "date": parts[0],
+                        "main_net": to_wan(parts[1]),
+                        "small_net": to_wan(parts[2]),
+                        "medium_net": to_wan(parts[3]),
+                        "big_net": to_wan(parts[4]),
+                        "super_net": to_wan(parts[5]),
+                        "source": "eastmoney",
+                    })
+
+                if results:
+                    print(f"[FundFlow] 东方财富获取 {pure_code} 成功 ({len(results)} 天)")
+                    return results
 
             except Exception as e:
                 print(f"[FundFlow] 东方财富请求失败 {pure_code} (第{attempt}次): {e}")
                 if attempt < MAX_RETRIES:
                     time.sleep(RETRY_BASE_DELAY ** attempt)
 
-        return None
+        return []
 
     # ==================================================================
     # 同花顺备用源

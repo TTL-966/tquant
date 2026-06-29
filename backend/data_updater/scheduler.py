@@ -20,21 +20,16 @@ class DataUpdateScheduler(QObject):
         self.db_engine = db_engine
         self._update_process = None
         self._financial_process = None
+        self._fund_flow_process = None
 
-        # ===== 自动全量更新已禁用（改为按需+空闲后台更新）=====
-        # self._daily_timer = QTimer()
-        # self._daily_timer.timeout.connect(self._scheduled_check)
-        # self._schedule_daily()
         self._daily_timer = None
-
         self._financial_timer = None
 
         temp_updater = DailyKlineUpdater(db_engine)
         temp_updater._release_lock()
-        # 已禁用：不再自动全量更新 K 线数据
-        # QTimer.singleShot(5000, self._check_and_update)
-        # 指数成分股更新（轻量，仅检查是否需要更新）
         QTimer.singleShot(10000, self._check_index_update)
+        # 资金流向：启动 10 秒后首次更新，之后每日 18:00
+        QTimer.singleShot(10000, self._run_fund_flow_update)
 
     def _schedule_daily(self):
         """计算到下一个 18:00 的毫秒数并启动定时器"""
@@ -159,6 +154,62 @@ class DataUpdateScheduler(QObject):
             self._financial_process = None
         threading.Thread(target=read, daemon=True).start()
 
+    # ── 资金流向更新 ──
+
+    def _run_fund_flow_update(self):
+        """在子进程中执行资金流向增量更新。"""
+        if self._fund_flow_process is not None and self._fund_flow_process.poll() is None:
+            return
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        script_path = os.path.join(base_dir, 'backend', 'standalone_updater.py')
+        if not os.path.exists(script_path):
+            print(f"[Scheduler] 更新脚本不存在: {script_path}")
+            return
+
+        self.update_started.emit("fund_flow")
+        try:
+            startupinfo = None
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+            self._fund_flow_process = subprocess.Popen(
+                [sys.executable, script_path, '--type', 'fund_flow', '--days', '5', '--quiet'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                startupinfo=startupinfo
+            )
+            self._read_fund_flow_output()
+        except Exception as e:
+            self.update_finished.emit("fund_flow", False, str(e))
+
+    def _read_fund_flow_output(self):
+        """后台线程读取资金流向更新子进程输出。"""
+        def read():
+            proc = self._fund_flow_process
+            if proc is None:
+                return
+            for line in proc.stdout:
+                print(f"[FundFlowUpdater] {line.decode('utf-8').strip()}")
+            for line in proc.stderr:
+                print(f"[FundFlowUpdater Error] {line.decode('utf-8').strip()}")
+            proc.wait()
+            success = (proc.returncode == 0)
+            msg = "资金流向更新成功" if success else f"资金流向更新失败 (返回码: {proc.returncode})"
+            print(f"[Scheduler] 资金流向更新子进程退出，{msg}")
+            self.update_finished.emit("fund_flow", success, msg)
+            self._fund_flow_process = None
+        threading.Thread(target=read, daemon=True).start()
+
+    def trigger_fund_flow_update(self):
+        """手动触发资金流向更新（由 UI 调用）。"""
+        if self._fund_flow_process is not None and self._fund_flow_process.poll() is None:
+            return
+        self._run_fund_flow_update()
+
+    # ── 原有方法 ──
+
     def trigger_manual_update(self):
         """手动触发 K线更新（由 UI 调用）"""
         if self._update_process is not None and self._update_process.poll() is None:
@@ -177,7 +228,6 @@ class DataUpdateScheduler(QObject):
             self._daily_timer.stop()
         if self._financial_timer is not None:
             self._financial_timer.stop()
-        if self._update_process is not None and self._update_process.poll() is None:
-            self._update_process.kill()
-        if self._financial_process is not None and self._financial_process.poll() is None:
-            self._financial_process.kill()
+        for p in [self._update_process, self._financial_process, self._fund_flow_process]:
+            if p is not None and p.poll() is None:
+                p.kill()
