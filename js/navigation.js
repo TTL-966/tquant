@@ -2107,7 +2107,7 @@ function executeSignalsToSimulation(signals, container, initialCash) {
         return a.date.localeCompare(b.date);
     });
 
-    var initCash = initialCash || 1000000;
+    var initCash = initialCash || window._lastBacktestInitialCash || 100000;
     if (!confirm('确定要将 ' + sorted.length + ' 条信号发送到模拟盘吗？\n初始资金: ' + initCash.toLocaleString() + ' 元')) {
         return;
     }
@@ -2338,7 +2338,7 @@ function renderBacktestDetail(container, result) {
         var sendBtn = document.getElementById('sendToSimulationBtn');
         if (sendBtn) {
             sendBtn.addEventListener('click', function() {
-                var ic = (result && result.initialCash) || 1000000;
+                var ic = (result && result.initialCash) || window._lastBacktestInitialCash || 100000;
                 executeSignalsToSimulation(result.signals, container, ic);
             });
         }

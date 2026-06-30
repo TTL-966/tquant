@@ -1085,6 +1085,7 @@ function showBacktestModal() {
                     }
 
                     window._lastBacktestResult = mergedResult;
+                    window._lastBacktestInitialCash = cashVal;
                     window.strategySignals = mergedSignals;
                     window._lastBacktestError = null;
                     window.strategyStartDate = start;
@@ -1199,6 +1200,7 @@ function showBacktestModal() {
                                         benchmark_code: res.benchmark_code || null
                                     };
                                     window._lastBacktestResult = finalResult;
+                                    window._lastBacktestInitialCash = cashVal;
                                     window.strategySignals = signals;
                                     window._lastBacktestError = null;
                                     window.strategyStartDate = start;
