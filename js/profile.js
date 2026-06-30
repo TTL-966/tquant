@@ -103,7 +103,8 @@ function renderProfileWithData(data) {
     var allTradeRowsHtml = allTradeRows.join('');
     var visibleTradeRowsHtml = totalTradeCount > DEFAULT_VISIBLE ? allTradeRows.slice(0, DEFAULT_VISIBLE).join('') : allTradeRowsHtml;
     var showTradeToggle = totalTradeCount > DEFAULT_VISIBLE;
-    var totalReturn = (data.total_assets - 1000000) / 1000000 * 100;
+    var initCapital = data.initial_capital || 1000000;
+    var totalReturn = (data.total_assets - initCapital) / initCapital * 100;
     var returnStr = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(2) + '%';
     var returnCls = totalReturn >= 0 ? 'profit-positive' : 'profit-negative';
     var tradeCodes = ['000001', '000858', '300750'];

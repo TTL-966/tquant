@@ -3,11 +3,13 @@ class TradeSimulation:
         self._data_file = data_file
         self._lock = __import__('threading').Lock()
         self._dirty = False
+        self.initial_capital = 1000000.0  # 会被 reset 或 load 覆盖
         loaded = self._load_from_file()
         if loaded:
             self.cash = loaded['cash']
             self.holdings = loaded['holdings']
             self.history = loaded['history']
+            self.initial_capital = loaded.get('initial_capital', self.cash)
         else:
             self.cash = 1000000.0
             self.holdings = {}
@@ -26,6 +28,7 @@ class TradeSimulation:
                     'cash': self.cash,
                     'holdings': self.holdings,
                     'history': self.history,
+                    'initial_capital': self.initial_capital,
                 }
             with open(self._file_path(), 'w', encoding='utf-8') as f:
                 import json
@@ -55,6 +58,7 @@ class TradeSimulation:
     def reset(self, initial_cash=1000000.0):
         """重置模拟盘到初始状态。"""
         with self._lock:
+            self.initial_capital = initial_cash
             self.cash = initial_cash
             self.holdings = {}
             self.history = []
@@ -125,6 +129,7 @@ class TradeSimulation:
                 total_market += market_value
             return {
                 'cash': self.cash,
+                'initial_capital': self.initial_capital,
                 'total_assets': round(total_market, 2),
                 'holdings': holdings_list,
                 'history': list(self.history)

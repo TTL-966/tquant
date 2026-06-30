@@ -1263,7 +1263,8 @@ class WebBridge(QObject):
                 "total_market_value": total_market_value,
                 "total_cost": total_cost,
                 "total_profit": total_profit,
-                "profit_pct": profit_pct
+                "profit_pct": profit_pct,
+                "initial_capital": raw.get("initial_capital", 1000000.0)
             })
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
