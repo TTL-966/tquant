@@ -14,7 +14,7 @@ class MultiBacktestExecutor:
     def run(self, user_code, stock_codes, start_date, end_date, initial_cash=1000000,
             slippage='close', commission_rate=0.0003, stamp_tax_rate=0.001,
             slippage_cost_type='percent', slippage_cost_value=0.1,
-            benchmark_code=None, on_log=None):
+            benchmark_code=None, on_log=None, progress_callback=None):
         """Run multi-stock backtest. Returns demo result."""
         logger = Logger(on_log)
         logger("Demo multi-backtest mode — install full version for actual results")
