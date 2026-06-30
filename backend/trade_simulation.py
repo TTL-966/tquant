@@ -17,8 +17,11 @@ class TradeSimulation:
 
     # ---------- 持久化 ----------
     def _file_path(self):
-        import os
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        import os, sys
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         return os.path.join(base, self._data_file)
 
     def _save_to_file(self):
