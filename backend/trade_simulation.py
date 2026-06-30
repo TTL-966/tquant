@@ -2,6 +2,7 @@ class TradeSimulation:
     def __init__(self, data_file="simulation_data.json"):
         self._data_file = data_file
         self._lock = __import__('threading').Lock()
+        self._dirty = False
         loaded = self._load_from_file()
         if loaded:
             self.cash = loaded['cash']
@@ -29,8 +30,13 @@ class TradeSimulation:
             with open(self._file_path(), 'w', encoding='utf-8') as f:
                 import json
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            self._dirty = False
         except Exception as e:
             print(f"[TradeSimulation] 保存失败: {e}")
+
+    def _flush_if_dirty(self):
+        if self._dirty:
+            self._save_to_file()
 
     def _load_from_file(self):
         import os, json
@@ -76,7 +82,7 @@ class TradeSimulation:
                     'price': price,
                     'shares': shares
                 })
-                self._save_to_file()
+                self._dirty = True
                 return {'success': True, 'message': f'买入{shares}股{code}成功'}
 
             elif action == 'sell':
@@ -95,12 +101,13 @@ class TradeSimulation:
                     'price': price,
                     'shares': shares
                 })
-                self._save_to_file()
+                self._dirty = True
                 return {'success': True, 'message': f'卖出{shares}股{code}成功'}
             else:
                 return {'success': False, 'message': '无效操作'}
 
     def get_portfolio(self):
+        self._flush_if_dirty()
         with self._lock:
             holdings_list = []
             total_market = self.cash
