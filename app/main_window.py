@@ -77,10 +77,9 @@ class MainWindow(QMainWindow):
         html_path = resource_path("Tquant.html")
         self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(html_path)))
 
-        # 数据更新调度器（QObject + QTimer，自动启动定时器）
-        self.scheduler = DataUpdateScheduler(self.bridge.db.engine)
-        self.scheduler.update_started.connect(self.on_update_started)
-        self.scheduler.update_finished.connect(self.on_update_finished)
+        # 数据更新调度器（QObject + QTimer，延迟初始化避免阻塞启动）
+        self.scheduler = None
+        QTimer.singleShot(8000, self._init_scheduler)
 
         # F12 快捷键
         shortcut = QShortcut(QKeySequence("F12"), self)
@@ -90,15 +89,16 @@ class MainWindow(QMainWindow):
         self.web_view.page().fullScreenRequested.connect(self.on_fullscreen_requested)
         self.is_fullscreen = False
 
-        # 已禁用：启动时不再自动全量更新日线数据，改为按需更新
-        # from backend.data_updater.daily_kline_updater import StockDailyUpdater as DailyKlineUpdater
-        # QTimer.singleShot(2000, lambda: DailyKlineUpdater(self.bridge.db.engine).run())
+        # 自动恢复上次未停止的实时策略（延迟 8s，不阻塞 UI）
+        QTimer.singleShot(8000, lambda: self.bridge.auto_restore_realtime_strategy())
 
-        # 自动恢复上次未停止的实时策略
-        QTimer.singleShot(3000, lambda: self.bridge.auto_restore_realtime_strategy())
+        # 预加载常用股票K线缓存（延迟 15s，后台线程）
+        QTimer.singleShot(15000, lambda: self.bridge._prewarm_kline_cache())
 
-        # 预加载常用股票K线缓存（后台线程，不阻塞UI）
-        QTimer.singleShot(5000, lambda: self.bridge._prewarm_kline_cache())
+    def _init_scheduler(self):
+        self.scheduler = DataUpdateScheduler(self.bridge.db.engine)
+        self.scheduler.update_started.connect(self.on_update_started)
+        self.scheduler.update_finished.connect(self.on_update_finished)
 
     def on_fullscreen_requested(self, request):
         request.accept()

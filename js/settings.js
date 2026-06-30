@@ -191,13 +191,37 @@ export function checkDegradationNotice() {
 // ---- 模态框操作（使用 Tquant.html 中的静态 HTML）----
 export function openDataSourceModal() {
     var overlay = document.getElementById('dataSourceModal');
-    if (!overlay) return;
+    if (!overlay) {
+        // 动态创建弹窗 HTML（首次启动时设置页可能未渲染）
+        overlay = document.createElement('div');
+        overlay.id = 'dataSourceModal';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = '<div class="modal-container" style="background:#1a1f35;border:1px solid #323d5a;border-radius:12px;padding:24px;max-width:420px;width:90%;margin:auto;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+            '<span style="color:#fff;font-size:16px;font-weight:600;">⚙️ 数据源配置</span>' +
+            '<button id="dsModalCloseX" style="background:none;border:none;color:#9aa9cc;font-size:20px;cursor:pointer;">✕</button></div>' +
+            '<p style="color:#9aa9cc;font-size:12px;margin-bottom:12px;">首次使用请选择数据源。Baostock 免费无需配置。</p>' +
+            '<div id="dsOptBaostock" class="ds-option" style="padding:10px;border:1px solid #323d5a;border-radius:8px;margin-bottom:8px;cursor:pointer;">' +
+            '<input type="radio" name="dataSource" value="baostock" style="accent-color:#4f7eff;"> <span style="color:#fff;">📊 Baostock（免费·无需Token）</span></div>' +
+            '<div id="dsOptTushare" class="ds-option" style="padding:10px;border:1px solid #323d5a;border-radius:8px;margin-bottom:8px;cursor:pointer;">' +
+            '<input type="radio" name="dataSource" value="tushare" style="accent-color:#4f7eff;"> <span style="color:#fff;">📈 Tushare Pro（需Token）</span></div>' +
+            '<div id="tokenGroup" style="display:none;margin-bottom:12px;">' +
+            '<input type="text" id="tushareTokenInput" placeholder="输入 Tushare Token" style="width:100%;background:#1e253b;border:1px solid #323d5a;border-radius:4px;color:#fff;padding:8px;font-size:13px;box-sizing:border-box;">' +
+            '<div style="display:flex;gap:8px;margin-top:8px;">' +
+            '<button id="checkTokenBtn" style="background:#2a3a5a;border:none;padding:6px 14px;border-radius:20px;color:#fff;cursor:pointer;font-size:12px;">🔍 验证 Token</button>' +
+            '<span id="integralResult" style="color:#9aa9cc;font-size:12px;"></span></div></div>' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button id="cancelModalBtn" style="background:#3d3040;border:none;padding:8px 20px;border-radius:20px;color:#fff;cursor:pointer;">取消</button>' +
+            '<button id="saveDataSourceBtn" style="background:#4f7eff;border:none;padding:8px 20px;border-radius:20px;color:#fff;font-weight:600;cursor:pointer;">💾 保存</button></div></div>';
+        overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) closeDataSourceModal(); });
+        document.body.appendChild(overlay);
+    }
     overlay.classList.add('active');
+    overlay.style.display = 'flex';
 
-    // 加载当前配置到表单
     loadCurrentConfig();
 
-    // 绑定事件（只绑一次，通过标记避免重复）
     if (!overlay._eventsBound) {
         bindModalEvents(overlay);
         overlay._eventsBound = true;
@@ -206,7 +230,7 @@ export function openDataSourceModal() {
 
 function closeDataSourceModal() {
     var overlay = document.getElementById('dataSourceModal');
-    if (overlay) overlay.classList.remove('active');
+    if (overlay) { overlay.classList.remove('active'); overlay.style.display = 'none'; }
 }
 
 function loadCurrentConfig() {
