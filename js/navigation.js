@@ -2089,7 +2089,7 @@ function buildPerformanceTable(stockPerformance) {
         '<tbody>' + rows + '</tbody></table></div>';
 }
 
-function executeSignalsToSimulation(signals, container) {
+function executeSignalsToSimulation(signals, container, initialCash) {
     if (_syncingToSimulation) {
         showToast('正在执行模拟盘同步，请稍候...', true);
         return;
@@ -2107,12 +2107,30 @@ function executeSignalsToSimulation(signals, container) {
         return a.date.localeCompare(b.date);
     });
 
-    if (!confirm('确定要将 ' + sorted.length + ' 条信号全部发送到模拟盘吗？')) {
+    var initCash = initialCash || 1000000;
+    if (!confirm('确定要将 ' + sorted.length + ' 条信号发送到模拟盘吗？\n初始资金: ' + initCash.toLocaleString() + ' 元')) {
         return;
     }
 
     _syncingToSimulation = true;
-    showToast('正在执行 ' + sorted.length + ' 笔模拟交易...', false);
+    showToast('正在重置模拟盘...', false);
+
+    function startTrades() {
+        showToast('正在执行 ' + sorted.length + ' 笔模拟交易...', false);
+        executeNext(0);
+    }
+
+    // 先重置模拟盘资金到回测的初始资金，等完成后开始交易
+    if (bridge && typeof bridge.reset_portfolio === 'function') {
+        bridge.reset_portfolio(String(initCash)).then(function() {
+            startTrades();
+        }).catch(function() {
+            showToast('重置模拟盘失败，继续执行交易', true);
+            startTrades();
+        });
+    } else {
+        startTrades();
+    }
 
     var successCount = 0;
     var failCount = 0;
@@ -2320,7 +2338,8 @@ function renderBacktestDetail(container, result) {
         var sendBtn = document.getElementById('sendToSimulationBtn');
         if (sendBtn) {
             sendBtn.addEventListener('click', function() {
-                executeSignalsToSimulation(result.signals, container);
+                var ic = (result && result.initialCash) || 1000000;
+                executeSignalsToSimulation(result.signals, container, ic);
             });
         }
 

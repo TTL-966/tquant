@@ -1316,11 +1316,14 @@ class WebBridge(QObject):
             return json.dumps({"success": False, "error": str(e)})
 
     @Slot(result=str)
-    def reset_portfolio(self):
-        """重置模拟盘：清空持仓和交易记录，恢复初始资金"""
+    @Slot(str, result=str)
+    def reset_portfolio(self, initial_cash="1000000"):
+        """重置模拟盘：清空持仓和交易记录，可指定初始资金"""
         try:
+            cash = float(initial_cash) if initial_cash else 1000000.0
             self.trade = TradeSimulation()
-            return json.dumps({"success": True, "message": "模拟盘已重置，初始资金 1,000,000 元"})
+            self.trade.reset(initial_cash=cash)
+            return json.dumps({"success": True, "message": f"模拟盘已重置，初始资金 {cash:,.0f} 元"})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             return json.dumps({"success": False, "error": str(e)})
