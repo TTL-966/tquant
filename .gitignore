@@ -30,7 +30,3 @@ Thumbs.db
 .superpowers/
 .superpowers/
 simulation_data.json
-
-# Private full implementations (local only)
-*_full.py
-*_full.js
