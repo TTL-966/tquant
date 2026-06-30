@@ -1,4 +1,5 @@
-# stub: simplified public version — full implementation is local only
+"""Optuna objective 函数 — 参数注入、回测执行、目标值计算"""
+
 import json
 import sys
 import re
@@ -8,10 +9,19 @@ from backend.backtest_executor import BacktestExecutor
 
 
 def suggest_for_param(trial, param_def):
-    """Suggest a parameter value for an Optuna trial. Simplified."""
+    """根据参数定义调用合适的 Optuna suggest 方法。
+
+    Args:
+        trial: optuna.Trial
+        param_def: {name, type: "int"|"float", low, high, step?}
+
+    Returns:
+        sampled value
+    """
     name = param_def["name"]
     low = param_def["low"]
     high = param_def["high"]
+
     if param_def.get("type") == "int":
         step = param_def.get("step", 1)
         return trial.suggest_int(name, low, high, step=step)
@@ -21,30 +31,61 @@ def suggest_for_param(trial, param_def):
 
 
 def inject_params(strategy_code, sampled_params):
-    """Inject sampled params into strategy code. Simplified."""
+    """将采样参数值注入策略代码。
+
+    前端 generateCode 使用 contextName(i, key) 生成上下文变量名，
+    格式为 context.c{cardIdx}_{paramKey}（如 context.c0_fastPeriod）。
+    本函数匹配该模式并替换数值。
+    """
     code = strategy_code
     for name, value in sampled_params.items():
+        # 主模式: context.c0_fastPeriod = 5 -> context.c0_fastPeriod = <new>
         pat1 = rf'(context\.c\d+_{name}\s*=\s*)(-?[\d.]+)'
         if re.search(pat1, code):
             code = re.sub(pat1, rf'\g<1>{value}', code)
         else:
+            # fallback: word-boundary match for non-card-indexed params
             pat2 = rf'(\b{name}\s*=\s*)(-?[\d.]+)'
             code = re.sub(pat2, rf'\g<1>{value}', code)
     return code
 
-
 def compute_objective(metrics, objective_type, min_trades=5):
-    """Compute objective value from backtest metrics. Simplified."""
+    """从回测指标计算目标值。
+
+    Args:
+        metrics: BacktestExecutor.run() 返回的 metrics dict
+        objective_type: "sharpe_drawdown" | "sharpe" | "return"
+        min_trades: 最低交易次数，低于此数返回 -999 惩罚（防低频策略钻空子）
+
+    Returns:
+        float 目标值（越大越好）
+
+    Raises:
+        optuna.TrialPruned: 剪枝信号（回撤超标）
+    """
+    import optuna
+
     total_trades = metrics.get("total_trades", 0)
+
+    # 交易次数不足 → 渐进惩罚分，给 Optuna 搜索梯度
+    # 每缺 1 笔扣 200 分：0笔=-1000, 4笔(min=5)=-200, 5+笔=正常
     if total_trades < min_trades:
         return float(-200 * (min_trades - total_trades))
+
     if objective_type == "sharpe_drawdown":
+        drawdown = metrics.get("max_drawdown", 0)
+        if drawdown < -15:
+            raise optuna.TrialPruned(
+                f"回撤 {drawdown:.1f}% 超过 15% 约束"
+            )
         sharpe = metrics.get("sharpe_ratio", 0)
         total_ret = metrics.get("total_return", 0)
         return float(sharpe * 0.7 + total_ret * 0.3)
+
     elif objective_type == "sharpe":
         return float(metrics.get("sharpe_ratio", 0))
-    else:
+
+    else:  # "return"
         return float(metrics.get("total_return", 0))
 
 
@@ -53,14 +94,78 @@ def run_objective(trial, params_to_search, fixed_params, strategy_code,
                   commission_rate, stamp_tax_rate, slippage_cost_type,
                   slippage_cost_value, benchmark_code, objective_type,
                   data_feed=None, stock_codes=None):
-    """Run one Optuna trial. Simplified — returns mock value for demo."""
+    """Optuna objective 函数。
+
+    每被 Optuna 调用一次，就跑一次完整回测。
+    data_feed 可复用，避免每 trial 新建 SQLite 连接。
+
+    Returns:
+        float 目标值
+    """
+    # 1. 从试验中采样参数
     sampled = {}
     for p in params_to_search:
         sampled[p["name"]] = suggest_for_param(trial, p)
+
+    # 2. 合并固定参数
     all_params = {**fixed_params, **sampled}
 
-    try:
-        code = inject_params(strategy_code, all_params)
-        return 0.0
-    except Exception:
-        return float("nan")
+    # 3. 注入参数到策略代码
+    code = inject_params(strategy_code, all_params)
+
+    # 4. 运行回测（复用 data_feed 避免 SQLite 连接累积）
+    _own_feed = data_feed is None
+    if _own_feed:
+        data_feed = DataFeed()
+
+    if stock_codes and len(stock_codes) > 1:
+        # 多股模式：共享资金池
+        from backend.multi_backtest_executor import MultiBacktestExecutor
+        executor = MultiBacktestExecutor(data_feed)
+        try:
+            result = executor.run(
+                user_code=code,
+                stock_codes=stock_codes,
+                start_date=start,
+                end_date=end,
+                initial_cash=cash,
+                slippage=slippage,
+                commission_rate=commission_rate,
+                stamp_tax_rate=stamp_tax_rate,
+                slippage_cost_type=slippage_cost_type,
+                slippage_cost_value=slippage_cost_value,
+                benchmark_code=benchmark_code,
+            )
+            if not result.get("success"):
+                return float("nan")
+            metrics = result.get("metrics", {})
+            return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
+        finally:
+            del executor
+            if _own_feed and data_feed is not None:
+                del data_feed
+    else:
+        # 单股模式（现有逻辑）
+        executor = BacktestExecutor(data_feed)
+        try:
+            result = executor.run(
+                user_code=code,
+                stock_code=stock_code,
+                start_date=start,
+                end_date=end,
+                initial_cash=cash,
+                slippage=slippage,
+                commission_rate=commission_rate,
+                stamp_tax_rate=stamp_tax_rate,
+                slippage_cost_type=slippage_cost_type,
+                slippage_cost_value=slippage_cost_value,
+                benchmark_code=benchmark_code,
+            )
+            if result.get("status") == "error":
+                return float("nan")
+            metrics = result.get("metrics", {})
+            return compute_objective(metrics, objective_type, min_trades=fixed_params.get('_min_trades', 5))
+        finally:
+            del executor
+            if _own_feed and data_feed is not None:
+                del data_feed
