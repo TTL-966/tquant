@@ -112,6 +112,11 @@ class MainWindow(QMainWindow):
     def _resize_webview(self):
         self.web_view.resize(self.size())
         self.web_view.page().runJavaScript("window.dispatchEvent(new Event('resize'));")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.web_view.resize(event.size())
+        self.web_view.page().runJavaScript("window.dispatchEvent(new Event('resize'));")
         print(f"[Fullscreen] 窗口尺寸: {self.width()}x{self.height()}")
 
     def on_update_started(self, name):

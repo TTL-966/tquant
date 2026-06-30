@@ -324,7 +324,8 @@ export function loadPage(pageId) {
     } else if (pageId === 'kchart') {
         renderKchartPage(container);
     } else if (pageId === 'stock') {
-        renderStockPage(container);
+        container.innerHTML = '<div style="text-align:center;color:#9aa9cc;padding:40px;">⏳ 加载中...</div>';
+        setTimeout(function() { renderStockPage(container); }, 50);
     } else if (pageId === 'history') {
         renderHistoryPage(container);
     } else if (pageId === 'strategy') {

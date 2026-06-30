@@ -25,12 +25,32 @@ export function log(msg) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
+    // 5 秒后若未连接则弹窗提醒
+    var _bridgeTimeout = setTimeout(function() {
+        if (!bridgeReady && !document.getElementById('bridgeErrorOverlay')) {
+            var ov = document.createElement('div');
+            ov.id = 'bridgeErrorOverlay';
+            ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
+            ov.innerHTML = '<div style="background:#1a1f35;border:1px solid #e74c3c;border-radius:12px;padding:24px;text-align:center;max-width:400px;">' +
+                '<div style="font-size:48px;margin-bottom:12px;">⚠️</div>' +
+                '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:8px;">后端未连接</div>' +
+                '<div style="color:#9aa9cc;font-size:13px;margin-bottom:16px;">请确认 Tquant.exe 和数据库文件在同一目录，然后重新启动程序。</div>' +
+                '<button onclick="document.getElementById(\'bridgeErrorOverlay\').remove()" style="background:#e74c3c;border:none;padding:8px 24px;border-radius:20px;color:#fff;cursor:pointer;">关闭</button></div>';
+            document.body.appendChild(ov);
+        }
+    }, 5000);
+
     if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
         new QWebChannel(qt.webChannelTransport, function(channel) {
             bridge = channel.objects.bridge;
             bridgeReady = true;
-            log("QWebChannel 已建立，bridge.ping = " + typeof bridge.ping);
+            clearTimeout(_bridgeTimeout);
             updateBridgeStatus("🔌 Bridge: 已连接", "#4caf50");
+            // 3 秒后自动隐藏
+            setTimeout(function() {
+                var el = document.getElementById('bridgeStatus');
+                if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.5s'; }
+            }, 3000);
             pendingCallbacks.forEach(function(cb) { cb(); });
             pendingCallbacks = [];
 
