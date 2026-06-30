@@ -1184,22 +1184,25 @@ class WebBridge(QObject):
                     holdings_list.append(item)
                 holdings = holdings_list
                 portfolio['holdings'] = holdings
-            total_market = portfolio.get('cash', 0.0)
+            # 总资产按成交价计算（与回测一致），不做实时行情估值
+            total_assets = portfolio.get('cash', 0.0)
             for h in holdings:
                 code = h['code']
+                cost = h['cost']
+                shares = h['shares']
+                h['price'] = cost  # 显示成交价
+                h['profit'] = 0     # 按成交价无浮动盈亏
+                total_assets += cost * shares
+                # 尝试获取实时行情（仅用于显示参考现价）
                 try:
                     latest = self.data_feed.get_latest_price(code)
                     if 'error' not in latest:
-                        price = latest['price']
-                        h['price'] = price
-                        shares = h['shares']
-                        cost = h['cost']
-                        market_value = round(price * shares, 2)
-                        h['profit'] = round(market_value - cost * shares, 2)
+                        h['live_price'] = latest['price']
+                        live_mv = round(latest['price'] * shares, 2)
+                        h['live_profit'] = round(live_mv - cost * shares, 2)
                 except Exception:
                     pass
-                total_market += h.get('market_value', h.get('price', h['cost']) * h['shares'])
-            portfolio['total_assets'] = round(total_market, 2)
+            portfolio['total_assets'] = round(total_assets, 2)
             if isinstance(holdings, dict):
                 enhanced_holdings = {}
                 for code, info in holdings.items():

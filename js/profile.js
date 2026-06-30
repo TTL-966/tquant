@@ -86,8 +86,10 @@ function fetchDailyAssets() {
 function renderProfileWithData(data) {
     var container = document.getElementById('dynamicContent');
     var holdingRows = data.holdings.map(function(h) {
-        var profitCls = h.profit >= 0 ? 'profit-positive' : 'profit-negative';
-        return '<tr><td>' + formatStockDisplayHtml(h.code) + '</td><td>' + h.shares + '</td><td>' + h.cost.toFixed(2) + '</td><td class="' + profitCls + '">' + h.profit.toFixed(2) + '</td></tr>';
+        var showPrice = h.live_price || h.price || h.cost;
+        var showProfit = h.live_profit != null ? h.live_profit : (h.profit || 0);
+        var profitCls = showProfit >= 0 ? 'profit-positive' : 'profit-negative';
+        return '<tr><td>' + formatStockDisplayHtml(h.code) + '</td><td>' + h.shares + '</td><td>' + h.cost.toFixed(2) + '</td><td>' + showPrice.toFixed(2) + '</td><td class="' + profitCls + '">' + showProfit.toFixed(2) + '</td></tr>';
     }).join('');
     var DEFAULT_VISIBLE = 5;
     _tradeHistoryExpanded = false;
